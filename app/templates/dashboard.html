@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Ultrasound Inventory{% endblock %}
+{% block content %}
+<section class="welcome-row">
+    <div>
+        <h2>Welcome</h2>
+        <p class="muted">
+            Use <a class="link" href="{{ url_for('main.receive') }}">Receive Inventory</a> to enter a machine with its probes and printer,
+            and the <a class="link" href="{{ url_for('main.movement_center') }}">Movement Centre</a> to send and return stock.
+        </p>
+    </div>
+</section>
+
+<section class="stats-section">
+    <div class="stats-heading"><p class="eyebrow">Machines</p></div>
+    <div class="metric-grid" aria-label="Machine summary">
+        <article class="metric-card accent-blue"><span class="metric-label">Total</span><strong>{{ counts.machines.total }}</strong></article>
+        <article class="metric-card accent-teal"><span class="metric-label">At company</span><strong>{{ counts.machines.company }}</strong></article>
+        <article class="metric-card accent-orange"><span class="metric-label">At workshop</span><strong>{{ counts.machines.workshop }}</strong></article>
+        <article class="metric-card accent-purple"><span class="metric-label">At dealer</span><strong>{{ counts.machines.dealer }}</strong></article>
+        <article class="metric-card accent-red"><span class="metric-label">Sold</span><strong>{{ counts.machines.sold }}</strong></article>
+        <article class="metric-card accent-navy"><span class="metric-label">Total batches</span><strong>{{ counts.total_batches }}</strong></article>
+    </div>
+</section>
+
+<section class="stats-section">
+    <div class="stats-heading"><p class="eyebrow">Probes</p></div>
+    <div class="metric-grid" aria-label="Probe summary">
+        <article class="metric-card accent-blue"><span class="metric-label">Total</span><strong>{{ counts.probes.total }}</strong></article>
+        <article class="metric-card accent-teal"><span class="metric-label">Available</span><strong>{{ counts.probes.available }}</strong></article>
+        <article class="metric-card accent-navy"><span class="metric-label">Attached to machines</span><strong>{{ counts.probes.attached }}</strong></article>
+        <article class="metric-card accent-orange"><span class="metric-label">At workshop</span><strong>{{ counts.probes.workshop }}</strong></article>
+        <article class="metric-card accent-purple"><span class="metric-label">At dealer</span><strong>{{ counts.probes.dealer }}</strong></article>
+        <article class="metric-card accent-red"><span class="metric-label">Sold</span><strong>{{ counts.probes.sold }}</strong></article>
+    </div>
+</section>
+
+<section class="stats-section">
+    <div class="stats-heading"><p class="eyebrow">Printers</p></div>
+    <div class="metric-grid" aria-label="Printer summary">
+        <article class="metric-card accent-blue"><span class="metric-label">Total</span><strong>{{ counts.printers.total }}</strong></article>
+        <article class="metric-card accent-teal"><span class="metric-label">Available</span><strong>{{ counts.printers.available }}</strong></article>
+        <article class="metric-card accent-navy"><span class="metric-label">With machines</span><strong>{{ counts.printers.attached }}</strong></article>
+        <article class="metric-card accent-orange"><span class="metric-label">At workshop</span><strong>{{ counts.printers.workshop }}</strong></article>
+        <article class="metric-card accent-purple"><span class="metric-label">At dealer</span><strong>{{ counts.printers.dealer }}</strong></article>
+        <article class="metric-card accent-red"><span class="metric-label">Sold</span><strong>{{ counts.printers.sold }}</strong></article>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Active movements</p>
+            <h2>{{ away_total }} item{{ 's' if away_total != 1 else '' }} currently away</h2>
+        </div>
+        <a class="btn btn-ghost" href="{{ url_for('main.away') }}">View all</a>
+    </div>
+    {% if active %}
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr><th>Item</th><th>Destination</th><th>Sent</th><th>Days away</th></tr>
+            </thead>
+            <tbody>
+                {% for i in active %}
+                <tr>
+                    <td><strong><a class="link" href="{{ i.url }}">{{ i.label }}</a></strong><br><small class="muted">{{ i.detail }}</small></td>
+                    <td>{{ i.destination }}</td>
+                    <td>{{ i.sent_date or '—' }}</td>
+                    <td>{% if i.days is not none %}<strong>{{ i.days }}</strong>{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state empty-state-flat">
+        <div class="empty-icon">⌂</div>
+        <strong>Everything is home</strong>
+        <p>No machines, probes or printers are currently at a workshop or dealer.</p>
+    </div>
+    {% endif %}
+</section>
+
+<section class="dashboard-grid">
+    <article class="panel quick-actions">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">Next steps</p>
+                <h2>Quick actions</h2>
+            </div>
+        </div>
+        <div class="action-list">
+            <a class="action-item" href="{{ url_for('main.receive') }}"><span class="action-icon">+</span><span><strong>Receive inventory</strong><small>Machine + probes + printer in one screen</small></span></a>
+            <a class="action-item" href="{{ url_for('main.pick_send', type='workshop') }}"><span class="action-icon">→</span><span><strong>Send to workshop</strong><small>Select a machine, everything travels together</small></span></a>
+            <a class="action-item" href="{{ url_for('main.pick_return', type='workshop') }}"><span class="action-icon">←</span><span><strong>Return from workshop</strong><small>See what was originally sent</small></span></a>
+            <a class="action-item" href="{{ url_for('main.new_batch') }}"><span class="action-icon">+</span><span><strong>New batch</strong><small>Register an incoming shipment</small></span></a>
+        </div>
+    </article>
+    <article class="panel activity-panel">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">Audit trail</p>
+                <h2>Recent activity</h2>
+            </div>
+        </div>
+        {% if recent %}
+            <div class="action-list">
+                {% for r in recent %}
+                <div class="action-item">
+                    <span class="action-icon">·</span>
+                    <span>
+                        <strong>{{ r.movement_type }} — {{ r.machine_code or r.probe_code or r.printer_code or '—' }}</strong>
+                        <small>{{ r.movement_date }}{% if r.reference %} · {{ r.reference }}{% endif %}{% if r.to_location %} · to {{ r.to_location }}{% endif %}{% if r.notes %} · {{ r.notes }}{% endif %}</small>
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">--</div>
+                <strong>No activity yet</strong>
+                <p>Receive your first machine and its history will start appearing here.</p>
+            </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Sales | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Invoices (read-only){% endblock %}
+{% block heading %}Sales{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="search-form" method="get" action="{{ url_for('main.sales') }}">
+        <input type="search" name="search" placeholder="Search transaction #, customer, date…" value="{{ filters.search }}">
+        {% if filters.search %}<a class="btn btn-ghost" href="{{ url_for('main.sales') }}">Clear</a>{% endif %}
+    </form>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Transaction #</th>
+                    <th>Customer</th>
+                    <th>Items</th>
+                    <th>Price</th>
+                    <th>Notes</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for s in items %}
+                        <tr>
+                            <td>{{ s.sale_date }}</td>
+                            <td><strong>{{ s.old_trno or '—' }}</strong></td>
+                            <td>{{ s.customer_name or '—' }}</td>
+                            <td><span class="badge badge-blue">{{ s.item_count }}</span></td>
+                            <td>{{ '%.2f'|format(s.sale_price) if s.sale_price else '—' }}</td>
+                            <td class="muted">{{ s.notes or '—' }}</td>
+                            <td class="row-actions">
+                                <a class="btn btn-small" href="{{ url_for('main.sale_detail', sale_id=s.id) }}">View</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No sales found</strong>
+                                <p>Sales history is imported from the old system (read-only for now).</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

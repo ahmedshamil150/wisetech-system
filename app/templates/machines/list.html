@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Machines | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Company equipment{% endblock %}
+{% block heading %}Machines{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="filter-form" method="get" action="{{ url_for('main.machines') }}">
+        <div class="filter-row">
+            <input type="search" name="search" placeholder="Search by ID, model, serial, batch…" value="{{ filters.search }}">
+            <select name="status">
+                <option value="">All statuses</option>
+                {% for s in statuses %}
+                    <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+            <select name="location">
+                <option value="">All locations</option>
+                {% for l in locations %}
+                    <option value="{{ l }}" {% if filters.location == l %}selected{% endif %}>{{ l }}</option>
+                {% endfor %}
+            </select>
+            <select name="batch_id">
+                <option value="">All batches</option>
+                {% for b in batches %}
+                    <option value="{{ b.id }}" {% if filters.batch_id == b.id|string %}selected{% endif %}>{{ b.code }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if filters.search or filters.status or filters.location or filters.batch_id %}
+                <a class="btn btn-ghost" href="{{ url_for('main.machines') }}">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('main.receive') }}">+ Receive Inventory</a>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Machine ID</th>
+                    <th>Brand</th>
+                    <th>Model</th>
+                    <th>Serial Number</th>
+                    <th>Batch</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Date Received</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if machines %}
+                    {% for m in machines %}
+                        <tr>
+                            <td><strong><a class="link" href="{{ url_for('main.machine_detail', machine_id=m.id) }}">{{ m.machine_id }}</a></strong></td>
+                            <td>{{ m.brand_name or '—' }}</td>
+                            <td>{{ m.model }}</td>
+                            <td>{{ m.serial_number or '—' }}</td>
+                            <td><span class="badge badge-blue">{{ m.batch_code }}</span></td>
+                            <td><span class="status status-{{ m.status|lower|replace(' ', '-') }}">{{ m.status }}</span></td>
+                            <td><span class="location location-{{ m.current_location|lower }}">{{ m.current_location }}</span></td>
+                            <td>{{ m.acquisition_date or '—' }}</td>
+                            <td class="row-actions">
+                                <a class="btn btn-small" href="{{ url_for('main.machine_detail', machine_id=m.id) }}">View</a>
+                                {% if m.status != 'Sold' %}
+                                    <a class="btn btn-small btn-ghost" href="{{ url_for('main.edit_machine', machine_id=m.id) }}">Edit</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="9">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No machines found</strong>
+                                <p>Use Receive Inventory to enter an incoming machine with its probes and printer.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

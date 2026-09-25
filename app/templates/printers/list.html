@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Printers | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Physical printer units{% endblock %}
+{% block heading %}Printers{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="filter-form" method="get" action="{{ url_for('main.printers') }}">
+        <div class="filter-row">
+            <input type="search" name="search" placeholder="Search ID, model, serial, brand…" value="{{ filters.search }}">
+            <select name="status">
+                <option value="">All statuses</option>
+                {% for s in statuses %}
+                    <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}{% if status_counts.get(s) %} ({{ status_counts.get(s) }}){% endif %}</option>
+                {% endfor %}
+            </select>
+            <label class="check-label"><input type="checkbox" name="review" value="1" {% if filters.review == '1' %}checked{% endif %}> Needs review</label>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if filters.search or filters.status or filters.review %}
+                <a class="btn btn-ghost" href="{{ url_for('main.printers') }}">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Quantity tracking</p>
+            <h2>Availability by model</h2>
+        </div>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Model</th>
+                    <th>Total</th>
+                    <th>Available</th>
+                    <th>With machine</th>
+                    <th>With workshop</th>
+                    <th>With dealer</th>
+                    <th>Sold</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in availability %}
+                <tr>
+                    <td><strong>{{ a.name_model }}</strong>{% if a.brand_name %} <span class="muted">({{ a.brand_name }})</span>{% endif %}</td>
+                    <td>{{ a.total }}</td>
+                    <td>{% if a.available %}<span class="status status-available">{{ a.available }}</span>{% else %}0{% endif %}</td>
+                    <td>{{ a.with_machine }}</td>
+                    <td>{{ a.with_workshop }}</td>
+                    <td>{{ a.with_dealer }}</td>
+                    <td>{{ a.sold }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7"><div class="empty-state empty-state-flat"><strong>No printer models yet</strong></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Physical units</p>
+            <h2>Printer units</h2>
+        </div>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Printer ID</th>
+                    <th>Model</th>
+                    <th>Brand</th>
+                    <th>Serial</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Review</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for p in items %}
+                        <tr>
+                            <td><strong><a class="link" href="{{ url_for('main.printer_detail', printer_id=p.id) }}">{{ p.internal_id }}</a></strong></td>
+                            <td>{{ p.name_model or '—' }}</td>
+                            <td>{{ p.brand_name or '—' }}</td>
+                            <td>{{ p.serial_number or '—' }}</td>
+                            <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                            <td>{{ p.current_location }}</td>
+                            <td>{% if p.needs_review %}<span class="flag flag-review" title="{{ p.review_note or '' }}">Review</span>{% else %}—{% endif %}</td>
+                            <td class="row-actions">
+                                <a class="btn btn-small btn-ghost" href="{{ url_for('main.printer_detail', printer_id=p.id) }}">View</a>
+                                {% if p.status != 'Sold' %}
+                                    <a class="btn btn-small btn-ghost" href="{{ url_for('main.sell_printer', printer_id=p.id) }}">Sell</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No printers found</strong>
+                                <p>Printer units are imported from the old system or created when receiving inventory.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

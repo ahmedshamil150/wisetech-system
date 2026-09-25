@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ cfg.plural }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Partners{% endblock %}
+{% block heading %}{{ cfg.plural }}{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="search-form" method="get" action="{{ url_for('main.' ~ cfg.endpoint) }}">
+        <input type="search" name="search" placeholder="Search name, contact, city…" value="{{ search }}">
+        <select name="show" onchange="this.form.submit()">
+            <option value="active" {% if show == 'active' %}selected{% endif %}>Active ({{ counts.get(0, 0) }})</option>
+            <option value="inactive" {% if show == 'inactive' %}selected{% endif %}>Inactive ({{ counts.get(1, 0) }})</option>
+            <option value="all" {% if show == 'all' %}selected{% endif %}>All</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Search</button>
+        {% if search or show != 'active' %}
+            <a class="btn btn-ghost" href="{{ url_for('main.' ~ cfg.endpoint) }}">Clear</a>
+        {% endif %}
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('main.new_' ~ kind) }}">+ Add {{ cfg.label }}</a>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>{{ cfg.label }}</th>
+                    <th>Contact</th>
+                    <th>Phone</th>
+                    <th>City</th>
+                    <th>Address</th>
+                    <th>Items currently there</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for p in items %}
+                        <tr>
+                            <td><strong>{{ p.name }}</strong>{% if p.notes %}<br><small class="muted" title="{{ p.notes }}">{{ p.notes }}</small>{% endif %}</td>
+                            <td>{{ p.contact or '—' }}</td>
+                            <td>{{ p.phone or '—' }}</td>
+                            <td>{{ p.city or '—' }}</td>
+                            <td class="muted">{{ p.address or '—' }}</td>
+                            <td>
+                                {% set n = current_counts.get(p.name, 0) %}
+                                {% if n %}<span class="badge badge-blue">{{ n }} item{{ 's' if n != 1 else '' }}</span>{% else %}<span class="muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if p.is_archived %}
+                                    <span class="status status-archived">Inactive</span>
+                                {% else %}
+                                    <span class="status status-available">Active</span>
+                                {% endif %}
+                            </td>
+                            <td class="row-actions">
+                                <a class="btn btn-small btn-ghost" href="{{ url_for('main.edit_' ~ kind, partner_id=p.id) }}">Edit</a>
+                                <form method="post" action="{{ url_for('main.toggle_' ~ kind, partner_id=p.id) }}" style="display:inline">
+                                    <button class="btn btn-small btn-ghost" type="submit">{% if p.is_archived %}Activate{% else %}Deactivate{% endif %}</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No {{ cfg.plural|lower }} found</strong>
+                                <p>Add a {{ cfg.label|lower }} so machines can be sent there and tracked.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

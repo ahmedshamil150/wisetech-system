@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Probe {{ probe.internal_id }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Physical probe record{% endblock %}
+{% block heading %}Probe {{ probe.internal_id }}{% endblock %}
+{% block content %}
+<section class="detail-header">
+    <div class="detail-meta detail-meta-wide">
+        <div class="meta-item">
+            <span class="meta-label">Probe ID</span>
+            <span class="meta-value"><strong>{{ probe.internal_id }}</strong></span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Model</span>
+            <span class="meta-value">{{ probe.model or probe.catalog_model or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Brand</span>
+            <span class="meta-value">{{ probe.brand_name or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Serial Number</span>
+            <span class="meta-value">{{ probe.serial_number or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Status</span>
+            <span class="meta-value"><span class="status status-{{ probe.status|lower|replace(' ', '-') }}">{{ probe.status }}</span></span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Location</span>
+            <span class="meta-value"><span class="location location-{{ probe.current_location|lower }}">{{ probe.current_location }}</span>{% if out_dest %} · {{ out_dest }}{% endif %}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Condition</span>
+            <span class="meta-value">{{ probe.condition or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Attached Machine</span>
+            <span class="meta-value">
+                {% if probe.assigned_machine_pk %}
+                    <a class="link badge badge-blue" href="{{ url_for('main.machine_detail', machine_id=probe.assigned_machine_pk) }}">{{ probe.assigned_machine_code }}</a>
+                {% else %}—{% endif %}
+            </span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Received</span>
+            <span class="meta-value">{{ probe.acquisition_date or '—' }}</span>
+        </div>
+        {% if sale %}
+        <div class="meta-item">
+            <span class="meta-label">Sold</span>
+            <span class="meta-value">
+                <a class="link" href="{{ url_for('main.sale_detail', sale_id=sale.id) }}">Sale on {{ sale.sale_date }}</a>
+                {{ '· ' ~ sale.customer_name if sale.customer_name else '' }}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+    <div class="detail-actions">
+        <a class="btn btn-ghost" href="{{ url_for('main.probes') }}">← All probes</a>
+        {% if probe.status not in ('Sold', 'Archived') and probe.status not in ('With Workshop', 'With Dealer') %}
+            <a class="btn btn-primary" href="{{ url_for('main.send_probe', probe_id=probe.id, type='workshop') }}">Send to Workshop</a>
+            <a class="btn" href="{{ url_for('main.send_probe', probe_id=probe.id, type='dealer') }}">Send to Dealer</a>
+            <a class="btn" href="{{ url_for('main.sell_probe', probe_id=probe.id) }}">Sell probe</a>
+        {% endif %}
+        {% if probe.status in ('With Workshop', 'With Dealer') %}
+            <a class="btn btn-primary" href="{{ url_for('main.return_probe', probe_id=probe.id) }}">Return from {{ out_dest or 'workshop / dealer' }}</a>
+        {% endif %}
+    </div>
+</section>
+
+{% if probe.condition_notes or probe.notes %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Reference</p>
+            <h2>Notes</h2>
+        </div>
+    </div>
+    <div class="panel-body">
+        <p style="margin:0; white-space:pre-wrap;">{{ probe.condition_notes or '' }}{{ probe.notes or '' }}</p>
+    </div>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Audit trail</p>
+            <h2>History / Timeline</h2>
+        </div>
+    </div>
+    <div class="panel-body">
+        {% include "_timeline.html" %}
+    </div>
+</section>
+{% endblock %}

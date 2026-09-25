@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Movements | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Move inventory between company, workshops and dealers{% endblock %}
+{% block heading %}Movement Centre{% endblock %}
+{% block content %}
+<section class="metric-grid" aria-label="Movement summary">
+    <article class="metric-card accent-orange">
+        <span class="metric-label">At workshop</span>
+        <strong>{{ counts.at_workshop }}</strong>
+        <span class="metric-note">Machines out for service</span>
+    </article>
+    <article class="metric-card accent-purple">
+        <span class="metric-label">At dealer</span>
+        <strong>{{ counts.at_dealer }}</strong>
+        <span class="metric-note">Machines with resellers</span>
+    </article>
+    <article class="metric-card accent-red">
+        <span class="metric-label">Items away</span>
+        <strong>{{ counts.away }}</strong>
+        <span class="metric-note"><a class="link" href="{{ url_for('main.away') }}">Inventory away from company</a></span>
+    </article>
+    <article class="metric-card accent-teal">
+        <span class="metric-label">Partners</span>
+        <strong>{{ counts.workshops + counts.dealers }}</strong>
+        <span class="metric-note">{{ counts.workshops }} workshops · {{ counts.dealers }} dealers</span>
+    </article>
+</section>
+
+<section class="movement-grid">
+    <a class="movement-card" href="{{ url_for('main.pick_send', type='workshop') }}">
+        <span class="movement-icon">→</span>
+        <strong>Send to Workshop</strong>
+        <small>Select a machine — its probes and printer travel with it</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.pick_send', type='dealer') }}">
+        <span class="movement-icon">→</span>
+        <strong>Send to Dealer</strong>
+        <small>Everything selected by default, uncheck what stays</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.pick_return', type='workshop') }}">
+        <span class="movement-icon">←</span>
+        <strong>Return from Workshop</strong>
+        <small>Shows what was originally sent and what is missing</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.pick_return', type='dealer') }}">
+        <span class="movement-icon">←</span>
+        <strong>Return from Dealer</strong>
+        <small>Same flow — nothing is hidden about missing items</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.pick_send_probe') }}">
+        <span class="movement-icon">·</span>
+        <strong>Send Probe</strong>
+        <small>Move one probe on its own without its machine</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.pick_send_printer') }}">
+        <span class="movement-icon">·</span>
+        <strong>Send Printer</strong>
+        <small>Move one printer unit on its own</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.pick_sell') }}">
+        <span class="movement-icon">$</span>
+        <strong>Sell to Customer</strong>
+        <small>Pick an item at the company and record the sale</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.away') }}">
+        <span class="movement-icon">⌂</span>
+        <strong>Inventory Away</strong>
+        <small>What do we currently have outside the company?</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.new_workshop') }}">
+        <span class="movement-icon">+</span>
+        <strong>Add Workshop</strong>
+        <small>Name, contact, phone, city — reused every time</small>
+    </a>
+    <a class="movement-card" href="{{ url_for('main.new_dealer') }}">
+        <span class="movement-icon">+</span>
+        <strong>Add Dealer</strong>
+        <small>No duplicate records for the same dealer</small>
+    </a>
+</section>
+{% endblock %}

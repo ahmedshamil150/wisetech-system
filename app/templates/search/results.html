@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Search | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Find anything{% endblock %}
+{% block heading %}Search{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="search-form" method="get" action="{{ url_for('main.search') }}">
+        <input type="search" name="q" placeholder="Machine ID, serial, model, probe serial, printer, workshop, dealer, MOV-00001…" value="{{ q }}" autofocus>
+        <button class="btn btn-primary" type="submit">Search</button>
+        {% if q %}<a class="btn btn-ghost" href="{{ url_for('main.search') }}">Clear</a>{% endif %}
+    </form>
+</section>
+
+{% if not q %}
+<div class="banner banner-info">
+    <div>
+        <strong>Type anything</strong>
+        <p>Machine IDs, serial numbers, models, probe serials, printer models, workshops, dealers or movement references like MOV-00001.</p>
+    </div>
+</div>
+{% else %}
+
+{% if results.machines %}
+<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Machines</p><h2>{{ results.machines|length }} match{{ 'es' if results.machines|length != 1 else '' }}</h2></div></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Machine</th><th>Model</th><th>Serial</th><th>Status</th><th>Location</th><th>Batch</th><th></th></tr></thead>
+            <tbody>
+                {% for m in results.machines %}
+                <tr>
+                    <td><strong>{{ m.machine_id }}</strong></td>
+                    <td>{{ m.brand_name or '' }} {{ m.model }}</td>
+                    <td>{{ m.serial_number or '—' }}</td>
+                    <td><span class="status status-{{ m.status|lower|replace(' ', '-') }}">{{ m.status }}</span></td>
+                    <td>{{ m.current_location }}</td>
+                    <td>{{ m.batch_code }}</td>
+                    <td class="row-actions"><a class="btn btn-small" href="{{ url_for('main.machine_detail', machine_id=m.id) }}">Open</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if results.probes %}
+<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Probes</p><h2>{{ results.probes|length }} match{{ 'es' if results.probes|length != 1 else '' }}</h2></div></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Probe</th><th>Model</th><th>Serial</th><th>Status</th><th>Location</th><th>Attached to</th><th></th></tr></thead>
+            <tbody>
+                {% for p in results.probes %}
+                <tr>
+                    <td><strong>{{ p.internal_id }}</strong></td>
+                    <td>{{ p.model or '—' }}</td>
+                    <td>{{ p.serial_number or '—' }}</td>
+                    <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                    <td>{{ p.current_location }}</td>
+                    <td>{% if p.assigned_machine_code %}<a class="link badge badge-blue" href="{{ url_for('main.machine_detail', machine_id=p.assigned_machine_id) }}">{{ p.assigned_machine_code }}</a>{% else %}—{% endif %}</td>
+                    <td class="row-actions"><a class="btn btn-small" href="{{ url_for('main.probe_detail', probe_id=p.id) }}">Open</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if results.printers %}
+<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Printers</p><h2>{{ results.printers|length }} match{{ 'es' if results.printers|length != 1 else '' }}</h2></div></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Unit</th><th>Model</th><th>Serial</th><th>Status</th><th>Location</th><th></th></tr></thead>
+            <tbody>
+                {% for p in results.printers %}
+                <tr>
+                    <td><strong>{{ p.internal_id }}</strong></td>
+                    <td>{{ p.name_model or '—' }}</td>
+                    <td>{{ p.serial_number or '—' }}</td>
+                    <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                    <td>{{ p.current_location }}</td>
+                    <td class="row-actions"><a class="btn btn-small" href="{{ url_for('main.printer_detail', printer_id=p.id) }}">Open</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if results.workshops %}
+<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Workshops</p><h2>{{ results.workshops|length }} match{{ 'es' if results.workshops|length != 1 else '' }}</h2></div></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Contact</th><th>Phone</th><th>City</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for w in results.workshops %}
+                <tr>
+                    <td><strong>{{ w.name }}</strong></td>
+                    <td>{{ w.contact or '—' }}</td>
+                    <td>{{ w.phone or '—' }}</td>
+                    <td>{{ w.city or '—' }}</td>
+                    <td>{% if w.is_archived %}<span class="status status-archived">Inactive</span>{% else %}<span class="status status-available">Active</span>{% endif %}</td>
+                    <td class="row-actions"><a class="btn btn-small" href="{{ url_for('main.edit_workshop', partner_id=w.id) }}">Open</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if results.dealers %}
+<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Dealers</p><h2>{{ results.dealers|length }} match{{ 'es' if results.dealers|length != 1 else '' }}</h2></div></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Contact</th><th>Phone</th><th>City</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for d in results.dealers %}
+                <tr>
+                    <td><strong>{{ d.name }}</strong></td>
+                    <td>{{ d.contact or '—' }}</td>
+                    <td>{{ d.phone or '—' }}</td>
+                    <td>{{ d.city or '—' }}</td>
+                    <td>{% if d.is_archived %}<span class="status status-archived">Inactive</span>{% else %}<span class="status status-available">Active</span>{% endif %}</td>
+                    <td class="row-actions"><a class="btn btn-small" href="{{ url_for('main.edit_dealer', partner_id=d.id) }}">Open</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if results.movements %}
+<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Movements</p><h2>{{ results.movements|length }} match{{ 'es' if results.movements|length != 1 else '' }}</h2></div></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Reference</th><th>Date</th><th>Action</th><th>Item</th><th>From</th><th>To</th><th></th></tr></thead>
+            <tbody>
+                {% for mv in results.movements %}
+                <tr>
+                    <td><strong>{{ mv.reference or '—' }}</strong></td>
+                    <td>{{ mv.movement_date }}</td>
+                    <td>{{ mv.movement_type }}</td>
+                    <td>{{ mv.subject }}</td>
+                    <td>{{ mv.from_location or '—' }}</td>
+                    <td>{{ mv.to_location or '—' }}</td>
+                    <td class="row-actions">{% if mv.url %}<a class="btn btn-small" href="{{ mv.url }}">Open</a>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if not results.machines and not results.probes and not results.printers
+      and not results.workshops and not results.dealers and not results.movements %}
+<div class="empty-state">
+    <div class="empty-icon">0</div>
+    <strong>No matches for “{{ q }}”</strong>
+    <p>Try a machine ID (16T), a serial number, a probe serial, a model, a partner name or a movement reference (MOV-00001).</p>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

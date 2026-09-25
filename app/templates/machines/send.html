@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Send Machine {{ machine.machine_id }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Movement · everything travels together by default{% endblock %}
+{% block heading %}Send Machine {{ machine.machine_id }}{% endblock %}
+{% block content %}
+<form class="form-grid" method="post">
+    <div class="form-section-title">Destination</div>
+
+    <div class="form-row form-row-full">
+        <div class="filter-row">
+            <label class="check-label">
+                <input type="radio" name="destination_type" value="workshop"
+                       {% if form.destination_type == 'workshop' %}checked{% endif %}> Workshop
+            </label>
+            <label class="check-label">
+                <input type="radio" name="destination_type" value="dealer"
+                       {% if form.destination_type == 'dealer' %}checked{% endif %}> Dealer
+            </label>
+        </div>
+    </div>
+
+    <div class="form-row">
+        <label for="destination"><span id="dest-label">{% if form.destination_type == 'dealer' %}Dealer{% else %}Workshop{% endif %}</span> <span class="required">*</span></label>
+        <input type="text" id="destination" name="destination"
+               list="{% if form.destination_type == 'dealer' %}dealer-list{% else %}workshop-list{% endif %}"
+               autocomplete="off"
+               value="{{ form.destination }}" placeholder="Type to search…" required>
+        <datalist id="workshop-list">
+            {% for w in workshops %}<option value="{{ w }}"></option>{% endfor %}
+        </datalist>
+        <datalist id="dealer-list">
+            {% for d in dealers %}<option value="{{ d }}"></option>{% endfor %}
+        </datalist>
+        <p class="form-hint">
+            Type to search — a new name creates the workshop/dealer record.
+            <button type="button" class="linklike js-add-partner" data-kind="workshop">+ Add Workshop</button>
+            <button type="button" class="linklike js-add-partner" data-kind="dealer">+ Add Dealer</button>
+            <a class="linklike" href="{{ url_for('main.workshops') }}">Manage</a>
+        </p>
+    </div>
+
+    <div class="form-row">
+        <label for="movement_date">Date <span class="required">*</span></label>
+        <input type="date" id="movement_date" name="movement_date" value="{{ form.movement_date or today }}" required>
+        <p class="form-hint">Defaults to today.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="reason">Reason</label>
+        <input type="text" id="reason" name="reason" value="{{ form.reason }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row">
+        <label for="notes">Notes</label>
+        <input type="text" id="notes" name="notes" value="{{ form.notes }}" placeholder="Optional">
+    </div>
+
+    <div class="form-section-title">Items currently with machine — all selected by default</div>
+
+    <div class="form-row form-row-full">
+        <div class="checklist">
+            {% for row in rows %}
+            <label class="check-item {% if not row.enabled %}check-item-muted{% endif %}">
+                {% if row.enabled %}
+                    <input type="checkbox" name="item" value="{{ row.key }}"
+                           {% if row.key in form.selected %}checked{% endif %}>
+                {% else %}
+                    <input type="checkbox" disabled>
+                {% endif %}
+                <span class="check-main">
+                    <strong>{{ row.label }}</strong>
+                    <small>{{ row.detail }}</small>
+                </span>
+                {% if row.enabled %}
+                    <span class="status status-{{ row.status|lower|replace(' ', '-') }}">{{ row.status }}</span>
+                {% else %}
+                    <span class="badge badge-blue">Currently away — {{ row.away }}</span>
+                {% endif %}
+            </label>
+            {% endfor %}
+            {% if rows|length == 1 %}
+            <div class="check-item muted">No probes or printers are currently attached to this machine.</div>
+            {% endif %}
+        </div>
+        <p class="form-hint">Uncheck anything that stays behind — it keeps its current location and status. Items already away elsewhere cannot join this movement.</p>
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ url_for('main.machine_detail', machine_id=machine.id) }}">Cancel</a>
+        <button class="btn btn-primary" type="submit">Send</button>
+    </div>
+</form>
+
+{% include "partners/_quick_add.html" %}
+{% endblock %}

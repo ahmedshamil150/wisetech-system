@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Ultrasound Inventory{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">UI</div>
+                <div>
+                    <strong>Ultrasound</strong>
+                    <span>Inventory Desk</span>
+                </div>
+            </div>
+            <nav aria-label="Main navigation">
+                <p class="nav-label">Workspace</p>
+                <a class="nav-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}" href="{{ url_for('main.dashboard') }}">Dashboard</a>
+
+                <p class="nav-label">Inventory</p>
+                {% set ep = request.endpoint or '' %}
+                {% set dd_open = ep == 'main.inventory' or ep == 'main.receive' or ep == 'main.part_add'
+                    or 'machine' in ep or 'probe' in ep or 'printer' in ep or 'part' in ep
+                    or 'batch' in ep or 'pick_' in ep or 'send_' in ep or 'return_' in ep or 'sell' in ep %}
+                <div class="nav-dropdown{% if dd_open %} open{% endif %}">
+                    <div class="nav-dropdown-head">
+                        <a class="nav-link{% if ep == 'main.inventory' %} active{% endif %}" href="{{ url_for('main.inventory') }}">Full Inventory</a>
+                        <button class="nav-caret" type="button" aria-label="Toggle Full Inventory menu"
+                                aria-expanded="{{ 'true' if dd_open else 'false' }}">▾</button>
+                    </div>
+                    <div class="nav-sub">
+                        <span class="nav-sub-label">Browse</span>
+                        <a class="nav-link{% if 'machine' in ep %} active{% endif %}" href="{{ url_for('main.machines') }}">Machines</a>
+                        <a class="nav-link{% if 'probe' in ep %} active{% endif %}" href="{{ url_for('main.probes') }}">Probes</a>
+                        <a class="nav-link{% if 'printer' in ep %} active{% endif %}" href="{{ url_for('main.printers') }}">Printers</a>
+                        <a class="nav-link{% if 'part' in ep %} active{% endif %}" href="{{ url_for('main.parts') }}">Parts</a>
+                        <a class="nav-link{% if 'batch' in ep and ep != 'main.new_batch' %} active{% endif %}" href="{{ url_for('main.batches') }}">Batches</a>
+                        <span class="nav-sub-label">Add new</span>
+                        <a class="nav-link{% if ep == 'main.receive' %} active{% endif %}" href="{{ url_for('main.receive') }}">Receive Inventory</a>
+                        <a class="nav-link{% if ep == 'main.part_add' %} active{% endif %}" href="{{ url_for('main.part_add') }}">Add Part</a>
+                        <a class="nav-link{% if ep == 'main.new_batch' %} active{% endif %}" href="{{ url_for('main.new_batch') }}">New Batch</a>
+                        <span class="nav-sub-label">Send out</span>
+                        <a class="nav-link{% if ep == 'main.pick_send' and request.args.get('type') != 'dealer' %} active{% endif %}" href="{{ url_for('main.pick_send', type='workshop') }}">Send to Workshop</a>
+                        <a class="nav-link{% if ep == 'main.pick_send' and request.args.get('type') == 'dealer' %} active{% endif %}" href="{{ url_for('main.pick_send', type='dealer') }}">Send to Dealer</a>
+                        <a class="nav-link{% if ep == 'main.pick_sell' %} active{% endif %}" href="{{ url_for('main.pick_sell') }}">Sell to Customer</a>
+                        <a class="nav-link{% if ep == 'main.pick_return' and request.args.get('type') != 'dealer' %} active{% endif %}" href="{{ url_for('main.pick_return', type='workshop') }}">Return from Workshop</a>
+                        <a class="nav-link{% if ep == 'main.pick_return' and request.args.get('type') == 'dealer' %} active{% endif %}" href="{{ url_for('main.pick_return', type='dealer') }}">Return from Dealer</a>
+                    </div>
+                </div>
+
+                <p class="nav-label">Records</p>
+                <a class="nav-link {% if request.endpoint == 'main.catalogue' %}active{% endif %}" href="{{ url_for('main.catalogue') }}">Catalogue</a>
+                <a class="nav-link {% if request.endpoint and 'customer' in request.endpoint %}active{% endif %}" href="{{ url_for('main.customers') }}">Customers</a>
+                <a class="nav-link {% if request.endpoint and 'vendor' in request.endpoint %}active{% endif %}" href="{{ url_for('main.vendors') }}">Vendors</a>
+                <a class="nav-link {% if request.endpoint and 'sale' in request.endpoint %}active{% endif %}" href="{{ url_for('main.sales') }}">Sales</a>
+
+                <p class="nav-label">Operations</p>
+                <a class="nav-link {% if request.endpoint and ('movement' in request.endpoint or 'pick_' in request.endpoint or 'send_' in request.endpoint or 'return_' in request.endpoint) %}active{% endif %}" href="{{ url_for('main.movement_center') }}">Movement Centre</a>
+                <a class="nav-link {% if request.endpoint == 'main.away' %}active{% endif %}" href="{{ url_for('main.away') }}">Inventory Away</a>
+                <a class="nav-link {% if request.endpoint and 'workshop' in request.endpoint %}active{% endif %}" href="{{ url_for('main.workshops') }}">Workshops</a>
+                <a class="nav-link {% if request.endpoint and 'dealer' in request.endpoint %}active{% endif %}" href="{{ url_for('main.dealers') }}">Dealers</a>
+                <a class="nav-link disabled" href="#" title="Coming in a later stage">Repair jobs</a>
+
+                <p class="nav-label">System</p>
+                <a class="nav-link disabled" href="#" title="Coming in a later stage">Reports</a>
+                <a class="nav-link disabled" href="#" title="Coming in a later stage">Backup</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span class="status-dot"></span>
+                Local database
+            </div>
+        </aside>
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">{% block eyebrow %}Operations overview{% endblock %}</p>
+                    <h1>{% block heading %}Dashboard{% endblock %}</h1>
+                </div>
+                <form class="topbar-search" method="get" action="{{ url_for('main.search') }}">
+                    <input type="search" name="q" placeholder="Search anything…"
+                           value="{{ request.args.get('q', '') if request.endpoint == 'main.search' else '' }}">
+                    <button class="btn btn-small" type="submit">Search</button>
+                </form>
+                <div class="local-badge">Offline ready</div>
+            </header>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-stack">
+                        {% for category, message in messages %}
+                            <div class="flash flash-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</body>
+</html>

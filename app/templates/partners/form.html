@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Add' if creating else 'Edit' }} {{ cfg.label }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Partners{% endblock %}
+{% block heading %}{{ 'Add ' if creating else 'Edit ' }}{{ cfg.label }}{% endblock %}
+{% block content %}
+<form class="form-grid" method="post">
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+
+    <div class="form-row">
+        <label for="name">{{ cfg.label }} name <span class="required">*</span></label>
+        <input type="text" id="name" name="name" value="{{ form.name }}" placeholder="e.g. {{ 'XYZ Workshop' if kind == 'workshop' else 'ABC Medical' }}" required>
+        <p class="form-hint">Existing names are never duplicated.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="contact">Contact person</label>
+        <input type="text" id="contact" name="contact" value="{{ form.contact }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row">
+        <label for="phone">Phone</label>
+        <input type="text" id="phone" name="phone" value="{{ form.phone }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row">
+        <label for="city">City</label>
+        <input type="text" id="city" name="city" value="{{ form.city }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row form-row-full">
+        <label for="address">Address</label>
+        <input type="text" id="address" name="address" value="{{ form.address }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row form-row-full">
+        <label for="notes">Notes</label>
+        <input type="text" id="notes" name="notes" value="{{ form.notes }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row form-row-full">
+        <label class="check-label">
+            <input type="checkbox" name="is_active" value="1"
+                   {% if form.get('is_active', True) %}checked{% endif %}>
+            Active — available when sending or returning inventory
+        </label>
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ url_for('main.' ~ cfg.endpoint) }}">Cancel</a>
+        <button class="btn btn-primary" type="submit">{{ 'Add ' if creating else 'Save ' }}{{ cfg.label }}</button>
+    </div>
+</form>
+{% endblock %}

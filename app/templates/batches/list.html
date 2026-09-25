@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Batches | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Shipments registry{% endblock %}
+{% block heading %}Batches{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="search-form" method="get" action="{{ url_for('main.batches') }}">
+        <input type="search" name="search" placeholder="Search by code, supplier, notes…" value="{{ search }}">
+        {% if search %}<a class="btn btn-ghost" href="{{ url_for('main.batches') }}">Clear</a>{% endif %}
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('main.new_batch') }}">+ New Batch</a>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Date Received</th>
+                    <th>Supplier / Source</th>
+                    <th>Machines</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if batches %}
+                    {% for b in batches %}
+                        <tr>
+                            <td><strong><a class="link" href="{{ url_for('main.batch_detail', batch_id=b.id) }}">{{ b.code }}</a></strong></td>
+                            <td>{{ b.arrival_date }}</td>
+                            <td>{{ b.supplier_source or '—' }}</td>
+                            <td><span class="badge badge-blue">{{ b.machine_count }}</span></td>
+                            <td class="muted">{{ b.created_at[:10] }}</td>
+                            <td class="row-actions">
+                                <a class="btn btn-small" href="{{ url_for('main.batch_detail', batch_id=b.id) }}">View</a>
+                                <a class="btn btn-small btn-ghost" href="{{ url_for('main.edit_batch', batch_id=b.id) }}">Edit</a>
+                                <form class="inline-form" method="post" action="{{ url_for('main.archive_batch', batch_id=b.id) }}" onsubmit="return confirm('Archive this batch? It will be removed from active lists.');">
+                                    <button class="btn btn-small btn-danger" type="submit">Archive</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No batches found</strong>
+                                <p>Register your first shipment to begin tracking machines.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

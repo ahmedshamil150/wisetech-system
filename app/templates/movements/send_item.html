@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Send {{ label }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Movement · individual item{% endblock %}
+{% block heading %}Send {{ label }}{% endblock %}
+{% block content %}
+<div class="banner banner-info">
+    <div>
+        <strong>{{ label }} — {{ detail }}</strong>
+        <p>Only this item moves. {% if kind == 'probe' and item.assigned_machine_id %}Its machine stays where it is and will show the probe as currently away.{% elif kind == 'printer' and item.assigned_machine_id %}Its machine stays where it is.{% endif %}</p>
+    </div>
+</div>
+
+<form class="form-grid" method="post">
+    <div class="form-section-title">Destination</div>
+
+    <div class="form-row form-row-full">
+        <div class="filter-row">
+            <label class="check-label">
+                <input type="radio" name="destination_type" value="workshop"
+                       {% if form.destination_type == 'workshop' %}checked{% endif %}> Workshop
+            </label>
+            <label class="check-label">
+                <input type="radio" name="destination_type" value="dealer"
+                       {% if form.destination_type == 'dealer' %}checked{% endif %}> Dealer
+            </label>
+        </div>
+    </div>
+
+    <div class="form-row">
+        <label for="destination"><span id="dest-label">{% if form.destination_type == 'dealer' %}Dealer{% else %}Workshop{% endif %}</span> <span class="required">*</span></label>
+        <input type="text" id="destination" name="destination"
+               list="{% if form.destination_type == 'dealer' %}dealer-list{% else %}workshop-list{% endif %}"
+               autocomplete="off" value="{{ form.destination }}" placeholder="Type to search…" required>
+        <datalist id="workshop-list">
+            {% for w in workshops %}<option value="{{ w }}"></option>{% endfor %}
+        </datalist>
+        <datalist id="dealer-list">
+            {% for d in dealers %}<option value="{{ d }}"></option>{% endfor %}
+        </datalist>
+        <p class="form-hint">
+            Type to search — a new name creates the record.
+            <button type="button" class="linklike js-add-partner" data-kind="workshop">+ Add Workshop</button>
+            <button type="button" class="linklike js-add-partner" data-kind="dealer">+ Add Dealer</button>
+        </p>
+    </div>
+
+    <div class="form-row">
+        <label for="movement_date">Date <span class="required">*</span></label>
+        <input type="date" id="movement_date" name="movement_date" value="{{ form.movement_date or today }}" required>
+        <p class="form-hint">Defaults to today.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="reason">Reason</label>
+        <input type="text" id="reason" name="reason" value="{{ form.reason }}" placeholder="Optional — e.g. repair">
+    </div>
+
+    <div class="form-row form-row-full">
+        <label for="notes">Notes</label>
+        <input type="text" id="notes" name="notes" value="{{ form.notes }}" placeholder="Optional">
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ back_url }}">Cancel</a>
+        <button class="btn btn-primary" type="submit">Send</button>
+    </div>
+</form>
+
+{% include "partners/_quick_add.html" %}
+{% endblock %}

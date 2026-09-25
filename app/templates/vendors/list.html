@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Vendors | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Suppliers{% endblock %}
+{% block heading %}Vendors{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="search-form" method="get" action="{{ url_for('main.vendors') }}">
+        <input type="search" name="search" placeholder="Search name, phone, address…" value="{{ filters.search }}">
+        {% if filters.search %}<a class="btn btn-ghost" href="{{ url_for('main.vendors') }}">Clear</a>{% endif %}
+    </form>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Address</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for v in items %}
+                        <tr>
+                            <td><strong>{{ v.name }}</strong></td>
+                            <td>{{ v.phone or '—' }}</td>
+                            <td>{{ v.address or '—' }}</td>
+                            <td class="muted">{% if v.notes %}<span class="flag flag-review" title="{{ v.notes }}">Review</span>{% else %}—{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="4">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No vendors found</strong>
+                                <p>Vendor records are imported from the old system.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
