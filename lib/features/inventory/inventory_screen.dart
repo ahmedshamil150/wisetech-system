@@ -19,6 +19,65 @@ class InventoryScreen extends ConsumerStatefulWidget {
 /// they only show up under their own chip.
 const _typeFilters = ['Equipment', 'Machine', 'Probe', 'Printer', 'Part'];
 
+/// Newest item first, the order the whole list already uses.
+int _newestFirst(InventoryItem a, InventoryItem b) {
+  final byDate =
+      (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0));
+  return byDate != 0 ? byDate : b.id.compareTo(a.id);
+}
+
+/// Inside one machine: printer, then probes, then anything else.
+int _kitRank(InventoryItem item) => switch (item.kind) {
+      'printer' => 0,
+      'probe' => 1,
+      _ => 2,
+    };
+
+/// Arranges the visible rows as kits - a machine followed by its printer and
+/// its probes, then the next machine, and so on. The bool says whether the
+/// row belongs under the machine above it (drawn indented).
+List<(InventoryItem, bool)> arrangeAsKits(List<InventoryItem> items) {
+  final machines = items.where((item) => item.kind == 'machine').toList()
+    ..sort(_newestFirst);
+  final machineIds = machines.map((machine) => machine.id).toSet();
+
+  final kits = <int, List<InventoryItem>>{};
+  final loose = <InventoryItem>[];
+  for (final item in items) {
+    if (item.kind == 'machine') continue;
+    final machineId = item.assignedMachineId;
+    if (machineId != null && machineIds.contains(machineId)) {
+      kits.putIfAbsent(machineId, () => <InventoryItem>[]).add(item);
+    } else {
+      loose.add(item);
+    }
+  }
+  for (final members in kits.values) {
+    members.sort((a, b) {
+      final byKind = _kitRank(a).compareTo(_kitRank(b));
+      return byKind != 0 ? byKind : _newestFirst(a, b);
+    });
+  }
+  // Items with no machine shown here stay together, grouped by the machine
+  // they are assigned to; completely loose ones come last.
+  loose.sort((a, b) {
+    final byMachine =
+        (b.assignedMachineId ?? -1).compareTo(a.assignedMachineId ?? -1);
+    if (byMachine != 0) return byMachine;
+    final byKind = _kitRank(a).compareTo(_kitRank(b));
+    return byKind != 0 ? byKind : _newestFirst(a, b);
+  });
+
+  return [
+    for (final machine in machines) ...[
+      (machine, false),
+      for (final member in kits[machine.id] ?? const <InventoryItem>[])
+        (member, true),
+    ],
+    for (final item in loose) (item, false),
+  ];
+}
+
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String _query = '';
   String _type = 'Equipment';
@@ -88,16 +147,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     item.name.toLowerCase().contains(_query) ||
                     (item.serial ?? '').toLowerCase().contains(_query);
               }).toList();
-              if (filtered.isEmpty) {
+              final entries = arrangeAsKits(filtered);
+              if (entries.isEmpty) {
                 return const EmptyState(
                     icon: Icons.inventory_2_outlined,
                     message: 'No items match this filter.');
               }
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: filtered.length,
-                itemBuilder: (context, index) =>
-                    _itemTile(context, filtered[index]),
+                itemCount: entries.length,
+                itemBuilder: (context, index) => _itemTile(
+                  context,
+                  entries[index].$1,
+                  indented: entries[index].$2,
+                ),
               );
             },
           ),
@@ -123,7 +186,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
-  Widget _itemTile(BuildContext context, InventoryItem item) {
+  Widget _itemTile(BuildContext context, InventoryItem item,
+      {bool indented = false}) {
     final icon = switch (item.kind) {
       'machine' => Icons.monitor_outlined,
       'probe' => Icons.cable_outlined,
@@ -131,7 +195,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       _ => Icons.settings_outlined,
     };
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: 8, left: indented ? 32 : 0),
       child: AppCard(
         child: ListTile(
           onTap: () => showItemDetails(context, ref, item),
