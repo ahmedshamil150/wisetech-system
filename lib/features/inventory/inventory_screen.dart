@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../records/records_screen.dart';
@@ -16,8 +17,9 @@ class InventoryScreen extends ConsumerStatefulWidget {
 }
 
 /// "Equipment" = machines, probes and printers. Parts are so numerous that
-/// they only show up under their own chip.
-const _typeFilters = ['Equipment', 'Machine', 'Probe', 'Printer', 'Part'];
+/// they only show up under their own chip. Boxes shows where the leftover
+/// probes are kept.
+const _typeFilters = ['Equipment', 'Machine', 'Probe', 'Printer', 'Part', 'Boxes'];
 
 /// Newest item first, the order the whole list already uses.
 int _newestFirst(InventoryItem a, InventoryItem b) {
@@ -132,7 +134,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ),
         const SizedBox(height: 4),
         Expanded(
-          child: items.when(
+          child: _type == 'Boxes'
+              ? _boxesList(context)
+              : items.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => EmptyState(
                 icon: Icons.error_outline, message: errorMessage(error)),
@@ -165,7 +169,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             },
           ),
         ),
-        if (isAdmin)
+        if (isAdmin && _type != 'Boxes')
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: FilledButton.icon(
@@ -183,6 +187,61 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  /// The Boxes chip: every box, its probe type and how many probes are in it.
+  Widget _boxesList(BuildContext context) {
+    final boxes = ref.watch(probeBoxesProvider);
+    final items = ref.watch(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
+        );
+
+    return boxes.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) =>
+          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      data: (rows) {
+        final filtered = rows.where((row) {
+          if (_query.isEmpty) return true;
+          final name = (row['name'] ?? '').toString().toLowerCase();
+          final type = (row['probe_type'] ?? '').toString().toLowerCase();
+          return name.contains(_query) || type.contains(_query);
+        }).toList();
+        if (filtered.isEmpty) {
+          return const EmptyState(
+              icon: Icons.inbox_outlined,
+              message: 'No boxes yet. The admin adds them under Records.');
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          itemCount: filtered.length,
+          itemBuilder: (context, index) {
+            final box = filtered[index];
+            final count = items
+                .where(
+                    (item) => item.kind == 'probe' && item.boxId == box['id'])
+                .length;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: AppCard(
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFEAF3F8),
+                    child: Icon(Icons.inbox_outlined),
+                  ),
+                  title: Text((box['name'] ?? '').toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text('${box['probe_type']} · $count probes'),
+                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  onTap: () => showBoxSheet(context, ref, box),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -235,6 +294,150 @@ IconData _kindIcon(String kind) => switch (kind) {
       _ => Icons.settings_outlined,
     };
 
+/// Sheet for one box: the probes inside it and a way to put more in.
+Future<void> showBoxSheet(
+    BuildContext context, WidgetRef ref, Map<String, dynamic> box) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) => SizedBox(
+      height: MediaQuery.of(sheetContext).size.height * 0.75,
+      child: _BoxSheet(box: box),
+    ),
+  );
+}
+
+class _BoxSheet extends ConsumerWidget {
+  const _BoxSheet({required this.box});
+
+  final Map<String, dynamic> box;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider);
+    final items = ref.watch(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
+        );
+    final type = (box['probe_type'] ?? '').toString();
+    final inBox = items
+        .where((item) => item.kind == 'probe' && item.boxId == box['id'])
+        .toList();
+    final candidates = items.where((item) {
+      if (item.kind != 'probe') return false;
+      if (item.status == 'Sold' || item.status == 'Archived') return false;
+      if (item.boxId != null) return false;
+      final probeType = item.probeType;
+      return probeType == null || probeType.isEmpty || probeType == type;
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text((box['name'] ?? '').toString(),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(type,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary)),
+            ),
+          ],
+        ),
+        if (((box['notes'] ?? '') as String).isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text((box['notes'] ?? '').toString(),
+              style: const TextStyle(color: kMuted)),
+        ],
+        const SizedBox(height: 16),
+        const Text('Probes in this box',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        if (inBox.isEmpty)
+          const Text('Empty — no probes in it yet.',
+              style: TextStyle(color: kMuted, fontSize: 13))
+        else
+          AppCard(
+            padding: const EdgeInsets.all(4),
+            child: Column(
+              children: [
+                for (final item in inBox)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.cable_outlined, size: 20),
+                    title: Text('${item.code}  ${item.title}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13.5)),
+                    subtitle: Text('${item.status} · ${item.location}'),
+                    trailing: isAdmin
+                        ? IconButton(
+                            tooltip: 'Take out of the box',
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () async {
+                              try {
+                                await takeProbeOutOfBox(item);
+                                ref.invalidate(inventoryProvider);
+                              } catch (error) {
+                                if (!context.mounted) return;
+                                showSnack(context, errorMessage(error),
+                                    error: true);
+                              }
+                            },
+                          )
+                        : null,
+                  ),
+              ],
+            ),
+          ),
+        if (isAdmin) ...[
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: candidates.isEmpty
+                ? null
+                : () async {
+                    final picked =
+                        await showPickItem(context, items: candidates);
+                    if (picked == null) return;
+                    try {
+                      await putProbeInBox(picked, box);
+                      ref.invalidate(inventoryProvider);
+                    } catch (error) {
+                      if (!context.mounted) return;
+                      showSnack(context, errorMessage(error), error: true);
+                    }
+                  },
+            icon: const Icon(Icons.add),
+            label: Text(candidates.isEmpty
+                ? 'No probe available'
+                : 'Add probe (${candidates.length})'),
+          ),
+          if (candidates.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                  'No $type probe is free to box right now.',
+                  style: const TextStyle(color: kMuted, fontSize: 12.5)),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
 /// Read-only sheet with everything we know about one item.
 Future<void> showItemDetails(
     BuildContext context, WidgetRef ref, InventoryItem item) {
@@ -265,6 +468,13 @@ class _ItemDetails extends ConsumerWidget {
           data: (rows) => linkedItems(rows, item),
           orElse: () => const <InventoryItem>[],
         );
+    final boxName = ref.watch(probeBoxesProvider).maybeWhen(
+          data: (boxes) => boxes
+              .where((row) => row['id'] == item.boxId)
+              .map((row) => (row['name'] ?? '').toString())
+              .join(),
+          orElse: () => '',
+        );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -288,6 +498,8 @@ class _ItemDetails extends ConsumerWidget {
               KeyValue(label: 'Type', value: item.kindLabel),
               KeyValue(label: 'Serial', value: item.serial ?? '—'),
               KeyValue(label: 'Location', value: item.location),
+              if (item.boxId != null && boxName.isNotEmpty)
+                KeyValue(label: 'Box', value: boxName),
               KeyValue(label: 'Acquired', value: item.date ?? '—'),
               KeyValue(label: 'Batch', value: item.batch ?? '—'),
             ],

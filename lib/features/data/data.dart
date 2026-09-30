@@ -60,6 +60,14 @@ final batchesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
       .order('id');
 });
 
+/// Boxes the leftover probes are kept in. Each box holds one probe type.
+final probeBoxesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return await _db
+      .from('probe_boxes')
+      .select('id, name, probe_type, notes')
+      .order('id');
+});
+
 /// The batch new items are entered into (set when a batch is created).
 /// Vendor and date of every item come from it, so the add form stays short.
 final currentBatchProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
@@ -104,6 +112,8 @@ class InventoryItem {
     this.productId,
     this.vendorId,
     this.assignedMachineId,
+    this.boxId,
+    this.probeType,
   });
 
   final String kind; // machine | probe | printer | part
@@ -121,6 +131,12 @@ class InventoryItem {
 
   /// For probes and printers: the machine they travel with.
   final int? assignedMachineId;
+
+  /// For probes: the box of leftover stock they sit in.
+  final int? boxId;
+
+  /// For probes: Convex, Linear, Phased Array... from the product record.
+  final String? probeType;
 
   String get key => '$kind:$id';
 
@@ -165,6 +181,8 @@ InventoryItem _item(String kind, Map<String, dynamic> row,
     productId: row['catalog_product_id'] as int?,
     vendorId: row['vendor_id'] as int?,
     assignedMachineId: row['assigned_machine_id'] as int?,
+    boxId: row['box_id'] as int?,
+    probeType: ((row['catalog_products'] as Map?)?['probe_type'])?.toString(),
   );
 }
 
@@ -213,7 +231,8 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
       .order('id', ascending: false);
   final probes = await _db
       .from('probes')
-      .select('$fields, $linked internal_id, model')
+      .select(
+          '$fields, $linked box_id, catalog_products(probe_type), internal_id, model')
       .order('id', ascending: false);
   final printers = await _db
       .from('printers')
@@ -336,6 +355,37 @@ Future<void> repairSentBack({
         if (notes != null && notes.isNotEmpty) 'repair_notes': notes,
       })
       .eq('id', id);
+}
+
+/// Puts a leftover probe into a box: it comes off its machine, becomes
+/// Available and the box becomes its location.
+Future<void> putProbeInBox(InventoryItem probe, Map<String, dynamic> box) async {
+  await _db.from('probes').update({
+    'box_id': box['id'],
+    'assigned_machine_id': null,
+    'status': 'Available',
+    'current_location': box['name'],
+  }).eq('id', probe.id);
+}
+
+/// Takes the probe back out of the box; it stays in stock at the company.
+Future<void> takeProbeOutOfBox(InventoryItem probe) async {
+  await _db.from('probes').update({
+    'box_id': null,
+    'current_location': defaultLocationFor('Available'),
+  }).eq('id', probe.id);
+}
+
+/// Deletes an empty box; probes still in it go back to company stock.
+Future<void> deleteProbeBox(Map<String, dynamic> box) async {
+  await _db
+      .from('probes')
+      .update({
+        'box_id': null,
+        'current_location': defaultLocationFor('Available'),
+      })
+      .eq('box_id', box['id'] as int);
+  await _db.from('probe_boxes').delete().eq('id', box['id'] as int);
 }
 
 // ---------------------------------------------------------------------------

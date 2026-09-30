@@ -14,18 +14,19 @@ class RecordsScreen extends ConsumerStatefulWidget {
   ConsumerState<RecordsScreen> createState() => _RecordsScreenState();
 }
 
-const _sections = ['product', 'brand', 'customer', 'dealer', 'batch'];
+const _sections = ['product', 'brand', 'customer', 'dealer', 'batch', 'box'];
 const _addLabels = [
   'Add product',
   'Add brand',
   'Add customer',
   'Add dealer',
   'New batch',
+  'New box',
 ];
 
 class _RecordsScreenState extends ConsumerState<RecordsScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 5, vsync: this);
+  late final TabController _tab = TabController(length: 6, vsync: this);
   String _query = '';
 
   @override
@@ -60,6 +61,7 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
               Tab(text: 'Customers'),
               Tab(text: 'Dealers'),
               Tab(text: 'Batches'),
+              Tab(text: 'Boxes'),
             ],
           ),
         ),
@@ -80,6 +82,7 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
               _PeoplePane(table: 'customers', query: _query),
               _PeoplePane(table: 'dealers', query: _query),
               _BatchesPane(query: _query),
+              _BoxesPane(query: _query),
             ],
           ),
         ),
@@ -106,7 +109,9 @@ Future<void> showRecordForm(BuildContext context, String kind) {
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
       child: kind == 'batch'
           ? const _BatchForm()
-          : _RecordForm(kind: kind),
+          : kind == 'box'
+              ? const _BoxForm()
+              : _RecordForm(kind: kind),
     ),
   );
 }
@@ -397,6 +402,119 @@ class _BatchesPane extends ConsumerWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// probe boxes (where the leftover probes are kept)
+// ---------------------------------------------------------------------------
+
+class _BoxesPane extends ConsumerWidget {
+  const _BoxesPane({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final boxes = ref.watch(probeBoxesProvider);
+    final isAdmin = ref.watch(isAdminProvider);
+    final items = ref.watch(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
+        );
+
+    return boxes.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) =>
+          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      data: (rows) {
+        final filtered = rows.where((row) {
+          if (query.isEmpty) return true;
+          final name = (row['name'] ?? '').toString().toLowerCase();
+          final type = (row['probe_type'] ?? '').toString().toLowerCase();
+          return name.contains(query) || type.contains(query);
+        }).toList();
+        if (filtered.isEmpty) {
+          return const EmptyState(
+              icon: Icons.inbox_outlined,
+              message: 'No boxes yet. Make one for each probe type.');
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          itemCount: filtered.length,
+          itemBuilder: (context, index) {
+            final row = filtered[index];
+            final count = items
+                .where(
+                    (item) => item.kind == 'probe' && item.boxId == row['id'])
+                .length;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: AppCard(
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFEAF3F8),
+                    child: Icon(Icons.inbox_outlined),
+                  ),
+                  title: Text((row['name'] ?? '').toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text('${row['probe_type']} · $count probes'),
+                  trailing: isAdmin
+                      ? IconButton(
+                          tooltip: 'Delete box',
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          onPressed: () => _confirmDelete(context, ref, row),
+                        )
+                      : null,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref,
+      Map<String, dynamic> box) async {
+    final items = ref.read(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
+        );
+    final count = items
+        .where((item) => item.kind == 'probe' && item.boxId == box['id'])
+        .length;
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete ${box['name']}?'),
+        content: Text(count == 0
+            ? 'The box will be removed.'
+            : 'The $count probe(s) inside go back to company stock.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await deleteProbeBox(box);
+      ref
+        ..invalidate(probeBoxesProvider)
+        ..invalidate(inventoryProvider);
+      messenger.showSnackBar(
+          SnackBar(content: Text('${box['name']} deleted.')));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
+    }
+  }
+}
+
 class _BatchForm extends ConsumerStatefulWidget {
   const _BatchForm();
 
@@ -568,6 +686,134 @@ class _BatchFormState extends ConsumerState<_BatchForm> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('Create batch'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BoxForm extends ConsumerStatefulWidget {
+  const _BoxForm();
+
+  @override
+  ConsumerState<_BoxForm> createState() => _BoxFormState();
+}
+
+class _BoxFormState extends ConsumerState<_BoxForm> {
+  final _name = TextEditingController();
+  final _type = TextEditingController();
+  final _notes = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    for (final c in [_name, _type, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    final type = _type.text.trim();
+    if (name.isEmpty) {
+      showSnack(context, 'Box name is required.', error: true);
+      return;
+    }
+    if (type.isEmpty) {
+      showSnack(context, 'Choose the probe type this box holds.', error: true);
+      return;
+    }
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await db.from('probe_boxes').insert({
+        'name': name,
+        'probe_type': type,
+        if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+      });
+      ref.invalidate(probeBoxesProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      messenger.showSnackBar(
+          SnackBar(content: Text('$name added for $type probes.')));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final typeNames = ref.watch(productsProvider).maybeWhen(
+          data: (rows) => rows
+              .map((row) => (row['probe_type'] ?? '').toString())
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort(),
+          orElse: () => const <String>[],
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('New box',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(
+                        labelText: 'Box name *', hintText: 'Box 1'),
+                  ),
+                  const SizedBox(height: 12),
+                  PickyField(
+                    controller: _type,
+                    label: 'Probe type *',
+                    hint: 'Convex, Linear, Phased Array…',
+                    options: typeNames,
+                    pickTitle: 'probe types',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notes,
+                    maxLines: 2,
+                    decoration:
+                        const InputDecoration(labelText: 'Notes (optional)'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Save'),
           ),
         ],
       ),
