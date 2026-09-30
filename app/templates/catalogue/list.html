@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Catalogue | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Product master data{% endblock %}
+{% block heading %}Catalogue{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="filter-form" method="get" action="{{ url_for('main.catalogue') }}">
+        <div class="filter-row">
+            <input type="search" name="search" placeholder="Search model, brand, source…" value="{{ filters.search }}">
+            <select name="category">
+                <option value="">All categories</option>
+                {% for c in categories %}
+                    <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}{% if counts.get(c) %} ({{ counts.get(c).n }}){% endif %}</option>
+                {% endfor %}
+            </select>
+            <select name="brand_id">
+                <option value="">All brands</option>
+                {% for b in brands %}
+                    <option value="{{ b.id }}" {% if filters.brand_id == b.id|string %}selected{% endif %}>{{ b.name }}</option>
+                {% endfor %}
+            </select>
+            <label class="check-label"><input type="checkbox" name="review" value="1" {% if filters.review == '1' %}checked{% endif %}> Needs review</label>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if filters.search or filters.category or filters.brand_id or filters.review %}
+                <a class="btn btn-ghost" href="{{ url_for('main.catalogue') }}">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+    <div class="toolbar-links">
+        <a class="btn btn-ghost" href="{{ url_for('main.parts') }}">Spare parts stock →</a>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Model</th>
+                    <th>Brand</th>
+                    <th>Category</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                    <th>Review</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for c in items %}
+                        <tr>
+                            <td><strong>{{ c.name_model }}</strong></td>
+                            <td>{{ c.brand_name or '—' }}</td>
+                            <td><span class="badge badge-blue">{{ c.category }}</span></td>
+                            <td>{{ c.probe_type or '—' }}</td>
+                            <td class="muted">{{ c.source_info or '—' }}</td>
+                            <td>{% if c.needs_review %}<span class="flag flag-review" title="{{ c.review_note or '' }}">Review</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No catalogue entries found</strong>
+                                <p>The catalogue is populated by the old-data migration.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

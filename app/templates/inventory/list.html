@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Full Inventory | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Every product{% endblock %}
+{% block heading %}Full Inventory{% endblock %}
+{% block content %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Newest first</p>
+            <h2>{{ counts.total }} products in total</h2>
+            <p class="panel-note">Machines are listed newest first with their probes, printers and parts nested underneath. Items not attached to a machine follow below.</p>
+            <div class="inventory-actions">
+                <a class="btn btn-primary" href="{{ url_for('main.receive') }}">+ Receive Inventory</a>
+                <a class="btn btn-ghost" href="{{ url_for('main.part_add') }}">+ Add Part</a>
+                <a class="btn btn-ghost" href="{{ url_for('main.pick_send', type='workshop') }}">Send to Workshop</a>
+                <a class="btn btn-ghost" href="{{ url_for('main.pick_send', type='dealer') }}">Send to Dealer</a>
+                <a class="btn btn-ghost" href="{{ url_for('main.pick_sell') }}">Sell to Customer</a>
+                <a class="btn btn-ghost" href="{{ url_for('main.movement_center') }}">Movement Centre</a>
+            </div>
+        </div>
+        <div class="detail-actions">
+            <a class="btn btn-ghost btn-small" href="{{ url_for('main.machines') }}">{{ counts.machines }} machines</a>
+            <a class="btn btn-ghost btn-small" href="{{ url_for('main.probes') }}">{{ counts.probes }} probes</a>
+            <a class="btn btn-ghost btn-small" href="{{ url_for('main.printers') }}">{{ counts.printers }} printers</a>
+            <a class="btn btn-ghost btn-small" href="{{ url_for('main.parts') }}">{{ counts.parts }} parts</a>
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Machines</p>
+            <h2>{{ groups|length }} machines · newest on top</h2>
+        </div>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Type</th>
+                    <th>Details</th>
+                    <th>Batch</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Added</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if groups %}
+                    {% for g in groups %}
+                        {% set m = g.machine %}
+                        <tr>
+                            <td>
+                                <strong><a class="link" href="{{ url_for('main.machine_detail', machine_id=m.id) }}">{{ m.machine_id }}</a></strong>
+                                <br><small class="muted">{{ m.model }}</small>
+                            </td>
+                            <td><span class="badge badge-blue">machine</span></td>
+                            <td>{{ m.brand_name or '—' }} · {{ m.serial_number or 'no serial' }}</td>
+                            <td><span class="badge badge-blue">{{ m.batch_code }}</span></td>
+                            <td><span class="status status-{{ m.status|lower|replace(' ', '-') }}">{{ m.status }}</span></td>
+                            <td><span class="location location-{{ (destinations.get(('machine', m.id)) or m.current_location)|lower }}">{{ destinations.get(('machine', m.id)) or m.current_location }}</span></td>
+                            <td>{{ m.created_at[:10] }}</td>
+                        </tr>
+                        {% for p in g.probes %}
+                            <tr class="inv-child">
+                                <td><span class="inv-mark">↳</span><a class="link" href="{{ url_for('main.probe_detail', probe_id=p.id) }}">{{ p.internal_id }}</a>
+                                    <br><small class="muted">{{ p.model or 'probe' }}</small></td>
+                                <td><span class="badge badge-blue">probe</span></td>
+                                <td>{{ p.model or '—' }} · {{ p.serial_number or 'no serial' }}</td>
+                                <td>{% if p.batch_id and batches.get(p.batch_id) %}{{ batches[p.batch_id] }}{% else %}—{% endif %}</td>
+                                <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                                <td><span class="location location-{{ (destinations.get(('probe', p.id)) or p.current_location)|lower }}">{{ destinations.get(('probe', p.id)) or p.current_location }}</span></td>
+                                <td>{{ p.created_at[:10] }}</td>
+                            </tr>
+                        {% endfor %}
+                        {% for p in g.printers %}
+                            <tr class="inv-child">
+                                <td><span class="inv-mark">↳</span><a class="link" href="{{ url_for('main.printer_detail', printer_id=p.id) }}">{{ p.internal_id }}</a>
+                                    <br><small class="muted">{{ p.name_model }}</small></td>
+                                <td><span class="badge badge-blue">printer</span></td>
+                                <td>{{ p.name_model }} · {{ p.serial_number or 'no serial' }}</td>
+                                <td>{% if p.batch_id and batches.get(p.batch_id) %}{{ batches[p.batch_id] }}{% else %}—{% endif %}</td>
+                                <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                                <td><span class="location location-{{ (destinations.get(('printer', p.id)) or p.current_location)|lower }}">{{ destinations.get(('printer', p.id)) or p.current_location }}</span></td>
+                                <td>{{ p.created_at[:10] }}</td>
+                            </tr>
+                        {% endfor %}
+                        {% for p in g.parts %}
+                            <tr class="inv-child">
+                                <td><span class="inv-mark">↳</span><a class="link" href="{{ url_for('main.parts', search=p.internal_id) }}">{{ p.internal_id }}</a>
+                                    <br><small class="muted">{{ p.name_model }}</small></td>
+                                <td><span class="badge badge-blue">part</span></td>
+                                <td>{{ p.name_model }}{% if p.quantity > 1 %} ×{{ p.quantity }}{% endif %}</td>
+                                <td>{% if p.batch_id and batches.get(p.batch_id) %}{{ batches[p.batch_id] }}{% else %}—{% endif %}</td>
+                                <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                                <td><span class="location location-{{ p.current_location|lower }}">{{ p.current_location }}</span></td>
+                                <td>{{ p.created_at[:10] }}</td>
+                            </tr>
+                        {% endfor %}
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No machines yet</strong>
+                                <p>Use Receive Inventory to enter an incoming machine with its probes and printer.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% if loose.probes or loose.printers or loose.parts %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Everything else</p>
+            <h2>Not attached to a machine</h2>
+        </div>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Type</th>
+                    <th>Details</th>
+                    <th>Batch</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Added</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for title, rows in (("Loose probes", loose.probes), ("Loose printers", loose.printers), ("Loose parts", loose.parts)) %}
+                    {% if rows %}
+                        <tr class="inv-divider">
+                            <td colspan="7">{{ title }} — {{ rows|length }}</td>
+                        </tr>
+                        {% for kind, p in rows %}
+                            <tr>
+                                <td>
+                                    {% if kind == 'probe' %}
+                                        <a class="link" href="{{ url_for('main.probe_detail', probe_id=p.id) }}">{{ p.internal_id }}</a>
+                                        <br><small class="muted">{{ p.model or 'probe' }}</small>
+                                    {% elif kind == 'printer' %}
+                                        <a class="link" href="{{ url_for('main.printer_detail', printer_id=p.id) }}">{{ p.internal_id }}</a>
+                                        <br><small class="muted">{{ p.name_model }}</small>
+                                    {% else %}
+                                        <a class="link" href="{{ url_for('main.parts', search=p.internal_id) }}">{{ p.internal_id }}</a>
+                                        <br><small class="muted">{{ p.name_model }}</small>
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge badge-blue">{{ kind }}</span></td>
+                                <td>
+                                    {% if kind == 'probe' %}{{ p.model or '—' }}{% else %}{{ p.name_model }}{% endif %}
+                                    · {{ p.serial_number or 'no serial' }}
+                                </td>
+                                <td>{% if p.batch_id and batches.get(p.batch_id) %}{{ batches[p.batch_id] }}{% else %}—{% endif %}</td>
+                                <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                                <td><span class="location location-{{ (destinations.get((kind, p.id)) or p.current_location)|lower }}">{{ destinations.get((kind, p.id)) or p.current_location }}</span></td>
+                                <td>{{ p.created_at[:10] }}</td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

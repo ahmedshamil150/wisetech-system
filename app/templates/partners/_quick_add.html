@@ -1,0 +1,39 @@
+{% macro partner_modal(kind, label, endpoint) %}
+<div class="modal-backdrop" id="modal-{{ kind }}" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Add {{ label }}">
+        <div class="modal-head">
+            <strong>Add {{ label }}</strong>
+            <button type="button" class="linklike js-close-modal">Close</button>
+        </div>
+        <form class="form-grid partner-modal-form" data-endpoint="{{ endpoint }}" data-kind="{{ kind }}">
+            <div class="form-row">
+                <label for="pm-name-{{ kind }}">{{ label }} name <span class="required">*</span></label>
+                <input type="text" id="pm-name-{{ kind }}" name="name" required autocomplete="off">
+            </div>
+            <div class="form-row">
+                <label for="pm-contact-{{ kind }}">Contact person</label>
+                <input type="text" id="pm-contact-{{ kind }}" name="contact" autocomplete="off">
+            </div>
+            <div class="form-row">
+                <label for="pm-phone-{{ kind }}">Phone</label>
+                <input type="text" id="pm-phone-{{ kind }}" name="phone" autocomplete="off">
+            </div>
+            <div class="form-row">
+                <label for="pm-city-{{ kind }}">City</label>
+                <input type="text" id="pm-city-{{ kind }}" name="city" autocomplete="off">
+            </div>
+            <div class="form-row form-row-full">
+                <label for="pm-address-{{ kind }}">Address</label>
+                <input type="text" id="pm-address-{{ kind }}" name="address" autocomplete="off">
+            </div>
+            <p class="form-hint modal-error" hidden></p>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Add {{ label }}</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endmacro %}
+
+{{ partner_modal('workshop', 'Workshop', url_for('main.api_create_workshop')) }}
+{{ partner_modal('dealer', 'Dealer', url_for('main.api_create_dealer')) }}

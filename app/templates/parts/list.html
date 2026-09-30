@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Spare Parts | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Quantity-based stock{% endblock %}
+{% block heading %}Spare Parts{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="filter-form" method="get" action="{{ url_for('main.parts') }}">
+        <div class="filter-row">
+            <input type="search" name="search" placeholder="Search ID, model, serial, brand…" value="{{ filters.search }}">
+            <select name="status">
+                <option value="">All statuses</option>
+                {% for s in ('Available', 'With Machine', 'Sold', 'Archived') %}
+                    <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}{% if status_counts.get(s) %} ({{ status_counts.get(s) }}){% endif %}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if filters.search or filters.status %}
+                <a class="btn btn-ghost" href="{{ url_for('main.parts') }}">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+    <div class="toolbar-links">
+        <a class="btn btn-ghost" href="{{ url_for('main.catalogue') }}">← Catalogue</a>
+        <a class="btn btn-primary" href="{{ url_for('main.part_add') }}">+ Add Part</a>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Part ID</th>
+                    <th>Model</th>
+                    <th>Brand</th>
+                    <th>Serial</th>
+                    <th>Qty</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Review</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for p in items %}
+                        <tr>
+                            <td><strong>{{ p.internal_id }}</strong></td>
+                            <td>{{ p.name_model or '—' }}</td>
+                            <td>{{ p.brand_name or '—' }}</td>
+                            <td>{{ p.serial_number or '—' }}</td>
+                            <td>{{ p.quantity }}</td>
+                            <td><span class="status status-{{ p.status|lower|replace(' ', '-') }}">{{ p.status }}</span></td>
+                            <td>{{ p.current_location }}</td>
+                            <td>{% if p.needs_review %}<span class="flag flag-review" title="{{ p.review_note or '' }}">Review</span>{% elif p.notes and 'REVIEW' in p.notes %}<span class="flag flag-review" title="{{ p.notes }}">Review</span>{% else %}—{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No spare parts found</strong>
+                                <p>Use + Add Part to record your first spare part in stock.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

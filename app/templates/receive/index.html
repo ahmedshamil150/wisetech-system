@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Receive Inventory | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}One-place inventory entry{% endblock %}
+{% block heading %}Receive Inventory{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <p class="muted" style="margin:0; max-width:640px;">
+        Everything for one incoming machine — provider, batch, date, brand, model, probes and printer —
+        is entered on this single screen. Values you already used are remembered.
+    </p>
+    <div class="toolbar-links">
+        <a class="btn" href="{{ url_for('main.machines') }}">All machines</a>
+        {% if last_machine_id and not saved_machine %}
+            <a class="btn btn-ghost" href="{{ url_for('main.receive', copy=last_machine_id) }}">Copy Previous Setup</a>
+        {% endif %}
+    </div>
+</section>
+
+{% if banner == 'saved' and saved_machine %}
+<div class="banner banner-success">
+    <div>
+        <strong>Machine {{ saved_machine.machine_id }} saved successfully.</strong>
+        <p>Add another machine to Batch {{ saved_machine.batch_code }}? Provider, batch, arrival date, brand and model stay filled in — only the new machine details are cleared.</p>
+    </div>
+    <div class="banner-actions">
+        <a class="btn btn-primary" href="{{ url_for('main.receive', resume=saved_machine.id) }}">Yes — Add Next Machine</a>
+        <a class="btn" href="{{ url_for('main.receive', copy=saved_machine.id) }}">Copy Previous Setup</a>
+        <a class="btn btn-ghost" href="{{ url_for('main.machine_detail', machine_id=saved_machine.id) }}">View Machine</a>
+    </div>
+</div>
+{% elif banner == 'ready' and saved_machine %}
+<div class="banner banner-info">
+    <div>
+        <strong>Ready for the next machine in Batch {{ saved_machine.batch_code }}.</strong>
+        <p>Suggested machine ID: <strong>{{ form.machine_id }}</strong> — serial, probes and printer are cleared for the new unit.</p>
+    </div>
+    <div class="banner-actions">
+        <a class="btn btn-ghost" href="{{ url_for('main.machine_detail', machine_id=saved_machine.id) }}">View Machine {{ saved_machine.machine_id }}</a>
+    </div>
+</div>
+{% endif %}
+
+<form class="form-grid receive-form" method="post" id="receive-form" data-batch-dates="{{ batch_dates|tojson }}">
+    <div class="form-section-title">1 · Shipment details</div>
+
+    <div class="form-row">
+        <label for="provider_name">Provider / Vendor <span class="required">*</span></label>
+        <input type="text" id="provider_name" name="provider_name" list="vendor-list" autocomplete="off"
+               value="{{ form.provider_name }}" placeholder="Type to search…" required>
+        <datalist id="vendor-list">
+            {% for name in vendor_names %}<option value="{{ name }}"></option>{% endfor %}
+        </datalist>
+        <p class="form-hint">
+            Type to search existing providers. Typing a new name adds it automatically.
+            <button type="button" class="linklike" id="add-provider">+ Add New Provider</button>
+        </p>
+    </div>
+
+    <div class="form-row">
+        <label for="batch_code">Batch <span class="required">*</span></label>
+        <input type="text" id="batch_code" name="batch_code" list="batch-list" autocomplete="off"
+               value="{{ form.batch_code }}" placeholder="Type to search…" required>
+        <datalist id="batch-list">
+            {% for code, bdate in batch_dates.items() %}<option value="{{ code }}">{{ bdate }}</option>{% endfor %}
+        </datalist>
+        <p class="form-hint">
+            Select the batch once — it stays selected for the next machines.
+            <button type="button" class="linklike" id="add-batch">+ Create New Batch</button>
+        </p>
+    </div>
+
+    <div class="form-row">
+        <label for="arrival_date">Arrival date <span class="required">*</span></label>
+        <input type="date" id="arrival_date" name="arrival_date" value="{{ form.arrival_date or today }}" required>
+        <p class="form-hint">Defaults to today (or the batch date when you pick an existing batch).</p>
+    </div>
+
+    <div class="form-row">
+        <label for="brand_name">Brand <span class="required">*</span></label>
+        <input type="text" id="brand_name" name="brand_name" list="brand-list" autocomplete="off"
+               value="{{ form.brand_name }}" placeholder="e.g. GE, Philips, Siemens…" required>
+        <datalist id="brand-list">
+            {% for name in brand_names %}<option value="{{ name }}"></option>{% endfor %}
+        </datalist>
+        <p class="form-hint">Type to search. A new brand name is added to the list.</p>
+    </div>
+
+    <div class="form-section-title">2 · Machine</div>
+
+    <div class="form-row">
+        <label for="model">Model <span class="required">*</span></label>
+        <input type="text" id="model" name="model" list="machine-model-list" autocomplete="off"
+               value="{{ form.model }}" placeholder="e.g. Voluson E8, Logiq E9…" required>
+        <datalist id="machine-model-list">
+            {% for m in machine_models %}<option value="{{ m }}"></option>{% endfor %}
+        </datalist>
+        <p class="form-hint">Suggestions come from the product catalogue; type freely if not listed.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="serial_number">Machine serial number <span class="required">*</span></label>
+        <input type="text" id="serial_number" name="serial_number"
+               value="{{ form.serial_number }}" placeholder="Manufacturer serial number" required>
+        <p class="form-hint">Must be unique — duplicates are rejected automatically.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="machine_id">Suggested machine ID <span class="required">*</span></label>
+        <input type="text" id="machine_id" name="machine_id" maxlength="20"
+               value="{{ form.machine_id }}" placeholder="e.g. 5T" required>
+        <p class="form-hint">Generated from the batch (batch T → 5T). Change it only if you need to.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="notes">Notes</label>
+        <input type="text" id="notes" name="notes" value="{{ form.notes }}" placeholder="Optional">
+    </div>
+
+    <div class="form-section-title">3 · Probes that came with this machine</div>
+
+    <div class="form-row form-row-full">
+        <div class="probe-rows" id="probe-rows">
+            {% for row in form.probe_rows %}
+            <div class="probe-row">
+                <input type="text" class="probe-model" name="probe_model" list="probe-model-list"
+                       autocomplete="off" value="{{ row.model }}" placeholder="Probe model (e.g. C1-5)">
+                <input type="text" class="probe-serial" name="probe_serial"
+                       value="{{ row.serial }}" placeholder="Probe serial number">
+                <button type="button" class="btn btn-ghost btn-small remove-probe" title="Remove row">×</button>
+            </div>
+            {% endfor %}
+        </div>
+        <datalist id="probe-model-list">
+            {% for m in recent_probe_models %}<option value="{{ m }}">{{ m }} (recently used)</option>{% endfor %}
+            {% for m in probe_models %}{% if m not in recent_probe_models %}<option value="{{ m }}"></option>{% endif %}{% endfor %}
+        </datalist>
+        <div class="probe-actions">
+            <button type="button" class="btn" id="add-probe">+ Add Another Probe</button>
+            <span class="form-hint">Each probe becomes its own inventory record with its own serial number.</span>
+        </div>
+        <div class="alert alert-warn" id="serial-warning" hidden></div>
+    </div>
+
+    <div class="form-section-title">4 · Printer</div>
+
+    <div class="form-row">
+        <label for="printer_catalog_id">Printer</label>
+        <select id="printer_catalog_id" name="printer_catalog_id">
+            <option value="">No printer with this machine</option>
+            {% for p in printer_models %}
+                <option value="{{ p.id }}" {% if form.printer_catalog_id == p.id|string %}selected{% endif %}>
+                    {{ p.name_model }}{% if p.brand_name %} ({{ p.brand_name }}){% endif %} — {{ p.available }} available / {{ p.total }} total
+                </option>
+            {% endfor %}
+        </select>
+        <p class="form-hint">Selecting a model assigns one available unit to this machine.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="printer_model_name">…or a printer model not in the list</label>
+        <input type="text" id="printer_model_name" name="printer_model_name" list="printer-list"
+               autocomplete="off" value="{{ form.printer_model_name }}" placeholder="e.g. UP-D898MD">
+        <datalist id="printer-list">
+            {% for p in printer_models %}<option value="{{ p.name_model }}"></option>{% endfor %}
+        </datalist>
+        <p class="form-hint">A new unit is created for the machine when no unit is available.</p>
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ url_for('main.dashboard') }}">Cancel</a>
+        <button class="btn btn-primary" type="submit">Receive Inventory</button>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ ctx.title }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Sale{% endblock %}
+{% block heading %}{{ ctx.title }}{% endblock %}
+{% block content %}
+<div class="banner banner-info">
+    <div>
+        <strong>{{ ctx.title }}</strong>
+        <p>{{ ctx.subtitle }}</p>
+    </div>
+</div>
+
+<form class="form-grid" method="post" action="{{ ctx.action_url }}">
+    <div class="form-section-title">Items on this sale</div>
+
+    <div class="form-row form-row-full">
+        <div class="checklist">
+            {% for item in ctx.lines %}
+            <label class="check-item">
+                <input type="checkbox" name="item" value="{{ item.value }}"
+                       {% if item.value in form.selected %}checked{% endif %}>
+                <span class="check-main">
+                    <strong>{{ item.label }}</strong>
+                    <small>{{ item.sub }}</small>
+                </span>
+                {% if item.locked %}<span class="badge badge-blue">Main item</span>{% endif %}
+            </label>
+            {% endfor %}
+        </div>
+        <p class="form-hint">Uncheck anything that is not part of this sale — it stays in inventory.</p>
+    </div>
+
+    <div class="form-section-title">Sale details</div>
+
+    <div class="form-row">
+        <label for="customer_name">Customer <span class="required">*</span></label>
+        <input type="text" id="customer_name" name="customer_name" list="customer-list" autocomplete="off"
+               value="{{ form.customer_name }}" placeholder="Type to search…" required>
+        <datalist id="customer-list">
+            {% for c in customers %}<option value="{{ c.name }}">{{ c.phone or '' }}</option>{% endfor %}
+        </datalist>
+        <p class="form-hint">Type to search existing customers — a new name creates the customer record.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="sale_date">Sale date <span class="required">*</span></label>
+        <input type="date" id="sale_date" name="sale_date" value="{{ form.sale_date or today }}" required>
+        <p class="form-hint">Defaults to today.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="price">Price</label>
+        <input type="text" id="price" name="price" value="{{ form.price }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row">
+        <label for="invoice_reference">Invoice reference</label>
+        <input type="text" id="invoice_reference" name="invoice_reference" value="{{ form.invoice_reference }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row form-row-full">
+        <label for="notes">Notes</label>
+        <input type="text" id="notes" name="notes" value="{{ form.notes }}" placeholder="Optional">
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ ctx.back_url }}">Cancel</a>
+        <button class="btn btn-primary" type="submit">Sell</button>
+    </div>
+</form>
+{% endblock %}

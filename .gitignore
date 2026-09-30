@@ -1,3 +1,16 @@
+# Legacy Flask app
+.venv/
+__pycache__/
+*.py[cod]
+
+# local data — never push (repo is public)
+instance/
+backups/*
+!backups/.gitkeep
+localhost (1).sql
+
+# Flutter app ----------------------------------------------------
+
 # Miscellaneous
 *.class
 *.log
@@ -19,7 +32,7 @@ migrate_working_dir/
 .idea/
 
 # The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
+# VS Code which you may wish to include in version control, so this line
 # is commented out by default.
 #.vscode/
 

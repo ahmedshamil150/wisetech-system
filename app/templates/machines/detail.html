@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Machine {{ machine.machine_id }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Machine record{% endblock %}
+{% block heading %}Machine {{ machine.machine_id }}{% endblock %}
+{% block content %}
+<section class="detail-header">
+    <div class="detail-meta detail-meta-wide">
+        <div class="meta-item">
+            <span class="meta-label">Machine ID</span>
+            <span class="meta-value"><strong>{{ machine.machine_id }}</strong></span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Brand</span>
+            <span class="meta-value">{{ machine.brand_name or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Model</span>
+            <span class="meta-value">{{ machine.model }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Serial Number</span>
+            <span class="meta-value">{{ machine.serial_number or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Batch</span>
+            <span class="meta-value"><a class="link badge badge-blue" href="{{ url_for('main.batch_detail', batch_id=machine.batch_id) }}">{{ machine.batch_code }}</a></span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Provider</span>
+            <span class="meta-value">{{ machine.provider_name or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Received</span>
+            <span class="meta-value">{{ machine.acquisition_date or machine.batch_arrival_date or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Status</span>
+            <span class="meta-value"><span class="status status-{{ machine.status|lower|replace(' ', '-') }}">{{ machine.status }}</span></span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Location</span>
+            <span class="meta-value"><span class="location location-{{ machine.current_location|lower }}">{{ machine.current_location }}</span>{% if out_dest %} · {{ out_dest }}{% endif %}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Created</span>
+            <span class="meta-value">{{ machine.created_at }}</span>
+        </div>
+    </div>
+    <div class="detail-actions">
+        {% if machine.status not in ('Sold', 'Archived') and machine.status not in ('With Workshop', 'With Dealer') %}
+            <a class="btn btn-primary" href="{{ url_for('main.send_machine', machine_id=machine.id, type='workshop') }}">Send to Workshop</a>
+            <a class="btn" href="{{ url_for('main.send_machine', machine_id=machine.id, type='dealer') }}">Send to Dealer</a>
+            <a class="btn" href="{{ url_for('main.sell_machine', machine_id=machine.id) }}">Sell</a>
+        {% endif %}
+        {% if machine.status == 'With Workshop' %}
+            <a class="btn btn-primary" href="{{ url_for('main.return_machine', machine_id=machine.id) }}">Return from Workshop</a>
+        {% elif machine.status == 'With Dealer' %}
+            <a class="btn btn-primary" href="{{ url_for('main.return_machine', machine_id=machine.id) }}">Return from Dealer</a>
+        {% endif %}
+        {% if machine.status != 'Sold' %}
+            <a class="btn btn-ghost" href="{{ url_for('main.edit_machine', machine_id=machine.id) }}">Edit</a>
+        {% endif %}
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Set</p>
+            <h2>Attached probes</h2>
+        </div>
+        <span class="badge badge-blue">{{ set_items.probes|length }} probe{{ 's' if set_items.probes|length != 1 else '' }}</span>
+    </div>
+    {% if set_items.probes %}
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Probe</th>
+                        <th>Model</th>
+                        <th>Serial</th>
+                        <th>Condition</th>
+                        <th>Status</th>
+                        <th>Where</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for probe in set_items.probes %}
+                    <tr>
+                        <td><strong><a class="link" href="{{ url_for('main.probe_detail', probe_id=probe.id) }}">{{ probe.internal_id }}</a></strong></td>
+                        <td>{{ probe.model or '—' }}</td>
+                        <td>{{ probe.serial_number or '—' }}</td>
+                        <td>{{ probe.condition or '—' }}</td>
+                        <td><span class="status status-{{ probe.status|lower|replace(' ', '-') }}">{{ probe.status }}</span></td>
+                        <td>
+                            {% if probe_dests.get(probe.id) %}
+                                <span class="badge badge-blue">Currently away — {{ probe_dests.get(probe.id) }}</span>
+                            {% else %}
+                                {{ probe.current_location }}
+                            {% endif %}
+                        </td>
+                        <td class="row-actions">
+                            <a class="btn btn-small btn-ghost" href="{{ url_for('main.probe_detail', probe_id=probe.id) }}">View</a>
+                            {% if probe.status != 'Sold' %}
+                                <a class="btn btn-small btn-ghost" href="{{ url_for('main.sell_probe', probe_id=probe.id) }}">Sell</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state empty-state-flat">
+            <strong>No probes attached</strong>
+            <p>Probes linked to this machine appear here. They stay individually trackable and can be moved or sold separately.</p>
+        </div>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Set</p>
+            <h2>Printer</h2>
+        </div>
+    </div>
+    {% if set_items.printers %}
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr><th>Unit</th><th>Model</th><th>Status</th><th>Location</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for printer in set_items.printers %}
+                    <tr>
+                        <td><strong><a class="link" href="{{ url_for('main.printer_detail', printer_id=printer.id) }}">{{ printer.internal_id }}</a></strong></td>
+                        <td>{{ printer.name_model or '—' }}</td>
+                        <td><span class="status status-{{ printer.status|lower|replace(' ', '-') }}">{{ printer.status }}</span></td>
+                        <td>
+                            {% if printer_dests.get(printer.id) %}
+                                <span class="badge badge-blue">Currently away — {{ printer_dests.get(printer.id) }}</span>
+                            {% else %}
+                                {{ printer.current_location }}
+                            {% endif %}
+                        </td>
+                        <td class="row-actions">
+                            {% if printer.status != 'Sold' %}
+                                <a class="btn btn-small btn-ghost" href="{{ url_for('main.sell_printer', printer_id=printer.id) }}">Sell</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state empty-state-flat">
+            <strong>No printer assigned</strong>
+            <p>A printer assigned to this machine appears here with its quantity tracking.</p>
+        </div>
+    {% endif %}
+</section>
+
+{% if sale %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Sale</p>
+            <h2>Sold on {{ sale.sale_date }}</h2>
+        </div>
+        <a class="btn btn-small" href="{{ url_for('main.sale_detail', sale_id=sale.id) }}">View sale</a>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr><th>Item</th><th>Description</th><th>Serial</th></tr>
+            </thead>
+            <tbody>
+                {% for item in sale_items %}
+                <tr>
+                    <td><span class="badge badge-blue">{{ item.item_type }}</span></td>
+                    <td>{{ item.item_description or '—' }}</td>
+                    <td>{{ item.item_serial or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if machine.notes %}
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Reference</p>
+            <h2>Notes</h2>
+        </div>
+    </div>
+    <div class="panel-body">
+        <p style="margin:0; white-space:pre-wrap;">{{ machine.notes }}</p>
+    </div>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Audit trail</p>
+            <h2>History / Timeline</h2>
+        </div>
+        <a class="btn btn-ghost btn-small" href="{{ url_for('main.search', q=machine.machine_id) }}">Related search</a>
+    </div>
+    <div class="panel-body">
+        {% include "_timeline.html" %}
+    </div>
+</section>
+{% endblock %}

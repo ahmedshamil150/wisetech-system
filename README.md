@@ -3,6 +3,10 @@
 Inventory, movement and repair tracking for ultrasound machines, probes, printers and parts.
 Flutter (Android + Web) with a Supabase (PostgreSQL) backend.
 
+> This repository holds two versions of the system:
+> the current **Flutter + Supabase app** in the repository root, and the original
+> **Flask + SQLite prototype** under `app/` (see `README.legacy-flask.md`).
+
 ## Features
 
 - **Dashboard** - live counts: in stock, with workshop, with dealer, in repair.
@@ -15,8 +19,8 @@ Flutter (Android + Web) with a Supabase (PostgreSQL) backend.
 ## Tech
 
 - Flutter 3.x, Riverpod for state, Supabase Flutter client.
-- PostgreSQL schema + RLS + RPCs in `supabase/migrations/`.
-- `scripts/` - Python helpers run SQL and maintenance tasks (`python scripts/run_sql.py <file.sql>`).
+- PostgreSQL schema + row-level security + RPCs in `supabase/migrations/`.
+- `scripts/` - Python helpers that run SQL and maintenance tasks (`python scripts/run_sql.py <file.sql>`).
 
 ## Setup
 

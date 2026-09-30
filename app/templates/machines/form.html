@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{% if editing %}Edit Machine {{ machine.machine_id }}{% else %}Add Machine{% endif %} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Machine management{% endblock %}
+{% block heading %}{% if editing %}Edit Machine{% else %}Add Machine{% endif %}{% endblock %}
+{% block content %}
+<section class="panel">
+    <form class="form-grid" method="post">
+        <div class="form-row">
+            <label for="machine_id">Machine ID <span class="required">*</span></label>
+            <input type="text" id="machine_id" name="machine_id" maxlength="20"
+                   value="{{ machine.machine_id if machine.machine_id else '' }}"
+                   placeholder="e.g. 1T, 2T, 16T" required>
+            <p class="form-hint">Must be unique. Suggested automatically from the selected batch (e.g. batch T → 4T).</p>
+        </div>
+
+        <div class="form-row">
+            <label for="batch_id">Batch <span class="required">*</span></label>
+            <select id="batch_id" name="batch_id" required>
+                <option value="">Select a batch…</option>
+                {% for b in batches %}
+                    <option value="{{ b.id }}" {% if machine.batch_id == b.id|string or machine.batch_id == b.id %}selected{% endif %}>{{ b.code }}</option>
+                {% endfor %}
+            </select>
+            <p class="form-hint">If your batch is missing, <a class="link" href="{{ url_for('main.new_batch') }}" target="_blank">create it first</a>.</p>
+        </div>
+
+        <div class="form-row">
+            <label for="model">Machine model <span class="required">*</span></label>
+            <input type="text" id="model" name="model" list="catalog-machine-list"
+                   value="{{ machine.model if machine.model else '' }}"
+                   placeholder="e.g. GE Logiq E9, Philips EPIQ 5" required>
+            <datalist id="catalog-machine-list"></datalist>
+            <p class="form-hint">Suggestions come from the product catalogue; type freely if not listed.</p>
+        </div>
+
+        <div class="form-row">
+            <label for="serial_number">Serial number <span class="required">*</span></label>
+            <input type="text" id="serial_number" name="serial_number"
+                   value="{{ machine.serial_number if machine.serial_number else '' }}"
+                   placeholder="Manufacturer serial number" required>
+            <p class="form-hint">Must be unique when provided.</p>
+        </div>
+
+        <div class="form-row">
+            <label for="acquisition_date">Date received</label>
+            <input type="date" id="acquisition_date" name="acquisition_date"
+                   value="{{ machine.acquisition_date if machine.acquisition_date else '' }}">
+            <p class="form-hint">Defaults to the batch date if left blank.</p>
+        </div>
+
+        <div class="form-row form-row-full">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="4"
+                      placeholder="Configuration, accessories, cosmetic condition, etc.">{{ machine.notes if machine.notes else '' }}</textarea>
+        </div>
+
+        {% if not editing %}
+            <div class="form-row form-row-full form-info">
+                <strong>Default values:</strong> New machines start with <span class="status status-in-stock">In Stock</span> status and <span class="location location-company">Company</span> location.
+            </div>
+        {% endif %}
+
+        <div class="form-actions">
+            {% if editing %}
+                <a class="btn btn-ghost" href="{{ url_for('main.machine_detail', machine_id=machine.id) }}">Cancel</a>
+            {% else %}
+                <a class="btn btn-ghost" href="{{ url_for('main.machines') }}">Cancel</a>
+            {% endif %}
+            <button class="btn btn-primary" type="submit">{% if editing %}Save Changes{% else %}Add Machine{% endif %}</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

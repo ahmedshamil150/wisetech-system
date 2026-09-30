@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Return {{ label }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Movement · individual item{% endblock %}
+{% block heading %}Return {{ label }}{% endblock %}
+{% block content %}
+<div class="banner banner-info">
+    <div>
+        <strong>{{ label }} — {{ detail }}</strong>
+        <p>
+            Sent to: {{ origin }}<br>
+            Sent date: {{ sent_date or 'unknown' }}{% if reference %} · Movement {{ reference }}{% endif %}
+        </p>
+    </div>
+</div>
+
+<form class="form-grid" method="post">
+    <div class="form-row">
+        <label for="movement_date">Return date <span class="required">*</span></label>
+        <input type="date" id="movement_date" name="movement_date" value="{{ form.movement_date or today }}" required>
+        <p class="form-hint">Defaults to today.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="reason">Reason</label>
+        <input type="text" id="reason" name="reason" value="{{ form.reason }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row form-row-full">
+        <label for="notes">Notes</label>
+        <input type="text" id="notes" name="notes" value="{{ form.notes }}" placeholder="Optional — e.g. repaired">
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ back_url }}">Cancel</a>
+        <button class="btn btn-primary" type="submit">Return</button>
+    </div>
+</form>
+{% endblock %}

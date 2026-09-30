@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{% if batch %}Edit Batch {{ batch.code }}{% else %}New Batch{% endif %} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Batch management{% endblock %}
+{% block heading %}{% if batch %}Edit Batch {{ batch.code }}{% else %}New Batch{% endif %}{% endblock %}
+{% block content %}
+<section class="panel">
+    <form class="form-grid" method="post">
+        <div class="form-row">
+            <label for="code">Batch code <span class="required">*</span></label>
+            <input type="text" id="code" name="code" maxlength="20"
+                   value="{{ batch.code if batch else '' }}"
+                   placeholder="e.g. T, SEP22, CONTAINER-A"
+                   {% if batch %}disabled{% endif %} required>
+            {% if batch %}<p class="form-hint">Batch code cannot be changed after creation.</p>{% endif %}
+        </div>
+
+        <div class="form-row">
+            <label for="arrival_date">Date received <span class="required">*</span></label>
+            <input type="date" id="arrival_date" name="arrival_date"
+                   value="{{ batch.arrival_date if batch else today }}" required>
+        </div>
+
+        <div class="form-row">
+            <label for="supplier_source">Supplier / source</label>
+            <input type="text" id="supplier_source" name="supplier_source"
+                   value="{{ batch.supplier_source if batch else '' }}"
+                   placeholder="e.g. Manufacturer name, distributor, supplier reference">
+        </div>
+
+        <div class="form-row form-row-full">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="4"
+                      placeholder="Container reference, condition, purchase order details, etc.">{{ batch.notes if batch else '' }}</textarea>
+        </div>
+
+        <div class="form-actions">
+            {% if batch %}
+                <a class="btn btn-ghost" href="{{ url_for('main.batch_detail', batch_id=batch.id) }}">Cancel</a>
+            {% else %}
+                <a class="btn btn-ghost" href="{{ url_for('main.batches') }}">Cancel</a>
+            {% endif %}
+            <button class="btn btn-primary" type="submit">{% if batch %}Save Changes{% else %}Create Batch{% endif %}</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

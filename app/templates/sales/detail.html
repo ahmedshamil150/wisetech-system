@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Sale {{ sale.old_trno or sale.id }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Sales invoice (read-only){% endblock %}
+{% block heading %}Sale {{ sale.old_trno or '#' ~ sale.id }}{% endblock %}
+{% block content %}
+<section class="detail-header">
+    <div class="detail-meta detail-meta-wide">
+        <div class="meta-item">
+            <span class="meta-label">Date</span>
+            <span class="meta-value">{{ sale.sale_date }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Customer</span>
+            <span class="meta-value">{{ sale.customer_name or '— (internal / unknown)' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Transaction #</span>
+            <span class="meta-value">{{ sale.old_trno or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Price</span>
+            <span class="meta-value">{{ '%.2f'|format(sale.sale_price) if sale.sale_price else '— (not recorded)' }}</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Notes</span>
+            <span class="meta-value">{{ sale.notes or '—' }}</span>
+        </div>
+    </div>
+    <div class="detail-actions">
+        <a class="btn btn-ghost" href="{{ url_for('main.sales') }}">← All sales</a>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Line items</p>
+            <h2>Items on this invoice</h2>
+        </div>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Main</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Serial</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for i in items %}
+                        <tr>
+                            <td>{% if i.is_main_item %}<span class="badge badge-blue">Main</span>{% else %}—{% endif %}</td>
+                            <td><span class="badge badge-blue">{{ i.item_type }}</span></td>
+                            <td>{{ i.item_description or '—' }}</td>
+                            <td>{{ i.item_serial or '—' }}</td>
+                            <td>{{ '%.2f'|format(i.item_price) if i.item_price else '—' }}</td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5">
+                            <div class="empty-state empty-state-flat">
+                                <strong>No line items</strong>
+                                <p>This invoice has no linked items in the old system.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

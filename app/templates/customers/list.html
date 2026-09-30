@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Customers | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}People and companies{% endblock %}
+{% block heading %}Customers{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="filter-form" method="get" action="{{ url_for('main.customers') }}">
+        <div class="filter-row">
+            <input type="search" name="search" placeholder="Search name, phone, city…" value="{{ filters.search }}">
+            <select name="type">
+                <option value="">All types</option>
+                {% for t in types %}
+                    <option value="{{ t }}" {% if filters.type == t %}selected{% endif %}>{{ t }}{% if type_counts.get(t) %} ({{ type_counts.get(t) }}){% endif %}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-primary" type="submit">Search</button>
+            {% if filters.search or filters.type %}
+                <a class="btn btn-ghost" href="{{ url_for('main.customers') }}">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Phone</th>
+                    <th>City</th>
+                    <th>Address</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for c in items %}
+                        <tr>
+                            <td><strong>{{ c.name }}</strong></td>
+                            <td><span class="badge badge-blue">{{ c.customer_type }}</span></td>
+                            <td>{{ c.phone or '—' }}</td>
+                            <td>{{ c.city or '—' }}</td>
+                            <td class="muted">{{ c.address or '—' }}</td>
+                            <td class="muted">{% if c.notes %}<span class="flag flag-review" title="{{ c.notes }}">Review</span>{% else %}—{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>No customers found</strong>
+                                <p>Customer records are imported from the old system.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

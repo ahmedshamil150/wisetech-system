@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Return Machine {{ machine.machine_id }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}Movement · confirm what actually came back{% endblock %}
+{% block heading %}Return from {{ destination }}{% endblock %}
+{% block content %}
+<div class="banner banner-info">
+    <div>
+        <strong>Machine {{ machine.machine_id }} — sent to {{ destination }}</strong>
+        <p>
+            Sent date: {{ sent_date or 'unknown' }}{% if movement_ref %} · Movement {{ movement_ref }}{% endif %}
+            <br>
+            The items below were sent out with this movement. Everything still out at
+            {{ destination }} is selected by default — uncheck anything that did not come back.
+        </p>
+    </div>
+</div>
+
+<form class="form-grid" method="post">
+    {% if originally_sent %}
+    <div class="form-section-title">Originally sent</div>
+    <div class="form-row form-row-full">
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr><th>Item</th><th>Details</th><th>State now</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in originally_sent %}
+                    <tr>
+                        <td><strong>{{ item.label }}</strong></td>
+                        <td>{{ item.sub }}</td>
+                        <td>
+                            {% if item.out %}
+                                <span class="status status-with-workshop">Still out</span>
+                            {% else %}
+                                <span class="status status-available">Back / handled</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="form-section-title">What is returning today</div>
+
+    <div class="form-row form-row-full">
+        <div class="checklist" id="return-checklist">
+            {% for option in options %}
+            <label class="check-item {% if not option.out %}check-item-muted{% endif %}">
+                {% if option.out %}
+                    <input type="checkbox" name="item" value="{{ option.key }}"
+                           {% if option.key in form.selected %}checked{% endif %}>
+                {% else %}
+                    <input type="checkbox" disabled>
+                {% endif %}
+                <span class="check-main">
+                    <strong>{{ option.label }}</strong>
+                    <small>{{ option.sub }}</small>
+                </span>
+                {% if not option.out %}<span class="badge badge-blue">Already back</span>{% endif %}
+            </label>
+            {% endfor %}
+            {% if not options %}
+            <div class="check-item muted">Nothing is currently out with this machine.</div>
+            {% endif %}
+        </div>
+        <div class="alert alert-warn" id="missing-warning" hidden></div>
+        <p class="form-hint">Anything unchecked stays where it is right now and keeps its current status.</p>
+    </div>
+
+    {% if elsewhere %}
+    <div class="form-section-title">Currently elsewhere (cannot return from {{ destination }})</div>
+    <div class="form-row form-row-full">
+        <div class="checklist">
+            {% for item in elsewhere %}
+            <label class="check-item check-item-muted">
+                <input type="checkbox" disabled>
+                <span class="check-main">
+                    <strong>{{ item.label }}</strong>
+                    <small>{{ item.sub }}</small>
+                </span>
+                <span class="badge badge-blue">Currently with {{ item.dest or 'another location' }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <p class="form-hint">These items are out at a different place. Return them from their own movement.</p>
+    </div>
+    {% endif %}
+
+    <div class="form-row">
+        <label for="movement_date">Return date <span class="required">*</span></label>
+        <input type="date" id="movement_date" name="movement_date" value="{{ form.movement_date or today }}" required>
+        <p class="form-hint">Defaults to today.</p>
+    </div>
+
+    <div class="form-row">
+        <label for="reason">Reason</label>
+        <input type="text" id="reason" name="reason" value="{{ form.reason }}" placeholder="Optional">
+    </div>
+
+    <div class="form-row form-row-full">
+        <label for="notes">Notes</label>
+        <input type="text" id="notes" name="notes" value="{{ form.notes }}" placeholder="Optional — e.g. repaired, replaced part">
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ url_for('main.machine_detail', machine_id=machine.id) }}">Cancel</a>
+        <button class="btn btn-primary" type="submit">Return</button>
+    </div>
+</form>
+{% endblock %}

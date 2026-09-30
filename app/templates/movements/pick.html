@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}{{ eyebrow }}{% endblock %}
+{% block heading %}{{ title }}{% endblock %}
+{% block content %}
+<div class="banner banner-info">
+    <div>
+        <strong>{{ subtitle }}</strong>
+        <p>Search, pick an item, then confirm. Nothing is sent until you press the button on the next screen.</p>
+    </div>
+</div>
+
+<section class="page-toolbar">
+    <form class="search-form" method="get" action="{{ request.path }}">
+        {% if dest_type %}<input type="hidden" name="type" value="{{ dest_type }}">{% endif %}
+        <input type="search" name="q" placeholder="Search by ID, model or serial…" value="{{ q }}" autofocus>
+        <button class="btn btn-primary" type="submit">Search</button>
+        {% if q %}<a class="btn btn-ghost" href="{{ request.path }}{% if dest_type %}?type={{ dest_type }}{% endif %}">Clear</a>{% endif %}
+    </form>
+    <a class="btn btn-ghost" href="{{ url_for('main.movement_center') }}">← Movement Centre</a>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Details</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if rows %}
+                    {% for r in rows %}
+                    <tr>
+                        <td><strong>{{ r.label }}</strong></td>
+                        <td>{{ r.detail }}</td>
+                        <td><span class="status status-{{ r.status|lower|replace(' ', '-') }}">{{ r.status }}</span></td>
+                        <td>{{ r.where or '—' }}</td>
+                        <td class="row-actions"><a class="btn btn-small btn-primary" href="{{ r.url }}">{{ r.action }}</a></td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5">
+                            <div class="empty-state">
+                                <div class="empty-icon">0</div>
+                                <strong>Nothing to show</strong>
+                                <p>{{ empty }}</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

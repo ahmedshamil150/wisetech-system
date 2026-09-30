@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Inventory Away | Ultrasound Inventory{% endblock %}
+{% block eyebrow %}What is currently outside the company?{% endblock %}
+{% block heading %}Inventory Away From Company{% endblock %}
+{% block content %}
+<section class="page-toolbar">
+    <form class="filter-form" method="get" action="{{ url_for('main.away') }}">
+        <div class="filter-row">
+            <select name="type">
+                <option value="">All item types</option>
+                <option value="machine" {% if filters.type == 'machine' %}selected{% endif %}>Machines</option>
+                <option value="probe" {% if filters.type == 'probe' %}selected{% endif %}>Probes</option>
+                <option value="printer" {% if filters.type == 'printer' %}selected{% endif %}>Printers</option>
+            </select>
+            <select name="workshop">
+                <option value="">Any workshop</option>
+                {% for w in workshops %}
+                    <option value="{{ w }}" {% if filters.workshop == w %}selected{% endif %}>{{ w }}</option>
+                {% endfor %}
+            </select>
+            <select name="dealer">
+                <option value="">Any dealer</option>
+                {% for d in dealers %}
+                    <option value="{{ d }}" {% if filters.dealer == d %}selected{% endif %}>{{ d }}</option>
+                {% endfor %}
+            </select>
+            <input type="search" name="search" placeholder="Machine / item…" value="{{ filters.search }}">
+            <label class="check-label">Sent from <input type="date" name="date_from" value="{{ filters.date_from }}"></label>
+            <button class="btn btn-primary" type="submit">Filter</button>
+            {% if filters.type or filters.workshop or filters.dealer or filters.search or filters.date_from %}
+                <a class="btn btn-ghost" href="{{ url_for('main.away') }}">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Outside the company</p>
+            <h2>{{ total }} item{{ 's' if total != 1 else '' }} away</h2>
+        </div>
+        <a class="btn btn-ghost" href="{{ url_for('main.movement_center') }}">Movement Centre</a>
+    </div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Type</th>
+                    <th>Destination</th>
+                    <th>Sent</th>
+                    <th>Days away</th>
+                    <th>Movement</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for i in items %}
+                    <tr>
+                        <td><strong><a class="link" href="{{ i.url }}">{{ i.label }}</a></strong><br><small class="muted">{{ i.detail }}</small></td>
+                        <td><span class="badge badge-blue">{{ i.kind }}</span></td>
+                        <td>{{ i.destination }} <span class="muted">({{ 'Workshop' if i.status == 'With Workshop' else 'Dealer' }})</span></td>
+                        <td>{{ i.sent_date or '—' }}</td>
+                        <td>{% if i.days is not none %}<strong>{{ i.days }}</strong>{% else %}—{% endif %}</td>
+                        <td>{% if i.reference %}<span class="badge badge-blue">{{ i.reference }}</span>{% else %}—{% endif %}</td>
+                        <td class="row-actions">
+                            <a class="btn btn-small" href="{{ i.url }}">Open</a>
+                            <a class="btn btn-small btn-primary" href="{{ i.return_url }}">Return</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <div class="empty-icon">⌂</div>
+                                <strong>Nothing is away</strong>
+                                <p>Every machine, probe and printer is with the company (or sold).</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
