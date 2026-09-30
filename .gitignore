@@ -63,6 +63,12 @@ app.*.map.json
 .env.*
 !.env.example
 
+# Android release signing - never commit (losing it blocks future updates)
+/android/key.properties
+/android/upload-keystore.jks
+*.jks
+*.keystore
+
 # Legacy database dump (imported into Supabase, never publish)
 /localhost*.sql
 
