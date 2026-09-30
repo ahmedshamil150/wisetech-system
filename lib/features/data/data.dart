@@ -346,6 +346,7 @@ String defaultStatus(String kind) =>
 
 String defaultLocationFor(String status) => switch (status) {
       'With Workshop' => 'Workshop',
+      'With Dealer' => 'Dealer',
       'Sold' => 'Customer',
       _ => 'Company',
     };

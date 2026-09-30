@@ -41,7 +41,7 @@ class DashboardScreen extends ConsumerWidget {
         );
 
     final total = ref.watch(inventoryProvider).maybeWhen(
-          data: (items) => items.length,
+          data: (items) => items.where((item) => !item.isSold).length,
           orElse: () => 0,
         );
 

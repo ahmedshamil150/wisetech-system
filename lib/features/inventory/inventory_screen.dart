@@ -79,6 +79,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 icon: Icons.error_outline, message: errorMessage(error)),
             data: (rows) {
               final filtered = rows.where((item) {
+                // A sold machine already belongs to the dealer or customer,
+                // so it must not show up in the inventory any more.
+                if (item.isSold) return false;
                 if (!_matchesFilter(item)) return false;
                 if (_query.isEmpty) return true;
                 return item.code.toLowerCase().contains(_query) ||
@@ -409,8 +412,9 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
       if (row['id'] == batchId) batch = row;
     }
     final machines = ref.watch(inventoryProvider).maybeWhen(
-          data: (rows) =>
-              rows.where((item) => item.kind == 'machine').toList(),
+          data: (rows) => rows
+              .where((item) => item.kind == 'machine' && !item.isSold)
+              .toList(),
           orElse: () => const <InventoryItem>[],
         );
 
