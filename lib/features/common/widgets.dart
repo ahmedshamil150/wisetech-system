@@ -51,14 +51,17 @@ class EmptyState extends StatelessWidget {
 }
 
 class SearchField extends StatelessWidget {
-  const SearchField({super.key, required this.onChanged, this.hint = 'Search'});
+  const SearchField(
+      {super.key, required this.onChanged, this.hint = 'Search', this.controller});
 
   final ValueChanged<String> onChanged;
   final String hint;
+  final TextEditingController? controller;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      controller: controller,
       onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hint,
@@ -192,9 +195,12 @@ class KeyValue extends StatelessWidget {
   }
 }
 
-/// A text field whose trailing button opens a searchable list of choices.
-/// The field still accepts free text, so a value can also be typed in.
-class PickyField extends StatelessWidget {
+/// A text field that suggests matches while you type - everything that
+/// starts with what you wrote comes first, the rest follows, so typing "P"
+/// shows every option starting with P without pressing anything.
+/// The field still accepts free text; the trailing button opens the full
+/// searchable list.
+class PickyField extends StatefulWidget {
   const PickyField({
     super.key,
     required this.controller,
@@ -215,39 +221,137 @@ class PickyField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
 
   @override
+  State<PickyField> createState() => _PickyFieldState();
+}
+
+class _PickyFieldState extends State<PickyField> {
+  final _focus = FocusNode();
+  String _query = '';
+  bool _showList = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _query = widget.controller.text;
+    _focus.addListener(() {
+      if (!_focus.hasFocus && mounted) {
+        setState(() => _showList = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// "starts with" matches first (like a search box), then the rest,
+  /// each group in alphabetical order.
+  List<String> get _matches {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) return const <String>[];
+    final starts = <String>[];
+    final rest = <String>[];
+    for (final option in widget.options) {
+      final value = option.toLowerCase();
+      if (value.startsWith(query)) {
+        starts.add(option);
+      } else if (value.contains(query)) {
+        rest.add(option);
+      }
+    }
+    int byText(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+    starts.sort(byText);
+    rest.sort(byText);
+    return [...starts, ...rest];
+  }
+
+  void _select(String value) {
+    widget.controller.text = value;
+    widget.onChanged?.call(value);
+    setState(() => _showList = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final matches = _showList ? _matches : const <String>[];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (label != null) ...[
-          Text(label!,
+        if (widget.label != null) ...[
+          Text(widget.label!,
               style: const TextStyle(fontSize: 13, color: kMuted)),
           const SizedBox(height: 6),
         ],
         TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          onChanged: onChanged,
+          controller: widget.controller,
+          focusNode: _focus,
+          keyboardType: widget.keyboardType,
+          onChanged: (value) {
+            widget.onChanged?.call(value);
+            setState(() {
+              _query = value;
+              _showList = true;
+            });
+          },
           decoration: InputDecoration(
-            hintText: hint,
+            hintText: widget.hint,
             suffixIcon: IconButton(
-              tooltip: 'Search $pickTitle',
+              tooltip: 'Browse ${widget.pickTitle}',
               icon: const Icon(Icons.search, size: 20),
               onPressed: () async {
                 final picked = await showPickFromList(
                   context: context,
-                  title: pickTitle,
-                  options: options,
-                  selected: controller.text,
+                  title: widget.pickTitle,
+                  options: widget.options,
+                  selected: widget.controller.text,
                 );
-                if (picked != null) {
-                  controller.text = picked;
-                  onChanged?.call(picked);
+                if (picked != null && mounted) {
+                  widget.controller.text = picked;
+                  widget.onChanged?.call(picked);
+                  setState(() => _showList = false);
                 }
               },
             ),
           ),
         ),
+        if (matches.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: AppCard(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 240),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final option in matches)
+                        InkWell(
+                          onTap: () => _select(option),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(option,
+                                      style: const TextStyle(fontSize: 14)),
+                                ),
+                                Icon(Icons.north_west, size: 14, color: kHint),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

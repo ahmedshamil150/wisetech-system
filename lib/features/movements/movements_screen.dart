@@ -19,11 +19,42 @@ const _filters = ['All', 'Workshop', 'Dealer', 'Customer'];
 class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _filter = 'All';
   String _query = '';
+  String _party = 'All'; // customer or dealer name, or 'All'
+  String _actor = 'All'; // who sent it, or 'All'
+  String _kind = 'All'; // Machine / Probe / Printer / Part, or 'All'
+  DateTime? _date;
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  bool get _hasFilters =>
+      _party != 'All' ||
+      _actor != 'All' ||
+      _kind != 'All' ||
+      _date != null ||
+      _query.isNotEmpty;
+
+  void _clearFilters() {
+    _search.clear();
+    setState(() {
+      _party = 'All';
+      _actor = 'All';
+      _kind = 'All';
+      _date = null;
+      _query = '';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final movements = ref.watch(movementsProvider);
     final labels = ref.watch(itemLabelsProvider);
+    final rows = movements.maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
 
     return Column(
       children: [
@@ -40,7 +71,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               return ChoiceChip(
                 label: Text(label),
                 selected: selected,
-                onSelected: (_) => setState(() => _filter = label),
+                onSelected: (_) => setState(() {
+                  _filter = label;
+                  _party = 'All';
+                }),
                 selectedColor: Theme.of(context).colorScheme.primary,
                 labelStyle: TextStyle(
                   color: selected ? Colors.white : kMuted,
@@ -53,9 +87,89 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             },
           ),
         ),
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            children: [
+              if (_filter == 'Customer' || _filter == 'Dealer')
+                _menuChip(
+                  icon: Icons.person_outline,
+                  label: _party == 'All'
+                      ? (_filter == 'Customer' ? 'Any customer' : 'Any dealer')
+                      : _party,
+                  active: _party != 'All',
+                  entries: [
+                    _menuOption('All',
+                        _filter == 'Customer' ? 'Any customer' : 'Any dealer',
+                        selected: _party == 'All'),
+                    for (final name in _partyOptions(rows))
+                      _menuOption(name, name, selected: _party == name),
+                  ],
+                  onSelected: (value) => setState(() => _party = value),
+                ),
+              _menuChip(
+                icon: Icons.supervisor_account_outlined,
+                label: _actor == 'All' ? 'Anyone' : _actor,
+                active: _actor != 'All',
+                entries: [
+                  _menuOption('All', 'Anyone', selected: _actor == 'All'),
+                  for (final name in _actorOptions(rows))
+                    _menuOption(name, name, selected: _actor == name),
+                ],
+                onSelected: (value) => setState(() => _actor = value),
+              ),
+              _menuChip(
+                icon: Icons.category_outlined,
+                label: _kind == 'All' ? 'Any item' : _kind,
+                active: _kind != 'All',
+                entries: [
+                  _menuOption('All', 'Any item', selected: _kind == 'All'),
+                  for (final kind in _kindOptions(rows))
+                    _menuOption(kind, '${kind}s', selected: _kind == kind),
+                ],
+                onSelected: (value) => setState(() => _kind = value),
+              ),
+              _dateChip(rows),
+              if (_hasFilters)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: _clearFilters,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFB3261E).withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(20),
+                        border:
+                            Border.all(color: const Color(0xFFF1D9D7)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.close,
+                              size: 14, color: Color(0xFFB3261E)),
+                          SizedBox(width: 4),
+                          Text('Reset',
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFB3261E))),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: SearchField(
+            controller: _search,
             hint: 'Search by item, location or reference',
             onChanged: (value) =>
                 setState(() => _query = value.trim().toLowerCase()),
@@ -67,15 +181,13 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             error: (error, _) => EmptyState(
                 icon: Icons.error_outline, message: errorMessage(error)),
             data: (rows) {
-              final byKind = rows.where((row) {
-                final kind = (row['movement_type'] ?? '').toString();
-                return _filter == 'All' || kind == _filter;
-              }).toList();
+              final filtered =
+                  rows.where((row) => _passes(row)).toList();
 
               // rows that travelled together (same invoice) stay in one card
               final entries = <List<Map<String, dynamic>>>[];
               final groups = <String, List<Map<String, dynamic>>>{};
-              for (final row in byKind) {
+              for (final row in filtered) {
                 final group = (row['group_ref'] ?? '').toString();
                 if (group.isEmpty) {
                   entries.add([row]);
@@ -88,31 +200,45 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 }
               }
 
-              bool matches(Map<String, dynamic> row) {
-                if (_query.isEmpty) return true;
-                final label = _labelFor(row, labels).toLowerCase();
-                final to = (row['to_location'] ?? '').toString().toLowerCase();
-                final refNumber =
-                    (row['reference'] ?? '').toString().toLowerCase();
-                return label.contains(_query) ||
-                    to.contains(_query) ||
-                    refNumber.contains(_query);
-              }
-
-              final visible = entries.where((e) => e.any(matches)).toList();
+              // a search hit keeps the whole kit together
+              final visible = entries
+                  .where((members) =>
+                      _query.isEmpty ||
+                      members.any((row) => _searchMatches(row, labels)))
+                  .toList();
               if (visible.isEmpty) {
-                return const EmptyState(
+                return EmptyState(
                     icon: Icons.alt_route_outlined,
-                    message: 'No movements recorded yet.');
+                    message: _hasFilters
+                        ? 'No movements match these filters.'
+                        : 'No movements recorded yet.');
               }
               for (final members in visible) {
                 members.sort(_mainItemFirst);
               }
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: visible.length,
-                itemBuilder: (context, index) =>
-                    _tile(context, visible[index], labels),
+              final shown =
+                  visible.fold<int>(0, (sum, members) => sum + members.length);
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                          '$shown movement${shown == 1 ? '' : 's'}',
+                          style: const TextStyle(
+                              fontSize: 12.5, color: kMuted)),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      itemCount: visible.length,
+                      itemBuilder: (context, index) =>
+                          _tile(context, visible[index], labels),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -135,6 +261,200 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         ),
       ],
     );
+  }
+
+  // -----------------------------------------------------------------------
+  // filters
+  // -----------------------------------------------------------------------
+
+  bool _passes(Map<String, dynamic> row) {
+    final kind = (row['movement_type'] ?? '').toString();
+    if (_filter != 'All' && kind != _filter) return false;
+    if (_party != 'All' &&
+        (row['to_location'] ?? '').toString() != _party) {
+      return false;
+    }
+    if (_actor != 'All' && _actorOf(row) != _actor) return false;
+    if (_kind != 'All' && _kindOf(row) != _kind) return false;
+    if (_date != null &&
+        (row['movement_date'] ?? '').toString() != DateField.format(_date!)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _searchMatches(Map<String, dynamic> row, Map<String, String> labels) {
+    if (_query.isEmpty) return true;
+    final label = _labelFor(row, labels).toLowerCase();
+    final to = (row['to_location'] ?? '').toString().toLowerCase();
+    final refNumber = (row['reference'] ?? '').toString().toLowerCase();
+    return label.contains(_query) ||
+        to.contains(_query) ||
+        refNumber.contains(_query);
+  }
+
+  String _actorOf(Map<String, dynamic> row) {
+    final actor = row['profiles'];
+    return actor is Map
+        ? ((actor['display_name'] ?? actor['username'] ?? '').toString())
+        : '';
+  }
+
+  String _kindOf(Map<String, dynamic> row) => switch (_rankOf(row)) {
+        0 => 'Machine',
+        1 => 'Printer',
+        2 => 'Probe',
+        3 => 'Part',
+        _ => 'Other',
+      };
+
+  List<String> _partyOptions(List<Map<String, dynamic>> rows) {
+    final names = <String>{};
+    for (final row in rows) {
+      if ((row['movement_type'] ?? '').toString() != _filter) continue;
+      final name = (row['to_location'] ?? '').toString();
+      if (name.isNotEmpty) names.add(name);
+    }
+    return names.toList()..sort(_byText);
+  }
+
+  List<String> _actorOptions(List<Map<String, dynamic>> rows) {
+    final names = <String>{};
+    for (final row in rows) {
+      final name = _actorOf(row);
+      if (name.isNotEmpty) names.add(name);
+    }
+    return names.toList()..sort(_byText);
+  }
+
+  List<String> _kindOptions(List<Map<String, dynamic>> rows) {
+    final present = rows.map(_kindOf).toSet();
+    return [
+      for (final kind in ['Machine', 'Printer', 'Probe', 'Part', 'Other'])
+        if (present.contains(kind)) kind,
+    ];
+  }
+
+  List<String> _dateOptions(List<Map<String, dynamic>> rows) {
+    final dates = <String, DateTime>{};
+    for (final row in rows) {
+      final text = (row['movement_date'] ?? '').toString();
+      final parsed = _parseDateText(text);
+      if (parsed != null) dates[text] = parsed;
+    }
+    final list = dates.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return [for (final entry in list.take(12)) entry.key];
+  }
+
+  Widget _menuChip({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required List<PopupMenuEntry<String>> entries,
+    required ValueChanged<String> onSelected,
+  }) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final color = active ? primary : kMuted;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: PopupMenuButton<String>(
+        onSelected: onSelected,
+        itemBuilder: (context) => entries,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: active ? primary.withValues(alpha: 0.10) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border:
+                Border.all(color: active ? primary : const Color(0xFFE2E9F0)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 150),
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: color)),
+              ),
+              Icon(Icons.arrow_drop_down, size: 16, color: color),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _menuOption(String value, String text,
+      {bool selected = false}) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          if (selected) ...[
+            Icon(Icons.check, size: 16, color: primary),
+            const SizedBox(width: 8),
+          ] else
+            const SizedBox(width: 24),
+          Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+    );
+  }
+
+  Widget _dateChip(List<Map<String, dynamic>> rows) {
+    final active = _date != null;
+    return _menuChip(
+      icon: Icons.calendar_today_outlined,
+      label: active ? DateField.format(_date!) : 'Any date',
+      active: active,
+      entries: [
+        _menuOption('__any', 'Any date', selected: !active),
+        _menuOption('__pick', 'Pick a date…'),
+        for (final text in _dateOptions(rows))
+          _menuOption(text, text,
+              selected: active && text == DateField.format(_date!)),
+      ],
+      onSelected: (value) {
+        if (value == '__any') {
+          setState(() => _date = null);
+        } else if (value == '__pick') {
+          _pickDate();
+        } else {
+          setState(() => _date = _parseDateText(value));
+        }
+      },
+    );
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date ?? DateTime.now(),
+      firstDate: DateTime(2015),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null && mounted) {
+      setState(() => _date = picked);
+    }
+  }
+
+  static DateTime? _parseDateText(String text) {
+    final parts = text.split('-');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    return DateTime(year, month, day);
   }
 
   String _labelFor(Map<String, dynamic> row, Map<String, String> labels) {
@@ -217,6 +537,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return null;
   }
 }
+
+int _byText(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
 
 /// Within one group the machine comes first, then its printer and probes,
 /// then the loose parts.
