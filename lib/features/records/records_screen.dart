@@ -101,7 +101,8 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
   }
 }
 
-Future<void> showRecordForm(BuildContext context, String kind) {
+Future<void> showRecordForm(BuildContext context, String kind,
+    {Map<String, dynamic>? editRow}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -112,7 +113,7 @@ Future<void> showRecordForm(BuildContext context, String kind) {
           ? const _BatchForm()
           : kind == 'box'
               ? const _BoxForm()
-              : _RecordForm(kind: kind),
+              : _RecordForm(kind: kind, editRow: editRow),
     ),
   );
 }
@@ -129,6 +130,7 @@ class _ProductsPane extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final products = ref.watch(productsProvider);
+    final isAdmin = ref.watch(isAdminProvider);
     return products.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) =>
@@ -148,13 +150,16 @@ class _ProductsPane extends ConsumerWidget {
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           itemCount: filtered.length,
-          itemBuilder: (context, index) => _productTile(context, filtered[index]),
+          itemBuilder: (context, index) =>
+              _productTile(context, ref, filtered[index], isAdmin: isAdmin),
         );
       },
     );
   }
 
-  Widget _productTile(BuildContext context, Map<String, dynamic> row) {
+  Widget _productTile(BuildContext context, WidgetRef ref,
+      Map<String, dynamic> row,
+      {required bool isAdmin}) {
     final category = (row['category'] ?? 'Other').toString();
     final brand = ((row['brands'] as Map?)?['name'] ?? '').toString();
     final probeType = (row['probe_type'] ?? '').toString();
@@ -165,10 +170,12 @@ class _ProductsPane extends ConsumerWidget {
       'Part' => Icons.settings_outlined,
       _ => Icons.category_outlined,
     };
+    void openEdit() => showRecordForm(context, 'product', editRow: row);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
         child: ListTile(
+          onTap: isAdmin ? openEdit : null,
           leading: CircleAvatar(
             backgroundColor: const Color(0xFFEAF3F8),
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
@@ -180,9 +187,59 @@ class _ProductsPane extends ConsumerWidget {
             if (brand.isNotEmpty) brand,
             if (probeType.isNotEmpty) probeType,
           ].join(' · ')),
+          trailing: isAdmin
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Edit product',
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      onPressed: openEdit,
+                    ),
+                    IconButton(
+                      tooltip: 'Delete product',
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      onPressed: () => _confirmDelete(context, ref, row),
+                    ),
+                  ],
+                )
+              : null,
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref,
+      Map<String, dynamic> row) async {
+    final name = (row['name_model'] ?? '').toString();
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete $name?'),
+        content: const Text(
+            'It disappears from the product list. Items already using '
+            'it keep their model name.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await db.from('catalog_products').delete().eq('id', row['id'] as int);
+      ref.invalidate(productsProvider);
+      messenger.showSnackBar(SnackBar(content: Text('$name deleted.')));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
+    }
   }
 }
 
@@ -828,9 +885,12 @@ class _BoxFormState extends ConsumerState<_BoxForm> {
 // ---------------------------------------------------------------------------
 
 class _RecordForm extends ConsumerStatefulWidget {
-  const _RecordForm({required this.kind});
+  const _RecordForm({required this.kind, this.editRow});
 
   final String kind; // product | brand | customer | dealer
+
+  /// Existing row to edit; null means "add new".
+  final Map<String, dynamic>? editRow;
 
   @override
   ConsumerState<_RecordForm> createState() => _RecordFormState();
@@ -847,6 +907,18 @@ class _RecordFormState extends ConsumerState<_RecordForm> {
   bool _saving = false;
 
   @override
+  void initState() {
+    super.initState();
+    final row = widget.editRow;
+    if (row != null) {
+      _name.text = (row['name_model'] ?? '').toString();
+      _category = (row['category'] ?? 'Machine').toString();
+      _brand.text = ((row['brands'] as Map?)?['name'] ?? '').toString();
+      _probeType.text = (row['probe_type'] ?? '').toString();
+    }
+  }
+
+  @override
   void dispose() {
     for (final c in [_name, _phone, _city, _address, _brand, _probeType]) {
       c.dispose();
@@ -854,12 +926,15 @@ class _RecordFormState extends ConsumerState<_RecordForm> {
     super.dispose();
   }
 
-  String get _title => switch (widget.kind) {
-        'product' => 'Add product',
-        'brand' => 'Add brand',
-        'customer' => 'Add customer',
-        _ => 'Add dealer',
-      };
+  String get _title {
+    if (widget.editRow != null) return 'Edit ${widget.kind}';
+    return switch (widget.kind) {
+      'product' => 'Add product',
+      'brand' => 'Add brand',
+      'customer' => 'Add customer',
+      _ => 'Add dealer',
+    };
+  }
 
   Future<void> _save() async {
     final name = _name.text.trim();
@@ -883,12 +958,21 @@ class _RecordFormState extends ConsumerState<_RecordForm> {
           final payload = <String, dynamic>{
             'name_model': name,
             'category': _category,
+            'brand_id': brandId,
+            'probe_type': _category == 'Probe' &&
+                    _probeType.text.trim().isNotEmpty
+                ? _probeType.text.trim()
+                : null,
           };
-          if (brandId != null) payload['brand_id'] = brandId;
-          if (_category == 'Probe' && _probeType.text.trim().isNotEmpty) {
-            payload['probe_type'] = _probeType.text.trim();
+          final editId = widget.editRow?['id'];
+          if (editId != null) {
+            await db
+                .from('catalog_products')
+                .update(payload)
+                .eq('id', editId as int);
+          } else {
+            await db.from('catalog_products').insert(payload);
           }
-          await db.from('catalog_products').insert(payload);
           ref
             ..invalidate(productsProvider)
             ..invalidate(brandsProvider);
@@ -912,7 +996,8 @@ class _RecordFormState extends ConsumerState<_RecordForm> {
       }
       if (!mounted) return;
       Navigator.pop(context);
-      messenger.showSnackBar(SnackBar(content: Text('$name added.')));
+      messenger.showSnackBar(SnackBar(
+          content: Text(widget.editRow != null ? '$name saved.' : '$name added.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
