@@ -37,4 +37,22 @@ Backend settings live in `lib/core/config.dart` (Supabase URL + publishable anon
 ## Deploy
 
 - Android: `build/app/outputs/flutter-apk/app-release.apk`.
-- Web: `build/web`, deployed to Vercel.
+- Web: `web-dist/` holds the built site (see below).
+
+### Web on Vercel
+
+`web-dist/` is the committed web build and `vercel.json` points Vercel at it,
+so the repo imports with **no build settings**:
+
+1. In Vercel: *Add New... -> Project -> Import Git Repository* -> pick `wisetech-system`.
+2. Leave every setting as-is (Framework: Other, no build command, output `web-dist`) -> **Deploy**.
+
+After any code change, refresh the committed build before pushing:
+
+```powershell
+flutter build web --release
+Remove-Item web-dist -Recurse -Force
+Copy-Item build\web web-dist -Recurse
+git add -A; git commit -m "Update web build"; git push
+```
+

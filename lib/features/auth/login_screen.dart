@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/theme.dart';
 import '../../core/username.dart';
 import 'auth_controller.dart';
 
@@ -64,8 +63,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.monitor_heart_outlined,
-                      size: 56, color: kBrandBlue),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset('assets/wts-icon.png',
+                        width: 84, height: 84),
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     'WISE TECH',
@@ -79,7 +81,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Ultrasound Inventory',
+                    'WTS',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
                   ),

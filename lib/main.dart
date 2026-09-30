@@ -27,7 +27,7 @@ class UltrasoundInventoryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ultrasound Inventory',
+      title: 'WTS',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const AuthGate(),
@@ -57,14 +57,18 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.monitor_heart_outlined, size: 56, color: kBrandBlue),
-            SizedBox(height: 16),
-            CircularProgressIndicator(),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child:
+                  Image.asset('assets/wts-icon.png', width: 64, height: 64),
+            ),
+            const SizedBox(height: 16),
+            const CircularProgressIndicator(),
           ],
         ),
       ),
