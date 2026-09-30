@@ -458,12 +458,22 @@ class _ItemDetails extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // always use the freshest copy so status and location refresh
+    // right after a return
+    final all = ref.watch(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
+        );
+    final item = all.firstWhere((i) => i.key == this.item.key,
+        orElse: () => this.item);
     final history = ref
         .watch(movementsProvider)
         .maybeWhen(
             data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[])
         .where((row) => row['${item.kind}_id'] == item.id)
         .toList();
+    final canReturn =
+        history.isNotEmpty && history.first['movement_type'] != 'Return';
     final linked = ref.watch(inventoryProvider).maybeWhen(
           data: (rows) => linkedItems(rows, item),
           orElse: () => const <InventoryItem>[],
@@ -505,6 +515,14 @@ class _ItemDetails extends ConsumerWidget {
             ],
           ),
         ),
+        if (canReturn) ...[
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: () => _returnToInventory(context, ref),
+            icon: const Icon(Icons.undo_outlined, size: 20),
+            label: const Text('Return to inventory'),
+          ),
+        ],
         if (linked.isNotEmpty) ...[
           const SizedBox(height: 16),
           const Text('Linked items',
@@ -546,14 +564,28 @@ class _ItemDetails extends ConsumerWidget {
                 for (final row in history)
                   ListTile(
                     dense: true,
-                    title: Text('${row['to_location'] ?? ''}',
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text([
-                      row['movement_date'] ?? '',
-                      row['movement_type'] ?? '',
-                      if (((row['reference'] ?? '') as String).isNotEmpty)
-                        row['reference'],
-                    ].join(' · ')),
+                    leading: Icon(_historyIcon('${row['movement_type']}'),
+                        size: 20,
+                        color: row['movement_type'] == 'Return'
+                            ? const Color(0xFF2E7D32)
+                            : Theme.of(context).colorScheme.primary),
+                    title: Text(_historyTitle(row),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13.5)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_historyMeta(row),
+                            style: const TextStyle(
+                                fontSize: 12, color: kMuted)),
+                        if ('${row['notes'] ?? ''}'.trim().isNotEmpty)
+                          Text('${row['notes']}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12, color: kHint)),
+                      ],
+                    ),
                   ),
               ],
             ),
@@ -561,6 +593,74 @@ class _ItemDetails extends ConsumerWidget {
       ],
     );
   }
+
+  /// Confirm dialog, then the RPC does status, location and history in one
+  /// call. The sheet stays open and refreshes by itself.
+  Future<void> _returnToInventory(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Return to inventory?'),
+        content: Text(
+            '${item.code} will go back to stock and a Return movement '
+            'will be recorded in its history.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Return'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await returnToInventory(item);
+      ref
+        ..invalidate(movementsProvider)
+        ..invalidate(inventoryProvider);
+      if (context.mounted) {
+        showSnack(context, '${item.code} is back in inventory.');
+      }
+    } catch (error) {
+      if (context.mounted) showSnack(context, errorMessage(error), error: true);
+    }
+  }
+}
+
+IconData _historyIcon(String type) => switch (type) {
+      'Return' => Icons.undo_outlined,
+      'Workshop' => Icons.build_outlined,
+      'Dealer' => Icons.handshake_outlined,
+      _ => Icons.person_outline,
+    };
+
+/// "Sent to X" / "Sold to X" / "Returned to X".
+String _historyTitle(Map<String, dynamic> row) {
+  final to = (row['to_location'] ?? '').toString();
+  final type = (row['movement_type'] ?? '').toString();
+  if (type == 'Return') return 'Returned to $to';
+  if ('${row['reason'] ?? ''}'.contains('Sold')) return 'Sold to $to';
+  return 'Sent to $to';
+}
+
+/// Date · type · Demo · who did it · reference.
+String _historyMeta(Map<String, dynamic> row) {
+  final actor = row['profiles'];
+  final actorName = actor is Map
+      ? ((actor['display_name'] ?? actor['username'] ?? '').toString())
+      : '';
+  final reference = (row['reference'] ?? '').toString();
+  return [
+    row['movement_date'] ?? '',
+    row['movement_type'] ?? '',
+    if (row['is_demo'] == true) 'Demo',
+    if (actorName.isNotEmpty) 'by $actorName',
+    if (reference.isNotEmpty) reference,
+  ].join(' · ');
 }
 
 // ---------------------------------------------------------------------------

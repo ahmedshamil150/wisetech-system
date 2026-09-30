@@ -34,12 +34,15 @@ def main():
     if not path.exists():
         sys.exit(f'not found: {path}')
     import psycopg2
-    sql = path.read_text(encoding='utf-8')
+    sql = path.read_text(encoding='utf-8-sig')
     conn = psycopg2.connect(**dsn_from_env())
     try:
         with conn:
             with conn.cursor() as cur:
                 cur.execute(sql)
+                if cur.description:
+                    for row in cur.fetchall():
+                        print(row)
         print(f'applied {path}')
     finally:
         conn.close()

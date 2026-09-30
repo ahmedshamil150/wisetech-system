@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import '../inventory/inventory_screen.dart';
 
 /// Every recorded move, newest first.
 /// Both admins and viewers can record a movement; only admins can edit data.
@@ -478,6 +479,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         ? ((actor['display_name'] ?? actor['username'] ?? '').toString())
         : '';
     final reference = (row['reference'] ?? '').toString();
+    final isDemo = row['is_demo'] == true;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -499,33 +501,69 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   Text([
                     row['movement_date'] ?? '',
                     kind,
+                    if (isDemo) 'Demo',
                     if (actorName.isNotEmpty) 'by $actorName',
                     if (reference.isNotEmpty) reference,
                   ].join(' · ')),
                 ],
               ),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: kHint),
+              onTap: () => _openItem(rows.first),
             ),
             for (final other in rows.skip(1))
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.subdirectory_arrow_right,
-                        size: 16, color: kHint),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(_labelFor(other, labels),
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              const TextStyle(fontSize: 13, color: kMuted)),
-                    ),
-                  ],
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _openItem(other),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.subdirectory_arrow_right,
+                          size: 16, color: kHint),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(_labelFor(other, labels),
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontSize: 13, color: kMuted)),
+                      ),
+                      if (other['is_demo'] == true)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 6),
+                          child: Text('Demo',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: kHint)),
+                        ),
+                    ],
+                  ),
                 ),
               ),
           ],
         ),
       ),
     );
+  }
+
+  /// Opens the same details sheet the inventory list uses — tappable from
+  /// every movement, in every tab.
+  void _openItem(Map<String, dynamic> row) {
+    final key = _itemKey(row);
+    if (key == null) return;
+    final items = ref.read(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
+        );
+    for (final item in items) {
+      if (item.key == '${key.key}:${key.value}') {
+        showItemDetails(context, ref, item);
+        return;
+      }
+    }
+    showSnack(context, 'This item is no longer in the inventory.',
+        error: true);
   }
 
   /// `machine:12` style key used by [itemLabelsProvider].
@@ -572,6 +610,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
   /// default — add or remove items before recording the movement.
   final List<InventoryItem> _selection = [];
   String _kind = 'Workshop';
+  bool _demo = false;
   final _target = TextEditingController();
   final _date = TextEditingController();
   final _notes = TextEditingController();
@@ -650,6 +689,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
           ...destination,
           if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
           if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
+          'p_demo': _demo,
         });
       }
 
@@ -663,7 +703,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
           : _target.text.trim();
       messenger.showSnackBar(SnackBar(
           content: Text(
-              '${_selection.length} item(s) sent to $where.')));
+              '${_selection.length} item(s) sent to $where'
+              '${_demo ? ' (demo)' : ''}.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -779,8 +820,42 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     onSelectionChanged: (value) => setState(() {
                       _kind = value.first;
                       _target.clear();
+                      _demo = false;
                     }),
                   ),
+                  if (_kind != 'Workshop') ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: _demo
+                            ? Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.07)
+                            : const Color(0xFFF6F9FC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: _demo
+                                ? Theme.of(context).colorScheme.primary
+                                : const Color(0xFFE2E9F0)),
+                      ),
+                      child: SwitchListTile.adaptive(
+                        value: _demo,
+                        onChanged: (value) =>
+                            setState(() => _demo = value),
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 2),
+                        title: const Text('Send as demo',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 14)),
+                        subtitle: const Text(
+                            'Stays company stock — record a return when '
+                            'it comes back',
+                            style: TextStyle(fontSize: 12, color: kMuted)),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   if (_kind == 'Workshop')
                     const AppCard(

@@ -281,8 +281,8 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
-        'reason, notes, reference, created_at, machine_id, probe_id, printer_id, '
-        'part_id, dealers(name), customers(name), workshops(name), '
+        'reason, notes, reference, is_demo, created_at, machine_id, probe_id, '
+        'printer_id, part_id, dealers(name), customers(name), workshops(name), '
         'profiles(display_name, username)',
       )
       .order('id', ascending: false);
@@ -293,6 +293,15 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
   });
   return rows;
 });
+
+/// Puts an item back into stock from wherever it is: status and location
+/// are restored and a 'Return' movement records when it came back.
+Future<int> returnToInventory(InventoryItem item) async {
+  return await _db.rpc('return_to_inventory', params: {
+    'p_item_type': item.kind,
+    'p_item_id': item.id,
+  }) as int;
+}
 
 /// Repairs: every member can view and update them (see 0005_repairs.sql).
 final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
