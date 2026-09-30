@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import '../inventory/inventory_screen.dart';
 
 /// Reference data: products, brands, customers, dealers and batches.
 /// Admins can add records here; viewers can only read them.
@@ -462,7 +463,8 @@ class _BoxesPane extends ConsumerWidget {
                           icon: const Icon(Icons.delete_outline, size: 20),
                           onPressed: () => _confirmDelete(context, ref, row),
                         )
-                      : null,
+                      : const Icon(Icons.chevron_right, size: 20),
+                  onTap: () => showBoxSheet(context, ref, row),
                 ),
               ),
             );

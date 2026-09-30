@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 const Color kMuted = Color(0xFF5B6B7B);
@@ -228,22 +230,35 @@ class _PickyFieldState extends State<PickyField> {
   final _focus = FocusNode();
   String _query = '';
   bool _showList = false;
+  Timer? _hideTimer;
 
   @override
   void initState() {
     super.initState();
     _query = widget.controller.text;
     _focus.addListener(() {
-      if (!_focus.hasFocus && mounted) {
-        setState(() => _showList = false);
-      }
+      if (!_focus.hasFocus && mounted) _hideListSoon();
     });
   }
 
   @override
   void dispose() {
+    _hideTimer?.cancel();
     _focus.dispose();
     super.dispose();
+  }
+
+  /// Hiding on focus loss must not race an in-flight tap: on desktop, web
+  /// and stylus input the field unfocuses on pointer-DOWN, which would
+  /// unmount the suggestions before the tap's pointer-up and the click
+  /// would be lost. Defer the hide so the tap can complete first.
+  void _hideListSoon() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted && !_focus.hasFocus && _showList) {
+        setState(() => _showList = false);
+      }
+    });
   }
 
   /// "starts with" matches first (like a search box), then the rest,
@@ -268,7 +283,11 @@ class _PickyFieldState extends State<PickyField> {
   }
 
   void _select(String value) {
-    widget.controller.text = value;
+    _hideTimer?.cancel();
+    widget.controller.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
     widget.onChanged?.call(value);
     setState(() => _showList = false);
   }

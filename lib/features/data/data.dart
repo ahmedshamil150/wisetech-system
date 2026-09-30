@@ -281,9 +281,9 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
-        'reason, notes, reference, is_demo, created_at, machine_id, probe_id, '
-        'printer_id, part_id, dealers(name), customers(name), workshops(name), '
-        'profiles(display_name, username)',
+        'reason, notes, reference, is_demo, created_at, actor_id, machine_id, '
+        'probe_id, printer_id, part_id, dealers(name), customers(name), '
+        'workshops(name), profiles(display_name, username)',
       )
       .order('id', ascending: false);
   rows.sort((a, b) {
@@ -301,6 +301,29 @@ Future<int> returnToInventory(InventoryItem item) async {
     'p_item_type': item.kind,
     'p_item_id': item.id,
   }) as int;
+}
+
+/// True when a dealer/customer send was recorded without its name —
+/// the name can be added later (see 0010_optional_movement_party.sql).
+bool movementPartyMissing(Map<String, dynamic> row) {
+  final kind = row['movement_type'];
+  if (kind == 'Dealer') return row['dealers'] == null;
+  if (kind == 'Customer') return row['customers'] == null;
+  return false;
+}
+
+/// Fills in the dealer/customer name of a movement that was recorded
+/// without one — only the sender or an admin may (enforced by the RPC).
+Future<void> setMovementParty(
+  int movementId, {
+  int? dealerId,
+  int? customerId,
+}) async {
+  await _db.rpc('set_movement_party', params: {
+    'p_movement_id': movementId,
+    'p_dealer_id': ?dealerId,
+    'p_customer_id': ?customerId,
+  });
 }
 
 /// Repairs: every member can view and update them (see 0005_repairs.sql).

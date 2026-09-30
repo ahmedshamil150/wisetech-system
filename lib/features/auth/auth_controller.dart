@@ -60,7 +60,13 @@ final authStateProvider = StreamProvider<AuthState>(
 );
 
 final profileProvider = FutureProvider<Map<String, dynamic>?>(
-  (ref) => ref.read(authControllerProvider).fetchProfile(),
+  (ref) {
+    // Re-fetch on every auth event so switching users (logout + login as a
+    // different account) shows the new account's profile instead of the
+    // cached one from the previous session.
+    ref.watch(authStateProvider);
+    return ref.read(authControllerProvider).fetchProfile();
+  },
 );
 
 /// `true` only for admin accounts. Viewers are read-only everywhere except

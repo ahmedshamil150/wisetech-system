@@ -300,25 +300,116 @@ Future<void> showBoxSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (sheetContext) => SizedBox(
-      height: MediaQuery.of(sheetContext).size.height * 0.75,
-      child: _BoxSheet(box: box),
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+      child: SizedBox(
+        height: MediaQuery.of(sheetContext).size.height * 0.75,
+        child: _BoxSheet(box: box),
+      ),
     ),
   );
 }
 
-class _BoxSheet extends ConsumerWidget {
+class _BoxSheet extends ConsumerStatefulWidget {
   const _BoxSheet({required this.box});
 
   final Map<String, dynamic> box;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BoxSheet> createState() => _BoxSheetState();
+}
+
+class _BoxSheetState extends ConsumerState<_BoxSheet> {
+  bool _adding = false;
+  bool _loadingId = true;
+  bool _saving = false;
+  String? _id;
+  final _model = TextEditingController();
+  final _serial = TextEditingController();
+
+  @override
+  void dispose() {
+    _model.dispose();
+    _serial.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadId() async {
+    setState(() => _loadingId = true);
+    try {
+      final id = await suggestedId('probe');
+      if (mounted) setState(() => _id = id);
+    } catch (_) {
+      if (mounted) setState(() => _id = null);
+    } finally {
+      if (mounted) setState(() => _loadingId = false);
+    }
+  }
+
+  /// Creates a brand-new probe straight into this box — for stock that
+  /// is not in the inventory yet.
+  Future<void> _createProbe() async {
+    final model = _model.text.trim();
+    if (model.isEmpty) {
+      showSnack(context, 'Model is required.', error: true);
+      return;
+    }
+    if (_id == null || _id!.isEmpty) {
+      showSnack(context, 'The ID could not be generated.', error: true);
+      return;
+    }
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final type = (widget.box['probe_type'] ?? '').toString();
+      final productId = await resolveReferenceId(
+        table: 'catalog_products',
+        name: model,
+        payload: {
+          'category': 'Probe',
+          if (type.isNotEmpty) 'probe_type': type,
+        },
+      );
+      await db.from('probes').insert({
+        'internal_id': _id,
+        'model': model,
+        'catalog_product_id': productId,
+        'status': 'Available',
+        'current_location': (widget.box['name'] ?? '').toString(),
+        'box_id': widget.box['id'],
+        if (_serial.text.trim().isNotEmpty)
+          'serial_number': _serial.text.trim(),
+      });
+      ref.invalidate(inventoryProvider);
+      if (!mounted) return;
+      setState(() {
+        _adding = false;
+        _saving = false;
+        _model.clear();
+        _serial.clear();
+      });
+      messenger.showSnackBar(SnackBar(
+          content: Text('$_id added to ${widget.box['name']}.')));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isAdmin = ref.watch(isAdminProvider);
     final items = ref.watch(inventoryProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
+    final productNames = ref.watch(productsProvider).maybeWhen(
+          data: (rows) => rows.map((r) => r['name_model'].toString()).toList(),
+          orElse: () => const <String>[],
+        );
+    final box = widget.box;
     final type = (box['probe_type'] ?? '').toString();
     final inBox = items
         .where((item) => item.kind == 'probe' && item.boxId == box['id'])
@@ -432,6 +523,84 @@ class _BoxSheet extends ConsumerWidget {
                   'No $type probe is free to box right now.',
                   style: const TextStyle(color: kMuted, fontSize: 12.5)),
             ),
+          const SizedBox(height: 8),
+          if (!_adding)
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() => _adding = true);
+                _loadId();
+              },
+              icon: const Icon(Icons.add_circle_outline, size: 18),
+              label: const Text('New probe (not in stock yet)'),
+            )
+          else ...[
+            AppCard(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('New ${type.isEmpty ? 'probe' : type} probe',
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 10),
+                  PickyField(
+                    controller: _model,
+                    label: 'Model *',
+                    hint: 'Start typing — suggestions appear',
+                    options: productNames,
+                    pickTitle: 'models',
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _serial,
+                    decoration: const InputDecoration(
+                        labelText: 'Serial number (optional)'),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.lock_outline, size: 16, color: kHint),
+                      const SizedBox(width: 6),
+                      Text(
+                        _loadingId
+                            ? 'Generating ID…'
+                            : 'ID: ${_id ?? 'not available'}',
+                        style:
+                            const TextStyle(fontSize: 13, color: kMuted),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() => _adding = false),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed:
+                              _saving || _loadingId ? null : _createProbe,
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Text('Create'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ],
     );

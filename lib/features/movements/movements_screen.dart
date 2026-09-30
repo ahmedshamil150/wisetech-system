@@ -1,6 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../auth/auth_controller.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
@@ -481,6 +484,13 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final reference = (row['reference'] ?? '').toString();
     final isDemo = row['is_demo'] == true;
 
+    // dealer/customer sends recorded without their name can get it later
+    final myId = ref.read(authControllerProvider).currentUser?.id;
+    final isAdmin = ref.read(isAdminProvider);
+    final missing = rows.where(movementPartyMissing).toList();
+    final canFixParty = missing.isNotEmpty &&
+        (isAdmin || missing.any((r) => r['actor_id'] == myId));
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
@@ -510,6 +520,19 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               trailing: const Icon(Icons.chevron_right, size: 20, color: kHint),
               onTap: () => _openItem(rows.first),
             ),
+            if (canFixParty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => showAddPartySheet(context, ref, rows),
+                    icon: const Icon(Icons.edit_note, size: 18),
+                    label: Text(
+                        'Add the ${kind.toLowerCase()} name'),
+                  ),
+                ),
+              ),
             for (final other in rows.skip(1))
               InkWell(
                 borderRadius: BorderRadius.circular(8),
@@ -673,13 +696,19 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
+      // the name is optional: an unnamed send lands on 'Dealer' /
+      // 'Customer' and the name can be added later
+      final target = _target.text.trim();
       final destination = <String, dynamic>{};
-      if (_kind == 'Dealer') {
-        destination['p_dealer_id'] = await _idFor('dealers', _target.text.trim());
-      } else if (_kind == 'Customer') {
-        destination['p_customer_id'] =
-            await _idFor('customers', _target.text.trim());
+      if (_kind == 'Dealer' && target.isNotEmpty) {
+        destination['p_dealer_id'] = await _idFor('dealers', target);
+      } else if (_kind == 'Customer' && target.isNotEmpty) {
+        destination['p_customer_id'] = await _idFor('customers', target);
       }
+
+      // one group for the whole send: one card in the list, one name
+      // to add later
+      final groupRef = _newGroupRef();
 
       for (final item in _selection) {
         await db.rpc('create_movement', params: {
@@ -690,6 +719,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
           if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
           if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
           'p_demo': _demo,
+          'p_group_ref': groupRef,
         });
       }
 
@@ -700,16 +730,27 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       Navigator.pop(context);
       final where = _kind == 'Workshop'
           ? 'the workshop'
-          : _target.text.trim();
+          : target.isEmpty
+              ? (_kind == 'Dealer' ? 'a dealer' : 'a customer')
+              : target;
+      final pending =
+          target.isEmpty && _kind != 'Workshop' ? ' — add the name later' : '';
       messenger.showSnackBar(SnackBar(
           content: Text(
-              '${_selection.length} item(s) sent to $where'
+              '${_selection.length} item(s) sent to $where$pending'
               '${_demo ? ' (demo)' : ''}.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
       showSnack(context, errorMessage(error), error: true);
     }
+  }
+
+  /// One group per save loop, so every item of this send travels together.
+  String _newGroupRef() {
+    final time = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    final salt = Random.secure().nextInt(0xFFFFFF).toRadixString(16);
+    return '$time$salt';
   }
 
   @override
@@ -866,16 +907,17 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                   else if (_kind == 'Dealer')
                     PickyField(
                       controller: _target,
-                      label: 'Dealer *',
-                      hint: 'Search dealers',
+                      label: 'Dealer',
+                      hint: 'Optional — search dealers or add the name later',
                       options: dealerNames,
                       pickTitle: 'dealers',
                     )
                   else
                     PickyField(
                       controller: _target,
-                      label: 'Customer *',
-                      hint: 'Search customers',
+                      label: 'Customer',
+                      hint:
+                          'Optional — search customers or add the name later',
                       options: customerNames,
                       pickTitle: 'customers',
                     ),
@@ -905,4 +947,183 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       ),
     );
   }
+}
+
+/// Fills in the dealer/customer name of sends that were recorded without
+/// one (0010_optional_movement_party.sql). One tap names a whole send —
+/// every row that shares its group. Used by the movement cards and by
+/// the dashboard's "add now" alert.
+Future<void> showAddPartySheet(
+  BuildContext context,
+  WidgetRef ref,
+  List<Map<String, dynamic>> rows,
+) async {
+  final myId = ref.read(authControllerProvider).currentUser?.id;
+  final isAdmin = ref.read(isAdminProvider);
+  final labels = ref.read(itemLabelsProvider);
+  final pending = rows
+      .where((row) =>
+          movementPartyMissing(row) && (isAdmin || row['actor_id'] == myId))
+      .toList();
+  if (pending.isEmpty) return;
+
+  // one entry per send: rows sharing a group are named in a single tap
+  final groups = <String, List<Map<String, dynamic>>>{};
+  for (final row in pending) {
+    final group = (row['group_ref'] ?? '').toString();
+    groups
+        .putIfAbsent(group.isEmpty ? row['id'].toString() : group, () => [])
+        .add(row);
+  }
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (sheetContext, setSheetState) {
+        return Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.6,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Add the missing name',
+                            style: TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.w700)),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'These sends went out without a dealer or customer '
+                    'name — pick it now and the items follow.',
+                    style: TextStyle(color: kMuted, fontSize: 13),
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    children: [
+                      for (final entry in groups.entries)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: AppCard(
+                            padding: const EdgeInsets.all(4),
+                            child: ListTile(
+                              dense: true,
+                              leading: const CircleAvatar(
+                                radius: 18,
+                                backgroundColor: Color(0xFFFFF6E5),
+                                child: Icon(Icons.person_add_alt_outlined,
+                                    size: 20, color: Color(0xFFF2B01E)),
+                              ),
+                              title: Text(
+                                _sendTitle(entry.value, labels),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700, fontSize: 14),
+                              ),
+                              subtitle: Text([
+                                '${entry.value.length} item(s)',
+                                entry.value.first['movement_date'] ?? '',
+                                entry.value.first['movement_type'] ?? '',
+                              ].join(' · ')),
+                              trailing: const Icon(Icons.chevron_right,
+                                  size: 20, color: kHint),
+                              onTap: () async {
+                                final groupRows = entry.value;
+                                final isDealer = groupRows
+                                        .first['movement_type'] ==
+                                    'Dealer';
+                                final table =
+                                    isDealer ? 'dealers' : 'customers';
+                                final options = await db
+                                    .from(table)
+                                    .select('id, name')
+                                    .order('name');
+                                if (!sheetContext.mounted) return;
+                                final picked = await showPickFromList(
+                                  context: sheetContext,
+                                  title: isDealer
+                                      ? 'Choose dealer'
+                                      : 'Choose customer',
+                                  options: [
+                                    for (final r in options)
+                                      r['name'].toString(),
+                                  ],
+                                );
+                                if (picked == null || !sheetContext.mounted) {
+                                  return;
+                                }
+                                final id = options.firstWhere(
+                                    (r) => r['name'] == picked)['id'] as int;
+                                String? failure;
+                                for (final row in groupRows) {
+                                  try {
+                                    await setMovementParty(
+                                      row['id'] as int,
+                                      dealerId: isDealer ? id : null,
+                                      customerId: isDealer ? null : id,
+                                    );
+                                  } catch (error) {
+                                    failure ??= errorMessage(error);
+                                  }
+                                }
+                                ref
+                                  ..invalidate(movementsProvider)
+                                  ..invalidate(inventoryProvider);
+                                if (!sheetContext.mounted) return;
+                                if (failure != null) {
+                                  showSnack(sheetContext, failure,
+                                      error: true);
+                                }
+                                setSheetState(() {
+                                  for (final row in groupRows) {
+                                    pending.remove(row);
+                                  }
+                                  groups.remove(entry.key);
+                                });
+                                if (pending.isEmpty) {
+                                  Navigator.pop(sheetContext);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+/// `<main item> → <destination>` for one send entry.
+String _sendTitle(List<Map<String, dynamic>> rows, Map<String, String> labels) {
+  for (final row in rows) {
+    final key = _MovementsScreenState._itemKey(row);
+    final label = key == null
+        ? null
+        : labels['${key.key}:${key.value}'];
+    if (label != null) {
+      return '$label → ${row['to_location'] ?? ''}';
+    }
+  }
+  return 'Sent to ${rows.first['to_location'] ?? ''}';
 }
