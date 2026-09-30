@@ -184,6 +184,23 @@ List<InventoryItem> kitFor(List<InventoryItem> items, InventoryItem machine) {
   return [machine, ...attachedItems(items, machine)];
 }
 
+/// Everything this item travels with: for a machine its probes and printer,
+/// for a probe or printer the machine and the rest of that kit.
+List<InventoryItem> linkedItems(List<InventoryItem> items, InventoryItem item) {
+  if (item.kind == 'machine') return attachedItems(items, item);
+  final machineId = item.assignedMachineId;
+  if (machineId == null) return const [];
+  final machines = items
+      .where((other) => other.kind == 'machine' && other.id == machineId)
+      .toList();
+  if (machines.isEmpty) return const [];
+  return [
+    machines.first,
+    ...attachedItems(items, machines.first)
+        .where((other) => other.key != item.key),
+  ];
+}
+
 final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
   const fields =
       'id, serial_number, status, current_location, acquisition_date, created_at, '
@@ -244,11 +261,17 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
   final rows = await _db
       .from('movements')
       .select(
-        'id, movement_type, movement_date, to_location, from_location, reason, '
-        'notes, reference, created_at, machine_id, probe_id, printer_id, part_id, '
-        'dealers(name), customers(name), workshops(name), profiles(display_name, username)',
+        'id, group_ref, movement_type, movement_date, to_location, from_location, '
+        'reason, notes, reference, created_at, machine_id, probe_id, printer_id, '
+        'part_id, dealers(name), customers(name), workshops(name), '
+        'profiles(display_name, username)',
       )
       .order('id', ascending: false);
+  rows.sort((a, b) {
+    final byDate = (_parseDate(b['movement_date']) ?? DateTime(0))
+        .compareTo(_parseDate(a['movement_date']) ?? DateTime(0));
+    return byDate != 0 ? byDate : (b['id'] as int).compareTo(a['id'] as int);
+  });
   return rows;
 });
 

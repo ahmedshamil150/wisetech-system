@@ -67,9 +67,28 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             error: (error, _) => EmptyState(
                 icon: Icons.error_outline, message: errorMessage(error)),
             data: (rows) {
-              final filtered = rows.where((row) {
+              final byKind = rows.where((row) {
                 final kind = (row['movement_type'] ?? '').toString();
-                if (_filter != 'All' && kind != _filter) return false;
+                return _filter == 'All' || kind == _filter;
+              }).toList();
+
+              // rows that travelled together (same invoice) stay in one card
+              final entries = <List<Map<String, dynamic>>>[];
+              final groups = <String, List<Map<String, dynamic>>>{};
+              for (final row in byKind) {
+                final group = (row['group_ref'] ?? '').toString();
+                if (group.isEmpty) {
+                  entries.add([row]);
+                } else {
+                  groups.putIfAbsent(group, () {
+                    final members = <Map<String, dynamic>>[];
+                    entries.add(members);
+                    return members;
+                  }).add(row);
+                }
+              }
+
+              bool matches(Map<String, dynamic> row) {
                 if (_query.isEmpty) return true;
                 final label = _labelFor(row, labels).toLowerCase();
                 final to = (row['to_location'] ?? '').toString().toLowerCase();
@@ -78,17 +97,22 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 return label.contains(_query) ||
                     to.contains(_query) ||
                     refNumber.contains(_query);
-              }).toList();
-              if (filtered.isEmpty) {
+              }
+
+              final visible = entries.where((e) => e.any(matches)).toList();
+              if (visible.isEmpty) {
                 return const EmptyState(
                     icon: Icons.alt_route_outlined,
                     message: 'No movements recorded yet.');
               }
+              for (final members in visible) {
+                members.sort(_mainItemFirst);
+              }
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: filtered.length,
+                itemCount: visible.length,
                 itemBuilder: (context, index) =>
-                    _tile(context, filtered[index], labels),
+                    _tile(context, visible[index], labels),
               );
             },
           ),
@@ -119,8 +143,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return labels['${key.key}:${key.value}'] ?? 'Unknown item';
   }
 
-  Widget _tile(BuildContext context, Map<String, dynamic> row,
+  Widget _tile(BuildContext context, List<Map<String, dynamic>> rows,
       Map<String, String> labels) {
+    final row = rows.first;
     final kind = (row['movement_type'] ?? '').toString();
     final icon = switch (kind) {
       'Workshop' => Icons.build_outlined,
@@ -137,25 +162,47 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
-        child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: const Color(0xFFEAF3F8),
-            child: Icon(icon, color: Theme.of(context).colorScheme.primary),
-          ),
-          title: Text('$label → ${row['to_location'] ?? ''}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 2),
-              Text([
-                row['movement_date'] ?? '',
-                kind,
-                if (actorName.isNotEmpty) 'by $actorName',
-                if (reference.isNotEmpty) reference,
-              ].join(' · ')),
-            ],
-          ),
+        child: Column(
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: const Color(0xFFEAF3F8),
+                child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+              ),
+              title: Text('$label → ${row['to_location'] ?? ''}',
+                  style:
+                      const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 2),
+                  Text([
+                    row['movement_date'] ?? '',
+                    kind,
+                    if (actorName.isNotEmpty) 'by $actorName',
+                    if (reference.isNotEmpty) reference,
+                  ].join(' · ')),
+                ],
+              ),
+            ),
+            for (final other in rows.skip(1))
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.subdirectory_arrow_right,
+                        size: 16, color: kHint),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(_labelFor(other, labels),
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              const TextStyle(fontSize: 13, color: kMuted)),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -169,6 +216,22 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     }
     return null;
   }
+}
+
+/// Within one group the machine comes first, then its printer and probes,
+/// then the loose parts.
+int _mainItemFirst(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final byRank = _rankOf(a).compareTo(_rankOf(b));
+  if (byRank != 0) return byRank;
+  return (a['id'] as int).compareTo(b['id'] as int);
+}
+
+int _rankOf(Map<String, dynamic> row) {
+  if (row['machine_id'] != null) return 0;
+  if (row['printer_id'] != null) return 1;
+  if (row['probe_id'] != null) return 2;
+  if (row['part_id'] != null) return 3;
+  return 4;
 }
 
 // ---------------------------------------------------------------------------

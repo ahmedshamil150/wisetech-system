@@ -188,12 +188,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   Widget _itemTile(BuildContext context, InventoryItem item,
       {bool indented = false}) {
-    final icon = switch (item.kind) {
-      'machine' => Icons.monitor_outlined,
-      'probe' => Icons.cable_outlined,
-      'printer' => Icons.print_outlined,
-      _ => Icons.settings_outlined,
-    };
+    final icon = _kindIcon(item.kind);
     return Padding(
       padding: EdgeInsets.only(bottom: 8, left: indented ? 32 : 0),
       child: AppCard(
@@ -233,6 +228,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 }
 
+IconData _kindIcon(String kind) => switch (kind) {
+      'machine' => Icons.monitor_outlined,
+      'probe' => Icons.cable_outlined,
+      'printer' => Icons.print_outlined,
+      _ => Icons.settings_outlined,
+    };
+
 /// Read-only sheet with everything we know about one item.
 Future<void> showItemDetails(
     BuildContext context, WidgetRef ref, InventoryItem item) {
@@ -259,6 +261,10 @@ class _ItemDetails extends ConsumerWidget {
             data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[])
         .where((row) => row['${item.kind}_id'] == item.id)
         .toList();
+    final linked = ref.watch(inventoryProvider).maybeWhen(
+          data: (rows) => linkedItems(rows, item),
+          orElse: () => const <InventoryItem>[],
+        );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -287,6 +293,32 @@ class _ItemDetails extends ConsumerWidget {
             ],
           ),
         ),
+        if (linked.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('Linked items',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          AppCard(
+            padding: const EdgeInsets.all(4),
+            child: Column(
+              children: [
+                for (final other in linked)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(_kindIcon(other.kind),
+                        size: 20, color: Theme.of(context).colorScheme.primary),
+                    title: Text('${other.code}  ${other.title}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13.5)),
+                    subtitle:
+                        Text('${other.kindLabel} · ${other.status}'),
+                    trailing: const Icon(Icons.chevron_right, size: 20),
+                    onTap: () => showItemDetails(context, ref, other),
+                  ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         const Text('Movements',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
