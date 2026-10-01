@@ -643,6 +643,7 @@ class _ItemDetails extends ConsumerWidget {
         .toList();
     final canReturn =
         history.isNotEmpty && history.first['movement_type'] != 'Return';
+    final isAdmin = ref.watch(isAdminProvider);
     final linked = ref.watch(inventoryProvider).maybeWhen(
           data: (rows) => linkedItems(rows, item),
           orElse: () => const <InventoryItem>[],
@@ -684,6 +685,41 @@ class _ItemDetails extends ConsumerWidget {
             ],
           ),
         ),
+        if (isAdmin) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (sheetContext) => Padding(
+                      padding: EdgeInsets.only(
+                          bottom: MediaQuery.of(sheetContext)
+                              .viewInsets
+                              .bottom),
+                      child: _EditItemForm(item: item),
+                    ),
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  onPressed: () => _confirmDelete(context, ref),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Delete'),
+                ),
+              ),
+            ],
+          ),
+        ],
         if (canReturn) ...[
           const SizedBox(height: 12),
           FilledButton.tonalIcon(
@@ -797,6 +833,224 @@ class _ItemDetails extends ConsumerWidget {
     } catch (error) {
       if (context.mounted) showSnack(context, errorMessage(error), error: true);
     }
+  }
+
+  /// Confirm, then hard-delete. The sheet closes; blocked deletes (still in
+  /// use by movements or linked items) surface the database's reason.
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete ${item.code}?'),
+        content: const Text(
+            'It disappears from inventory. If anything still points at it, '
+            'the app will show why it cannot be deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await db.from(_tableForKind(item.kind)).delete().eq('id', item.id);
+      ref
+        ..invalidate(inventoryProvider)
+        ..invalidate(movementsProvider);
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      messenger
+          .showSnackBar(SnackBar(content: Text('${item.code} deleted.')));
+    } catch (error) {
+      if (context.mounted) showSnack(context, errorMessage(error), error: true);
+    }
+  }
+}
+
+String _tableForKind(String kind) => switch (kind) {
+      'machine' => 'machines',
+      'probe' => 'probes',
+      'printer' => 'printers',
+      _ => 'parts',
+    };
+
+String _nameColumnForKind(String kind) =>
+    kind == 'machine' || kind == 'probe' ? 'model' : 'name_model';
+
+/// Admin edit sheet for an existing item: name, serial, status, location,
+/// notes.
+class _EditItemForm extends ConsumerStatefulWidget {
+  const _EditItemForm({required this.item});
+
+  final InventoryItem item;
+
+  @override
+  ConsumerState<_EditItemForm> createState() => _EditItemFormState();
+}
+
+class _EditItemFormState extends ConsumerState<_EditItemForm> {
+  late final TextEditingController _name;
+  late final TextEditingController _serial;
+  late final TextEditingController _location;
+  final _notes = TextEditingController();
+  late String _status;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.item;
+    _name = TextEditingController(text: item.name);
+    _serial = TextEditingController(text: item.serial ?? '');
+    _location = TextEditingController(text: item.location);
+    _status = item.status;
+    _loadNotes();
+  }
+
+  Future<void> _loadNotes() async {
+    try {
+      final rows = await db
+          .from(_tableForKind(widget.item.kind))
+          .select('notes')
+          .eq('id', widget.item.id)
+          .limit(1);
+      if (rows.isNotEmpty && mounted) {
+        _notes.text = (rows.first['notes'] ?? '').toString();
+      }
+    } catch (_) {
+      // notes stay blank; saving still works
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_name, _serial, _location, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final item = widget.item;
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      showSnack(context, 'Name is required.', error: true);
+      return;
+    }
+    final serial = _serial.text.trim();
+    final location = _location.text.trim();
+    final notes = _notes.text.trim();
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await db.from(_tableForKind(item.kind)).update({
+        _nameColumnForKind(item.kind): name,
+        'status': _status,
+        'serial_number': serial.isEmpty ? null : serial,
+        if (location.isNotEmpty) 'current_location': location,
+        'notes': notes.isEmpty ? null : notes,
+      }).eq('id', item.id);
+      ref.invalidate(inventoryProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      messenger
+          .showSnackBar(SnackBar(content: Text('${item.code} updated.')));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Edit ${item.code}',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _name,
+                    decoration: InputDecoration(
+                        labelText: '${item.kindLabel} name *'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _serial,
+                    decoration:
+                        const InputDecoration(labelText: 'Serial number'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Status',
+                      style: TextStyle(fontSize: 13, color: kMuted)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('edit-status-$_status'),
+                    initialValue: _status,
+                    items: statusOptions(item.kind)
+                        .map((s) =>
+                            DropdownMenuItem(value: s, child: Text(s)))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _status = v ?? item.status),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _location,
+                    decoration: const InputDecoration(labelText: 'Location'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notes,
+                    maxLines: 2,
+                    decoration:
+                        const InputDecoration(labelText: 'Notes (optional)'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Save changes'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
