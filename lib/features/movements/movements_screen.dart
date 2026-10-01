@@ -674,18 +674,21 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     });
   }
 
-  Future<int> _idFor(String table, String name) async {
+  /// Finds the party by name or adds it — any member may add a
+  /// customer/dealer (see 0011_party_add_and_audit.sql). Returns the id
+  /// and whether this call created the record.
+  Future<(int id, bool created)> _findOrCreate(
+      String table, String name) async {
     final rows = await db
         .from(table)
         .select('id')
         .eq('name', name)
         .order('id')
         .limit(1);
-    if (rows.isEmpty) {
-      throw Exception('${table == 'dealers' ? 'Dealer' : 'Customer'} '
-          '"$name" was not found. Add it first on the Records page.');
-    }
-    return rows.first['id'] as int;
+    if (rows.isNotEmpty) return (rows.first['id'] as int, false);
+    final inserted =
+        await db.from(table).insert({'name': name}).select('id').single();
+    return (inserted['id'] as int, true);
   }
 
   Future<void> _save() async {
@@ -697,13 +700,20 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       // the name is optional: an unnamed send lands on 'Dealer' /
-      // 'Customer' and the name can be added later
+      // 'Customer' and the name can be added later. A name typed here
+      // that is not in the records yet is added to them on save —
+      // any member may add a customer/dealer (see 0011 migration).
       final target = _target.text.trim();
       final destination = <String, dynamic>{};
+      var newParty = false;
       if (_kind == 'Dealer' && target.isNotEmpty) {
-        destination['p_dealer_id'] = await _idFor('dealers', target);
+        final (id, created) = await _findOrCreate('dealers', target);
+        destination['p_dealer_id'] = id;
+        newParty = created;
       } else if (_kind == 'Customer' && target.isNotEmpty) {
-        destination['p_customer_id'] = await _idFor('customers', target);
+        final (id, created) = await _findOrCreate('customers', target);
+        destination['p_customer_id'] = id;
+        newParty = created;
       }
 
       // one group for the whole send: one card in the list, one name
@@ -726,6 +736,11 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       ref
         ..invalidate(movementsProvider)
         ..invalidate(inventoryProvider);
+      if (newParty) {
+        ref
+          ..invalidate(_kind == 'Dealer' ? dealersProvider : customersProvider)
+          ..invalidate(recentPartiesProvider);
+      }
       if (!mounted) return;
       Navigator.pop(context);
       final where = _kind == 'Workshop'
@@ -733,11 +748,12 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
           : target.isEmpty
               ? (_kind == 'Dealer' ? 'a dealer' : 'a customer')
               : target;
+      final added = newParty ? ' — $target added to the records' : '';
       final pending =
           target.isEmpty && _kind != 'Workshop' ? ' — add the name later' : '';
       messenger.showSnackBar(SnackBar(
           content: Text(
-              '${_selection.length} item(s) sent to $where$pending'
+              '${_selection.length} item(s) sent to $where$added$pending'
               '${_demo ? ' (demo)' : ''}.')));
     } catch (error) {
       if (!mounted) return;
@@ -908,7 +924,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     PickyField(
                       controller: _target,
                       label: 'Dealer',
-                      hint: 'Optional — search dealers or add the name later',
+                      hint:
+                          'Optional — search, or type a name to add it',
                       options: dealerNames,
                       pickTitle: 'dealers',
                     )
@@ -917,7 +934,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                       controller: _target,
                       label: 'Customer',
                       hint:
-                          'Optional — search customers or add the name later',
+                          'Optional — search, or type a name to add it',
                       options: customerNames,
                       pickTitle: 'customers',
                     ),
@@ -1054,12 +1071,14 @@ Future<void> showAddPartySheet(
                                     .select('id, name')
                                     .order('name');
                                 if (!sheetContext.mounted) return;
+                                const addNew = 'Add a new name…';
                                 final picked = await showPickFromList(
                                   context: sheetContext,
                                   title: isDealer
                                       ? 'Choose dealer'
                                       : 'Choose customer',
                                   options: [
+                                    addNew,
                                     for (final r in options)
                                       r['name'].toString(),
                                   ],
@@ -1067,8 +1086,51 @@ Future<void> showAddPartySheet(
                                 if (picked == null || !sheetContext.mounted) {
                                   return;
                                 }
-                                final id = options.firstWhere(
-                                    (r) => r['name'] == picked)['id'] as int;
+                                int id;
+                                if (picked == addNew) {
+                                  // the name is not in the records yet —
+                                  // add it here (any member may)
+                                  final typed = await _askForNewName(
+                                      sheetContext,
+                                      isDealer ? 'dealer' : 'customer');
+                                  if (typed == null ||
+                                      !sheetContext.mounted) {
+                                    return;
+                                  }
+                                  try {
+                                    final found = await db
+                                        .from(table)
+                                        .select('id')
+                                        .eq('name', typed)
+                                        .order('id')
+                                        .limit(1);
+                                    if (found.isNotEmpty) {
+                                      id = found.first['id'] as int;
+                                    } else {
+                                      final inserted = await db
+                                          .from(table)
+                                          .insert({'name': typed})
+                                          .select('id')
+                                          .single();
+                                      id = inserted['id'] as int;
+                                      ref
+                                        ..invalidate(isDealer
+                                            ? dealersProvider
+                                            : customersProvider)
+                                        ..invalidate(recentPartiesProvider);
+                                    }
+                                  } catch (error) {
+                                    if (sheetContext.mounted) {
+                                      showSnack(sheetContext,
+                                          errorMessage(error),
+                                          error: true);
+                                    }
+                                    return;
+                                  }
+                                } else {
+                                  id = options.firstWhere(
+                                      (r) => r['name'] == picked)['id'] as int;
+                                }
                                 String? failure;
                                 for (final row in groupRows) {
                                   try {
@@ -1112,6 +1174,36 @@ Future<void> showAddPartySheet(
       },
     ),
   );
+}
+
+/// Small dialog for naming a send when the name is not in the records yet.
+Future<String?> _askForNewName(BuildContext context, String kind) async {
+  final controller = TextEditingController();
+  final name = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('New $kind name'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(hintText: 'Type the name'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(dialogContext, controller.text.trim()),
+          child: const Text('Add'),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  return (name == null || name.isEmpty) ? null : name;
 }
 
 /// `<main item> → <destination>` for one send entry.

@@ -1244,7 +1244,9 @@ class _RecordFormState extends ConsumerState<_RecordForm> {
             await db.from('customers')
                 .insert({'customer_type': 'Customer', ...payload});
           }
-          ref.invalidate(customersProvider);
+          ref
+            ..invalidate(customersProvider)
+            ..invalidate(recentPartiesProvider);
         default:
           final payload = {
             'name': name,
@@ -1257,7 +1259,9 @@ class _RecordFormState extends ConsumerState<_RecordForm> {
           } else {
             await db.from('dealers').insert(payload);
           }
-          ref.invalidate(dealersProvider);
+          ref
+            ..invalidate(dealersProvider)
+            ..invalidate(recentPartiesProvider);
       }
       if (!mounted) return;
       Navigator.pop(context);

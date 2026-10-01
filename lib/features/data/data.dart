@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../auth/auth_controller.dart';
+
 SupabaseClient get db => Supabase.instance.client;
 
 SupabaseClient get _db => db;
@@ -325,6 +327,39 @@ Future<void> setMovementParty(
     'p_customer_id': ?customerId,
   });
 }
+
+/// Customers and dealers added recently, newest first — admins see this
+/// on the dashboard ("who added which name"). Rows without a created_by
+/// are from the legacy import and are left out.
+final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>(
+    (ref) async {
+  if (!ref.watch(isAdminProvider)) return const <Map<String, dynamic>>[];
+  Future<List<Map<String, dynamic>>> fetch(String table, String kind) async {
+    final rows = await _db.from(table).select(
+        'id, name, created_at, created_by, '
+        'profiles:created_by(display_name, username)');
+    return [
+      for (final row in rows)
+        if (row['created_by'] != null)
+          <String, dynamic>{
+            'name': row['name'],
+            'at': row['created_at'],
+            'kind': kind,
+            'by': ((row['profiles'] as Map?)?['display_name'] ??
+                    (row['profiles'] as Map?)?['username'] ??
+                    'Someone')
+                .toString(),
+          },
+    ];
+  }
+
+  final rows = [
+    ...await fetch('customers', 'customer'),
+    ...await fetch('dealers', 'dealer'),
+  ]..sort((a, b) =>
+      (b['at'] ?? '').toString().compareTo((a['at'] ?? '').toString()));
+  return rows.take(8).toList();
+});
 
 /// Repairs: every member can view and update them (see 0005_repairs.sql).
 final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {

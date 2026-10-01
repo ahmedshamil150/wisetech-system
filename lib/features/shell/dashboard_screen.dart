@@ -54,6 +54,12 @@ class DashboardScreen extends ConsumerWidget {
           orElse: () => const <Map<String, dynamic>>[],
         );
 
+    final isAdmin = ref.watch(isAdminProvider);
+    final newPeople = ref.watch(recentPartiesProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+
     // sends recorded without a dealer/customer name — mine only
     final missingMine = movementRows
         .where((row) =>
@@ -195,6 +201,55 @@ class DashboardScreen extends ConsumerWidget {
             ),
           ),
         ],
+        if (isAdmin && newPeople.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Recently added',
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                const Text(
+                  'Customers and dealers anyone just added.',
+                  style: TextStyle(color: kMuted, fontSize: 12.5),
+                ),
+                const SizedBox(height: 6),
+                for (var i = 0; i < newPeople.length; i++) ...[
+                  if (i > 0) const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_add_alt_outlined,
+                            size: 20, color: Color(0xFFF2B01E)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${newPeople[i]['name']}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5)),
+                              Text(
+                                '${newPeople[i]['by']} added a '
+                                '${newPeople[i]['kind']} · '
+                                '${_shopDate(newPeople[i]['at'])}',
+                                style: const TextStyle(
+                                    color: kMuted, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
         if (ranking.isNotEmpty) ...[
           const SizedBox(height: 16),
           AppCard(
@@ -290,3 +345,9 @@ const _statSlots = [
   ('With dealer', Icons.handshake_outlined),
   ('In repair', Icons.handyman_outlined),
 ];
+
+/// `2026-09-28T…` → `28-09-2026` (the shop's date format).
+String _shopDate(Object? iso) {
+  final parsed = DateTime.tryParse((iso ?? '').toString());
+  return parsed == null ? '' : DateField.format(parsed);
+}
