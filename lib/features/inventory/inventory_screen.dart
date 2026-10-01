@@ -157,13 +157,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     icon: Icons.inventory_2_outlined,
                     message: 'No items match this filter.');
               }
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: entries.length,
-                itemBuilder: (context, index) => _itemTile(
-                  context,
-                  entries[index].$1,
-                  indented: entries[index].$2,
+              return AppRefresh(
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) => _itemTile(
+                    context,
+                    entries[index].$1,
+                    indented: entries[index].$2,
+                  ),
                 ),
               );
             },
@@ -214,11 +217,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               icon: Icons.inbox_outlined,
               message: 'No boxes yet. The admin adds them under Records.');
         }
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          itemCount: filtered.length,
-          itemBuilder: (context, index) {
-            final box = filtered[index];
+        return AppRefresh(
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            itemCount: filtered.length,
+            itemBuilder: (context, index) {
+              final box = filtered[index];
             final count = items
                 .where(
                     (item) => item.kind == 'probe' && item.boxId == box['id'])
@@ -239,7 +244,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ),
               ),
             );
-          },
+            },
+          ),
         );
       },
     );
@@ -371,16 +377,16 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
           if (type.isNotEmpty) 'probe_type': type,
         },
       );
-      await db.from('probes').insert({
+      final wantSerial = _serial.text.trim().isEmpty;
+      final row = await db.from('probes').insert({
         'internal_id': _id,
         'model': model,
         'catalog_product_id': productId,
         'status': 'Available',
         'current_location': (widget.box['name'] ?? '').toString(),
         'box_id': widget.box['id'],
-        if (_serial.text.trim().isNotEmpty)
-          'serial_number': _serial.text.trim(),
-      });
+        if (!wantSerial) 'serial_number': _serial.text.trim(),
+      }).select('serial_number').single();
       ref.invalidate(inventoryProvider);
       if (!mounted) return;
       setState(() {
@@ -389,8 +395,12 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
         _model.clear();
         _serial.clear();
       });
+      final serialNote = wantSerial
+          ? ' — serial ${row['serial_number']}'
+          : '';
       messenger.showSnackBar(SnackBar(
-          content: Text('$_id added to ${widget.box['name']}.')));
+          content:
+              Text('$_id added to ${widget.box['name']}$serialNote.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -554,7 +564,8 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                   TextField(
                     controller: _serial,
                     decoration: const InputDecoration(
-                        labelText: 'Serial number (optional)'),
+                        labelText: 'Serial number (optional)',
+                        hintText: 'Empty → system number (WT-…)'),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -947,6 +958,10 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
     final serial = _serial.text.trim();
     final location = _location.text.trim();
     final notes = _notes.text.trim();
+    // clearing an existing serial makes the database generate a fresh
+    // system number (0012_auto_serials.sql) — say so in the message
+    final regenerated =
+        serial.isEmpty && (item.serial ?? '').trim().isNotEmpty;
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -960,8 +975,9 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
       ref.invalidate(inventoryProvider);
       if (!mounted) return;
       Navigator.pop(context);
-      messenger
-          .showSnackBar(SnackBar(content: Text('${item.code} updated.')));
+      final note = regenerated ? ' — new serial generated' : '';
+      messenger.showSnackBar(
+          SnackBar(content: Text('${item.code} updated$note.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -1005,8 +1021,9 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _serial,
-                    decoration:
-                        const InputDecoration(labelText: 'Serial number'),
+                    decoration: const InputDecoration(
+                        labelText: 'Serial number',
+                        hintText: 'Empty → new system number (WT-…)'),
                   ),
                   const SizedBox(height: 12),
                   const Text('Status',
@@ -1188,6 +1205,9 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
       final linked = _needsMachineLink && _machine != null;
       final status =
           linked ? 'With Machine' : defaultStatus(_kind);
+      // machines, probes and printers get a system serial from the
+      // database when none is typed (0012_auto_serials.sql)
+      final wantSerial = _kind != 'part' && _serial.text.trim().isEmpty;
 
       final payload = <String, dynamic>{
         idColumn: _code.text.trim(),
@@ -1209,13 +1229,20 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
       }
       if (linked) payload['assigned_machine_id'] = _machine!.id;
 
-      await db.from(table).insert(payload);
+      final row = await db
+          .from(table)
+          .insert(payload)
+          .select('serial_number')
+          .single();
 
       ref.invalidate(inventoryProvider);
       if (!mounted) return;
       Navigator.pop(context);
-      messenger.showSnackBar(
-          SnackBar(content: Text('${_code.text.trim()} added.')));
+      final serialNote = wantSerial
+          ? ' — serial ${row['serial_number']}'
+          : '';
+      messenger.showSnackBar(SnackBar(
+          content: Text('${_code.text.trim()} added$serialNote.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -1370,8 +1397,12 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _serial,
-                    decoration:
-                        const InputDecoration(labelText: 'Serial number'),
+                    decoration: InputDecoration(
+                      labelText: 'Serial number',
+                      hintText: _kind == 'part'
+                          ? null
+                          : 'Empty → system number (WT-…)',
+                    ),
                   ),
                   if (_needsMachineLink) ...[
                     const SizedBox(height: 12),

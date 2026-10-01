@@ -361,6 +361,29 @@ final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>(
   return rows.take(8).toList();
 });
 
+/// Refetches everything the app shows — used by pull-to-refresh so one
+/// member sees what another just did without restarting the app.
+Future<void> refreshAll(WidgetRef ref) async {
+  await Future.wait<void>([
+    for (final future in <Future<Object?>>[
+      ref.refresh(inventoryProvider.future),
+      ref.refresh(movementsProvider.future),
+      ref.refresh(productsProvider.future),
+      ref.refresh(brandsProvider.future),
+      ref.refresh(customersProvider.future),
+      ref.refresh(dealersProvider.future),
+      ref.refresh(vendorsProvider.future),
+      ref.refresh(workshopsProvider.future),
+      ref.refresh(batchesProvider.future),
+      ref.refresh(probeBoxesProvider.future),
+      ref.refresh(repairsProvider.future),
+      ref.refresh(recentPartiesProvider.future),
+      ref.refresh(profileProvider.future),
+    ])
+      future.then((_) {}).catchError((_) {}),
+  ]);
+}
+
 /// Repairs: every member can view and update them (see 0005_repairs.sql).
 final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final rows = await _db

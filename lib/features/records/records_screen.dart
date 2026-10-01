@@ -75,16 +75,18 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
           ),
         ),
         Expanded(
-          child: TabBarView(
-            controller: _tab,
-            children: [
-              _ProductsPane(query: _query),
-              _BrandsPane(query: _query),
-              _PeoplePane(table: 'customers', query: _query),
-              _PeoplePane(table: 'dealers', query: _query),
-              _BatchesPane(query: _query),
-              _BoxesPane(query: _query),
-            ],
+          child: AppRefresh(
+            child: TabBarView(
+              controller: _tab,
+              children: [
+                _ProductsPane(query: _query),
+                _BrandsPane(query: _query),
+                _PeoplePane(table: 'customers', query: _query),
+                _PeoplePane(table: 'dealers', query: _query),
+                _BatchesPane(query: _query),
+                _BoxesPane(query: _query),
+              ],
+            ),
           ),
         ),
         if (isAdmin)
@@ -148,6 +150,7 @@ class _ProductsPane extends ConsumerWidget {
               icon: Icons.inventory_2_outlined, message: 'No products found.');
         }
         return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           itemCount: filtered.length,
           itemBuilder: (context, index) =>
@@ -268,6 +271,7 @@ class _BrandsPane extends ConsumerWidget {
               message: 'No brands found.');
         }
         return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
@@ -384,6 +388,7 @@ class _PeoplePane extends ConsumerWidget {
           );
         }
         return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
@@ -522,6 +527,7 @@ class _BatchesPane extends ConsumerWidget {
               message: 'No batches yet. Create one so you can enter stock.');
         }
         return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
@@ -664,6 +670,7 @@ class _BoxesPane extends ConsumerWidget {
               message: 'No boxes yet. Make one for each probe type.');
         }
         return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           itemCount: filtered.length,
           itemBuilder: (context, index) {

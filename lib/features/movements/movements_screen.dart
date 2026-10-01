@@ -235,11 +235,14 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     ),
                   ),
                   Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      itemCount: visible.length,
-                      itemBuilder: (context, index) =>
-                          _tile(context, visible[index], labels),
+                    child: AppRefresh(
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        itemCount: visible.length,
+                        itemBuilder: (context, index) =>
+                            _tile(context, visible[index], labels),
+                      ),
                     ),
                   ),
                 ],

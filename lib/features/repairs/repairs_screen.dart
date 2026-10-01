@@ -78,10 +78,14 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
                     icon: Icons.build_outlined,
                     message: 'No repair records yet.');
               }
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: filtered.length,
-                itemBuilder: (context, index) => _tile(context, filtered[index]),
+              return AppRefresh(
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) =>
+                      _tile(context, filtered[index]),
+                ),
               );
             },
           ),

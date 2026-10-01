@@ -103,9 +103,11 @@ class DashboardScreen extends ConsumerWidget {
       ..sort((a, b) =>
           (b.value['total'] as int).compareTo(a.value['total'] as int));
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    return AppRefresh(
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
         Text(
           name.isEmpty ? 'Welcome' : 'Welcome, $name',
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
@@ -336,7 +338,7 @@ class DashboardScreen extends ConsumerWidget {
           ),
         ),
       ],
-    );
+    ));
   }
 }
 const _statSlots = [

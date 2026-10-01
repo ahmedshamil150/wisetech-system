@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../data/data.dart';
 
 const Color kMuted = Color(0xFF5B6B7B);
 const Color kHint = Color(0xFF8A97A3);
@@ -459,5 +462,21 @@ Future<String?> showPickFromList({
       );
     },
   );
+}
+
+/// Wrap a page's scrollable: pulling down refetches everything, so you
+/// see what another member just changed without restarting the app.
+class AppRefresh extends ConsumerWidget {
+  const AppRefresh({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return RefreshIndicator(
+      onRefresh: () => refreshAll(ref),
+      child: child,
+    );
+  }
 }
 

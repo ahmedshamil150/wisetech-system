@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../common/widgets.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -20,9 +21,11 @@ class ProfileScreen extends ConsumerWidget {
           final displayName = (p?['display_name'] ?? username) as String;
           final createdAt = (p?['created_at'] ?? '') as String;
           final isAdmin = (p?['role'] ?? 'viewer') == 'admin';
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
+          return AppRefresh(
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
               Center(
                 child: CircleAvatar(
                   radius: 40,
@@ -104,7 +107,7 @@ class ProfileScreen extends ConsumerWidget {
                 label: const Text('Log out'),
               ),
             ],
-          );
+          ));
         },
       ),
     );
