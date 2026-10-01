@@ -18,7 +18,7 @@ class MovementsScreen extends ConsumerStatefulWidget {
   ConsumerState<MovementsScreen> createState() => _MovementsScreenState();
 }
 
-const _filters = ['All', 'Workshop', 'Dealer', 'Customer'];
+const _filters = ['All', 'Workshop', 'Dealer', 'Customer', 'Returned'];
 
 class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _filter = 'All';
@@ -184,9 +184,32 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => EmptyState(
                 icon: Icons.error_outline, message: errorMessage(error)),
-            data: (rows) {
-              final filtered =
-                  rows.where((row) => _passes(row)).toList();
+            data: (allRows) {
+              // the latest movement of an item decides whether it is
+              // already back in stock
+              final latest = <String, Map<String, dynamic>>{};
+              for (final row in allRows) {
+                final key = _itemKey(row);
+                if (key == null) continue;
+                final mapKey = '${key.key}:${key.value}';
+                final seen = latest[mapKey];
+                if (seen == null || (row['id'] as int) > (seen['id'] as int)) {
+                  latest[mapKey] = row;
+                }
+              }
+              bool isBack(Map<String, dynamic> row) {
+                final key = _itemKey(row);
+                if (key == null) return false;
+                final last = latest['${key.key}:${key.value}'];
+                return last != null && last['movement_type'] == 'Return';
+              }
+
+              // Return rows are history, not cards — they show in the
+              // item details instead
+              final sends = allRows
+                  .where((row) => row['movement_type'] != 'Return')
+                  .toList();
+              final filtered = sends.where((row) => _passes(row)).toList();
 
               // rows that travelled together (same invoice) stay in one card
               final entries = <List<Map<String, dynamic>>>[];
@@ -204,18 +227,31 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 }
               }
 
-              // a search hit keeps the whole kit together
-              final visible = entries
-                  .where((members) =>
-                      _query.isEmpty ||
-                      members.any((row) => _searchMatches(row, labels)))
-                  .toList();
+              // a send sits in 'Returned' once every item of it is back —
+              // everywhere else only sends that are still out are shown
+              final visible = <List<Map<String, dynamic>>>[];
+              for (final members in entries) {
+                final back = members.every(isBack);
+                if (back != (_filter == 'Returned')) continue;
+                if (!back &&
+                    _filter != 'All' &&
+                    members.first['movement_type'] != _filter) {
+                  continue;
+                }
+                if (_query.isNotEmpty &&
+                    !members.any((row) => _searchMatches(row, labels))) {
+                  continue;
+                }
+                visible.add(members);
+              }
               if (visible.isEmpty) {
                 return EmptyState(
                     icon: Icons.alt_route_outlined,
-                    message: _hasFilters
-                        ? 'No movements match these filters.'
-                        : 'No movements recorded yet.');
+                    message: _filter == 'Returned'
+                        ? 'No sends are back in inventory yet.'
+                        : _hasFilters
+                            ? 'No movements match these filters.'
+                            : 'No movements recorded yet.');
               }
               for (final members in visible) {
                 members.sort(_mainItemFirst);
@@ -240,8 +276,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                         itemCount: visible.length,
-                        itemBuilder: (context, index) =>
-                            _tile(context, visible[index], labels),
+                        itemBuilder: (context, index) {
+                          final members = visible[index];
+                          return _tile(context, members, labels,
+                              back: members.every(isBack));
+                        },
                       ),
                     ),
                   ),
@@ -275,8 +314,6 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   // -----------------------------------------------------------------------
 
   bool _passes(Map<String, dynamic> row) {
-    final kind = (row['movement_type'] ?? '').toString();
-    if (_filter != 'All' && kind != _filter) return false;
     if (_party != 'All' &&
         (row['to_location'] ?? '').toString() != _party) {
       return false;
@@ -471,7 +508,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   }
 
   Widget _tile(BuildContext context, List<Map<String, dynamic>> rows,
-      Map<String, String> labels) {
+      Map<String, String> labels,
+      {required bool back}) {
     final row = rows.first;
     final kind = (row['movement_type'] ?? '').toString();
     final icon = switch (kind) {
@@ -493,6 +531,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final missing = rows.where(movementPartyMissing).toList();
     final canFixParty = missing.isNotEmpty &&
         (isAdmin || missing.any((r) => r['actor_id'] == myId));
+    final canManage = isAdmin || rows.any((r) => r['actor_id'] == myId);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -534,6 +573,44 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     label: Text(
                         'Add the ${kind.toLowerCase()} name'),
                   ),
+                ),
+              ),
+            if (back)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle_outline,
+                        size: 15, color: Color(0xFF2E7D32)),
+                    SizedBox(width: 6),
+                    Text('Back in inventory',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF2E7D32))),
+                  ],
+                ),
+              ),
+            if (canManage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                child: Row(
+                  children: [
+                    if (!back)
+                      TextButton.icon(
+                        onPressed: () => _returnGroup(rows),
+                        icon: const Icon(Icons.login_outlined, size: 18),
+                        label: const Text('Back to inventory'),
+                      ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () => _deleteGroup(rows),
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: const Text('Delete'),
+                      style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFB3261E)),
+                    ),
+                  ],
                 ),
               ),
             for (final other in rows.skip(1))
@@ -590,6 +667,100 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     }
     showSnack(context, 'This item is no longer in the inventory.',
         error: true);
+  }
+
+  /// Puts every item of this send back into stock. An item that moved on
+  /// to a later send is left alone — only its own last movement decides.
+  Future<void> _returnGroup(List<Map<String, dynamic>> rows) async {
+    final allMovements = ref.read(movementsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final items = ref.read(inventoryProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <InventoryItem>[]);
+    final groupIds = {for (final row in rows) row['id'] as int};
+
+    final latest = <String, int>{}; // item key -> latest movement id
+    for (final row in allMovements) {
+      final key = _itemKey(row);
+      if (key == null) continue;
+      final mapKey = '${key.key}:${key.value}';
+      final id = row['id'] as int;
+      final seen = latest[mapKey];
+      if (seen == null || id > seen) latest[mapKey] = id;
+    }
+
+    var count = 0;
+    String? failure;
+    try {
+      for (final row in rows) {
+        final key = _itemKey(row);
+        if (key == null) continue;
+        final mapKey = '${key.key}:${key.value}';
+        if (!groupIds.contains(latest[mapKey])) continue;
+        InventoryItem? item;
+        for (final candidate in items) {
+          if (candidate.key == mapKey) {
+            item = candidate;
+            break;
+          }
+        }
+        if (item == null) continue;
+        await returnToInventory(item);
+        count++;
+      }
+    } catch (error) {
+      failure = errorMessage(error);
+    } finally {
+      ref.invalidate(movementsProvider);
+      ref.invalidate(inventoryProvider);
+    }
+    if (!mounted) return;
+    showSnack(
+        context,
+        failure ??
+            (count == 0
+                ? 'Nothing to return — these items moved on.'
+                : '$count item${count == 1 ? '' : 's'} back in inventory.'),
+        error: failure != null);
+  }
+
+  /// Erases this send completely: the movement history is gone, the
+  /// items simply live in the inventory again, and a customer/dealer
+  /// added with this send is deleted too when nothing else uses it.
+  Future<void> _deleteGroup(List<Map<String, dynamic>> rows) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this send?'),
+        content: const Text(
+            'The movement is erased from the history and the items stay '
+            'in the inventory. A customer or dealer added with this send '
+            'is deleted too when nothing else uses it.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await deleteMovement(rows.first['id'] as int);
+      ref.invalidate(movementsProvider);
+      ref.invalidate(inventoryProvider);
+      ref.invalidate(customersProvider);
+      ref.invalidate(dealersProvider);
+      ref.invalidate(recentPartiesProvider);
+      messenger.showSnackBar(const SnackBar(content: Text('Send deleted.')));
+    } catch (error) {
+      messenger
+          .showSnackBar(SnackBar(content: Text(errorMessage(error))));
+    }
   }
 
   /// `machine:12` style key used by [itemLabelsProvider].

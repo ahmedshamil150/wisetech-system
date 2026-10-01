@@ -453,13 +453,16 @@ class _PeoplePane extends ConsumerWidget {
       Map<String, dynamic> row) async {
     final name = (row['name'] ?? '').toString();
     final messenger = ScaffoldMessenger.of(context);
+    final isParty = table == 'customers' || table == 'dealers';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete $name?'),
-        content: Text(
-            'It disappears from the $table list. Movements or sales that '
-            'still point at it will keep the app from deleting it.'),
+        content: Text(isParty
+            ? 'It disappears from the list, and the sends recorded only '
+                'for it are removed with it.'
+            : 'It disappears from the $table list. Records that still '
+                'point at it will keep the app from deleting it.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -474,9 +477,19 @@ class _PeoplePane extends ConsumerWidget {
     );
     if (confirmed != true) return;
     try {
-      await db.from(table).delete().eq('id', row['id'] as int);
-      ref.invalidate(
-          table == 'customers' ? customersProvider : dealersProvider);
+      if (isParty) {
+        // customers/dealers carry their sends along (see 0013)
+        await deleteParty(table, row['id'] as int);
+        ref.invalidate(
+            table == 'customers' ? customersProvider : dealersProvider);
+        ref.invalidate(movementsProvider);
+        ref.invalidate(inventoryProvider);
+        ref.invalidate(recentPartiesProvider);
+      } else {
+        await db.from(table).delete().eq('id', row['id'] as int);
+        ref.invalidate(
+            table == 'customers' ? customersProvider : dealersProvider);
+      }
       messenger.showSnackBar(SnackBar(content: Text('$name deleted.')));
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));

@@ -305,6 +305,21 @@ Future<int> returnToInventory(InventoryItem item) async {
   }) as int;
 }
 
+/// Erases a whole send: its movement rows (and the Return rows that
+/// belong to them) disappear, every item takes its status and location
+/// from the history that is left, and a customer/dealer added with this
+/// send goes too when nothing else uses it. Only the sender or an admin
+/// may (enforced by the RPC).
+Future<void> deleteMovement(int movementId) async {
+  await _db.rpc('delete_movement', params: {'p_movement_id': movementId});
+}
+
+/// Deletes a customer/dealer together with the sends that point at it —
+/// admin only, blocked while sales or repairs still use the record.
+Future<void> deleteParty(String table, int id) async {
+  await _db.rpc('delete_party', params: {'p_table': table, 'p_id': id});
+}
+
 /// True when a dealer/customer send was recorded without its name —
 /// the name can be added later (see 0010_optional_movement_party.sql).
 bool movementPartyMissing(Map<String, dynamic> row) {
