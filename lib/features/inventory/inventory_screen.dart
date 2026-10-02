@@ -21,6 +21,19 @@ class InventoryScreen extends ConsumerStatefulWidget {
 /// probes are kept.
 const _typeFilters = ['Equipment', 'Machine', 'Probe', 'Printer', 'Part', 'Boxes'];
 
+/// Status row under the type row. "In Stock" covers both words the app
+/// uses for stock — machines say "In Stock", everything else says
+/// "Available". Sold items never appear in the inventory, so there is
+/// no chip for them.
+const _statusFilters = [
+  'All',
+  'In Stock',
+  'With Machine',
+  'With Workshop',
+  'With Dealer',
+  'Archived',
+];
+
 /// Newest item first, the order the whole list already uses.
 int _newestFirst(InventoryItem a, InventoryItem b) {
   final byDate =
@@ -83,6 +96,7 @@ List<(InventoryItem, bool)> arrangeAsKits(List<InventoryItem> items) {
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String _query = '';
   String _type = 'Equipment';
+  String _status = 'All';
 
   bool _matchesFilter(InventoryItem item) => switch (_type) {
         'Equipment' => item.kind != 'part',
@@ -92,10 +106,98 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         _ => item.kind == 'part',
       };
 
+  bool _matchesQuery(InventoryItem item) {
+    if (_query.isEmpty) return true;
+    return item.code.toLowerCase().contains(_query) ||
+        item.name.toLowerCase().contains(_query) ||
+        (item.serial ?? '').toLowerCase().contains(_query);
+  }
+
+  bool _matchesStatus(InventoryItem item) => switch (_status) {
+        'All' => true,
+        'In Stock' =>
+          item.status == 'In Stock' || item.status == 'Available',
+        _ => item.status == _status,
+      };
+
+  /// Numbers for the type chips — counted after the status filter and
+  /// the search, so the number always matches what a tap would show.
+  Map<String, int> _typeCounts(
+      List<InventoryItem> rows, List<Map<String, dynamic>> boxes) {
+    final counts = <String, int>{
+      'Machine': 0,
+      'Probe': 0,
+      'Printer': 0,
+      'Part': 0,
+      'Equipment': 0,
+    };
+    for (final item in rows) {
+      if (item.isSold || !_matchesStatus(item) || !_matchesQuery(item)) {
+        continue;
+      }
+      counts[item.kind] = (counts[item.kind] ?? 0) + 1;
+      if (item.kind != 'part') {
+        counts['Equipment'] = counts['Equipment']! + 1;
+      }
+    }
+    var boxCount = 0;
+    for (final box in boxes) {
+      if (_query.isNotEmpty) {
+        final name = (box['name'] ?? '').toString().toLowerCase();
+        final type = (box['probe_type'] ?? '').toString().toLowerCase();
+        if (!name.contains(_query) && !type.contains(_query)) continue;
+      }
+      boxCount++;
+    }
+    counts['Boxes'] = boxCount;
+    return counts;
+  }
+
+  /// Numbers for the status chips — counted after the type filter and
+  /// the search.
+  Map<String, int> _statusCounts(List<InventoryItem> rows) {
+    final counts = <String, int>{for (final f in _statusFilters) f: 0};
+    for (final item in rows) {
+      if (item.isSold || !_matchesFilter(item) || !_matchesQuery(item)) {
+        continue;
+      }
+      counts['All'] = counts['All']! + 1;
+      if (item.status == 'In Stock' || item.status == 'Available') {
+        counts['In Stock'] = counts['In Stock']! + 1;
+      } else {
+        counts[item.status] = (counts[item.status] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+
+  Widget _filterChip(BuildContext context, String label, int count,
+      {required bool selected, required VoidCallback onTap}) {
+    return ChoiceChip(
+      label: Text('$label ($count)'),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      selectedColor: Theme.of(context).colorScheme.primary,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : kMuted,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+      backgroundColor: Colors.white,
+      side: const BorderSide(color: Color(0xFFE2E9F0)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(isAdminProvider);
     final items = ref.watch(inventoryProvider);
+    final allRows = items.maybeWhen(
+        data: (rows) => rows, orElse: () => const <InventoryItem>[]);
+    final boxes = ref.watch(probeBoxesProvider).maybeWhen(
+        data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[]);
+    final typeCounts = _typeCounts(allRows, boxes);
+    final statusCounts = _statusCounts(allRows);
 
     return Column(
       children: [
@@ -115,23 +217,38 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final label = _typeFilters[index];
-              final selected = _type == label;
-              return ChoiceChip(
-                label: Text(label),
-                selected: selected,
-                onSelected: (_) => setState(() => _type = label),
-                selectedColor: Theme.of(context).colorScheme.primary,
-                labelStyle: TextStyle(
-                  color: selected ? Colors.white : kMuted,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: Color(0xFFE2E9F0)),
+              return _filterChip(
+                context,
+                label,
+                typeCounts[label] ?? 0,
+                selected: _type == label,
+                onTap: () => setState(() => _type = label),
               );
             },
           ),
         ),
+        if (_type != 'Boxes') ...[
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _statusFilters.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final label = _statusFilters[index];
+                return _filterChip(
+                  context,
+                  label,
+                  statusCounts[label] ?? 0,
+                  selected: _status == label,
+                  onTap: () => setState(() => _status = label),
+                );
+              },
+            ),
+          ),
+        ],
         const SizedBox(height: 4),
         Expanded(
           child: _type == 'Boxes'
@@ -146,10 +263,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 // so it must not show up in the inventory any more.
                 if (item.isSold) return false;
                 if (!_matchesFilter(item)) return false;
-                if (_query.isEmpty) return true;
-                return item.code.toLowerCase().contains(_query) ||
-                    item.name.toLowerCase().contains(_query) ||
-                    (item.serial ?? '').toLowerCase().contains(_query);
+                if (!_matchesStatus(item)) return false;
+                if (!_matchesQuery(item)) return false;
+                return true;
               }).toList();
               final entries = arrangeAsKits(filtered);
               if (entries.isEmpty) {
@@ -655,6 +771,7 @@ class _ItemDetails extends ConsumerWidget {
     final canReturn =
         history.isNotEmpty && history.first['movement_type'] != 'Return';
     final isAdmin = ref.watch(isAdminProvider);
+    final myId = ref.read(authControllerProvider).currentUser?.id;
     final linked = ref.watch(inventoryProvider).maybeWhen(
           data: (rows) => linkedItems(rows, item),
           orElse: () => const <InventoryItem>[],
@@ -802,6 +919,14 @@ class _ItemDetails extends ConsumerWidget {
                                   fontSize: 12, color: kHint)),
                       ],
                     ),
+                    trailing: isAdmin || row['actor_id'] == myId
+                        ? IconButton(
+                            tooltip: 'Delete this movement',
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            onPressed: () =>
+                                _deleteMovement(context, ref, row),
+                          )
+                        : null,
                   ),
               ],
             ),
@@ -840,6 +965,46 @@ class _ItemDetails extends ConsumerWidget {
         ..invalidate(inventoryProvider);
       if (context.mounted) {
         showSnack(context, '${item.code} is back in inventory.');
+      }
+    } catch (error) {
+      if (context.mounted) showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  /// Erases just this one movement — the rest of the send keeps its rows
+  /// and the item takes its status from the history that is left, so an
+  /// accidental move falls out of the record (0014).
+  Future<void> _deleteMovement(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> row) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this movement?'),
+        content: const Text(
+            'The item returns to inventory. The other movements of this '
+            'send are not touched.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await deleteMovementRow(row['id'] as int);
+      ref
+        ..invalidate(movementsProvider)
+        ..invalidate(inventoryProvider);
+      if (context.mounted) {
+        messenger.showSnackBar(
+            const SnackBar(content: Text('Movement deleted.')));
       }
     } catch (error) {
       if (context.mounted) showSnack(context, errorMessage(error), error: true);

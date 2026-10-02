@@ -59,6 +59,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final labels = ref.watch(itemLabelsProvider);
     final rows = movements.maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final counts = _groupCounts(rows, labels);
 
     return Column(
       children: [
@@ -73,7 +74,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               final label = _filters[index];
               final selected = _filter == label;
               return ChoiceChip(
-                label: Text(label),
+                label: Text('$label (${counts[label] ?? 0})'),
                 selected: selected,
                 onSelected: (_) => setState(() {
                   _filter = label;
@@ -312,6 +313,65 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   // -----------------------------------------------------------------------
   // filters
   // -----------------------------------------------------------------------
+
+  /// How many send cards every tab would show with the other filters
+  /// (party, actor, item kind, date, search) kept as they are.
+  Map<String, int> _groupCounts(
+      List<Map<String, dynamic>> allRows, Map<String, String> labels) {
+    final latest = <String, Map<String, dynamic>>{};
+    for (final row in allRows) {
+      final key = _itemKey(row);
+      if (key == null) continue;
+      final mapKey = '${key.key}:${key.value}';
+      final seen = latest[mapKey];
+      if (seen == null || (row['id'] as int) > (seen['id'] as int)) {
+        latest[mapKey] = row;
+      }
+    }
+    bool isBack(Map<String, dynamic> row) {
+      final key = _itemKey(row);
+      if (key == null) return false;
+      final last = latest['${key.key}:${key.value}'];
+      return last != null && last['movement_type'] == 'Return';
+    }
+
+    // rows that travelled together stay in one card, as in the list
+    final entries = <List<Map<String, dynamic>>>[];
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final row in allRows) {
+      if (row['movement_type'] == 'Return') continue;
+      if (!_passes(row)) continue;
+      final group = (row['group_ref'] ?? '').toString();
+      if (group.isEmpty) {
+        entries.add([row]);
+      } else {
+        groups.putIfAbsent(group, () {
+          final members = <Map<String, dynamic>>[];
+          entries.add(members);
+          return members;
+        }).add(row);
+      }
+    }
+
+    final counts = <String, int>{for (final f in _filters) f: 0};
+    for (final members in entries) {
+      final back = members.every(isBack);
+      for (final filter in _filters) {
+        if (back != (filter == 'Returned')) continue;
+        if (!back &&
+            filter != 'All' &&
+            members.first['movement_type'] != filter) {
+          continue;
+        }
+        if (_query.isNotEmpty &&
+            !members.any((row) => _searchMatches(row, labels))) {
+          continue;
+        }
+        counts[filter] = counts[filter]! + 1;
+      }
+    }
+    return counts;
+  }
 
   bool _passes(Map<String, dynamic> row) {
     if (_party != 'All' &&

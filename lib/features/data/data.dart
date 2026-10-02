@@ -314,6 +314,14 @@ Future<void> deleteMovement(int movementId) async {
   await _db.rpc('delete_movement', params: {'p_movement_id': movementId});
 }
 
+/// Erases a single movement row — the rest of the send keeps its rows
+/// and the item takes its status from the history that is left, so an
+/// accidental move falls out of the record. Only the sender or an admin
+/// may (enforced by the RPC).
+Future<void> deleteMovementRow(int movementId) async {
+  await _db.rpc('delete_movement_row', params: {'p_movement_id': movementId});
+}
+
 /// Deletes a customer/dealer together with the sends that point at it —
 /// admin only, blocked while sales or repairs still use the record.
 Future<void> deleteParty(String table, int id) async {

@@ -23,6 +23,18 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
   @override
   Widget build(BuildContext context) {
     final repairs = ref.watch(repairsProvider);
+    final rows = repairs.maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final counts = <String, int>{'All': 0, 'In repair': 0, 'Sent back': 0};
+    for (final row in rows) {
+      if (_query.isNotEmpty && !_searchText(row).contains(_query)) continue;
+      counts['All'] = counts['All']! + 1;
+      if (repairIsOpen('${row['status']}')) {
+        counts['In repair'] = counts['In repair']! + 1;
+      } else {
+        counts['Sent back'] = counts['Sent back']! + 1;
+      }
+    }
 
     return Column(
       children: [
@@ -37,7 +49,7 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
               final label = _filters[index];
               final selected = _filter == label;
               return ChoiceChip(
-                label: Text(label),
+                label: Text('$label (${counts[label] ?? 0})'),
                 selected: selected,
                 onSelected: (_) => setState(() => _filter = label),
                 selectedColor: Theme.of(context).colorScheme.primary,
@@ -657,6 +669,23 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
 
   Widget _lineCard(int index) {
     final line = _lines[index];
+    final productRows = ref.watch(productsProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    // the line's type decides which models are offered — an "other"
+    // line can be anything
+    final category = switch (line.type) {
+      'machine' => 'Machine',
+      'probe' => 'Probe',
+      'printer' => 'Printer',
+      _ => null,
+    };
+    final models = [
+      for (final row in productRows)
+        if (category == null || '${row['category']}' == category)
+          '${row['name_model']}',
+    ];
     return AppCard(
       padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
       child: Column(
@@ -695,10 +724,12 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
           Row(
             children: [
               Expanded(
-                child: TextField(
+                child: PickyField(
                   controller: line.model,
-                  decoration: const InputDecoration(
-                      labelText: 'Model', isDense: true),
+                  label: 'Model',
+                  hint: 'Start typing — suggestions appear',
+                  options: models,
+                  pickTitle: 'models',
                 ),
               ),
               const SizedBox(width: 8),
