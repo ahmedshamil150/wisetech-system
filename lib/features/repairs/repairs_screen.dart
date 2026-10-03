@@ -143,7 +143,7 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
     final customer =
         ((row['customers'] as Map?)?['name'] ?? '').toString();
     final items = _itemsOf(row);
-    final color = open ? const Color(0xFFB26A00) : const Color(0xFF1B7F4B);
+    final color = open ? const Color(0xFF9A5A00) : const Color(0xFF1B7F4B);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -185,7 +185,7 @@ class _RepairStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final open = repairIsOpen(status);
-    final color = open ? const Color(0xFFB26A00) : const Color(0xFF1B7F4B);
+    final color = open ? const Color(0xFF9A5A00) : const Color(0xFF1B7F4B);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

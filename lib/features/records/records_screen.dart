@@ -926,6 +926,7 @@ class _BatchFormState extends ConsumerState<_BatchForm> {
                 children: [
                   TextField(
                     controller: _letter,
+                    autocorrect: false,
                     textCapitalization: TextCapitalization.characters,
                     maxLength: 1,
                     decoration: InputDecoration(
@@ -1099,6 +1100,7 @@ class _BoxFormState extends ConsumerState<_BoxForm> {
                 children: [
                   TextField(
                     controller: _name,
+                    autocorrect: false,
                     decoration: const InputDecoration(
                         labelText: 'Box name *', hintText: 'Box 1'),
                   ),

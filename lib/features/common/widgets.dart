@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/data.dart';
 
 const Color kMuted = Color(0xFF5B6B7B);
-const Color kHint = Color(0xFF8A97A3);
+const Color kHint = Color(0xFF666F7A);
 
 class AppCard extends StatelessWidget {
   const AppCard({super.key, required this.child, this.padding});
@@ -68,6 +68,7 @@ class SearchField extends StatelessWidget {
     return TextField(
       controller: controller,
       onChanged: onChanged,
+      autocorrect: false,
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: const Icon(Icons.search, size: 20),
@@ -80,7 +81,7 @@ class SearchField extends StatelessWidget {
 
 Color statusColor(String status) => switch (status) {
       'In Stock' || 'Available' => const Color(0xFF1B7F4B),
-      'With Workshop' => const Color(0xFFB26A00),
+      'With Workshop' => const Color(0xFF9A5A00),
       'With Dealer' => const Color(0xFF6A3FB2),
       'With Customer' => const Color(0xFF0E7C86),
       'With Machine' => const Color(0xFF1668A8),
@@ -158,6 +159,8 @@ class DateField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
+      autocorrect: false,
+      keyboardType: TextInputType.datetime,
       decoration: InputDecoration(
         labelText: label,
         hintText: 'DD-MM-YYYY',
@@ -312,6 +315,7 @@ class _PickyFieldState extends State<PickyField> {
           controller: widget.controller,
           focusNode: _focus,
           keyboardType: widget.keyboardType,
+          autocorrect: false,
           onChanged: (value) {
             widget.onChanged?.call(value);
             setState(() {

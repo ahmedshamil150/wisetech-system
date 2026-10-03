@@ -89,6 +89,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextFormField(
                     controller: _username,
                     textInputAction: TextInputAction.next,
+                    autocorrect: false,
+                    textCapitalization: TextCapitalization.none,
                     autofillHints: const [AutofillHints.username],
                     decoration: const InputDecoration(
                       labelText: 'Username',
@@ -100,12 +102,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextFormField(
                     controller: _password,
                     obscureText: _obscure,
+                    textInputAction: TextInputAction.done,
                     autofillHints: const [AutofillHints.password],
                     onFieldSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
+                        tooltip:
+                            _obscure ? 'Show password' : 'Hide password',
                         icon: Icon(_obscure
                             ? Icons.visibility_outlined
                             : Icons.visibility_off_outlined),

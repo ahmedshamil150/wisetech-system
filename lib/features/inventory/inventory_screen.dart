@@ -928,6 +928,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: _serial,
+                    autocorrect: false,
                     decoration: const InputDecoration(
                         labelText: 'Serial number (optional)',
                         hintText: 'Empty → system number (WT-…)'),
@@ -1435,6 +1436,7 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _serial,
+                    autocorrect: false,
                     decoration: const InputDecoration(
                         labelText: 'Serial number',
                         hintText: 'Empty → new system number (WT-…)'),
@@ -1811,6 +1813,7 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _serial,
+                    autocorrect: false,
                     decoration: InputDecoration(
                       labelText: 'Serial number',
                       hintText: _kind == 'part'
