@@ -204,9 +204,24 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: SearchField(
-            hint: 'Search by code, model or serial',
-            onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+          child: Row(
+            children: [
+              Expanded(
+                child: SearchField(
+                  hint: 'Search by code, model or serial',
+                  onChanged: (value) =>
+                      setState(() => _query = value.trim().toLowerCase()),
+                ),
+              ),
+              if (isAdmin) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Stock check',
+                  icon: const Icon(Icons.fact_check_outlined),
+                  onPressed: () => showStockCheckSheet(context),
+                ),
+              ],
+            ],
           ),
         ),
         SizedBox(
@@ -416,6 +431,235 @@ IconData _kindIcon(String kind) => switch (kind) {
       'printer' => Icons.print_outlined,
       _ => Icons.settings_outlined,
     };
+
+/// Sorts machine ids the way a person counts: 23T before 60T before
+/// 100T, letters staying together.
+int _naturalCompare(String a, String b) {
+  final ra = RegExp(r'^(\d+)(.*)$').firstMatch(a);
+  final rb = RegExp(r'^(\d+)(.*)$').firstMatch(b);
+  if (ra != null && rb != null) {
+    final byNumber = int.parse(ra.group(1)!).compareTo(int.parse(rb.group(1)!));
+    if (byNumber != 0) return byNumber;
+    return ra.group(2)!.compareTo(rb.group(2)!);
+  }
+  return a.toLowerCase().compareTo(b.toLowerCase());
+}
+
+/// Admin tool for a physical count: type the machine ids that stand in
+/// the room and the sheet lists every machine the app still has as
+/// "In Stock" but that was not typed — plus typed ids the app has as
+/// out somewhere or does not know at all.
+Future<void> showStockCheckSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) => SizedBox(
+      height: MediaQuery.of(sheetContext).size.height * 0.85,
+      child: const _StockCheckSheet(),
+    ),
+  );
+}
+
+class _StockCheckSheet extends ConsumerStatefulWidget {
+  const _StockCheckSheet();
+
+  @override
+  ConsumerState<_StockCheckSheet> createState() => _StockCheckSheetState();
+}
+
+class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
+  final _input = TextEditingController();
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  /// Whatever was typed, split on newlines / spaces / commas and
+  /// normalised so "23t" matches "23T".
+  Set<String> get _entered => _input.text
+      .toUpperCase()
+      .split(RegExp(r'[\s,;]+'))
+      .where((token) => token.isNotEmpty)
+      .toSet();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = ref.watch(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
+        );
+    final machines = [for (final item in items) if (item.kind == 'machine') item];
+    final expected = [
+      for (final machine in machines)
+        if (machine.status == 'In Stock') machine,
+    ]..sort((a, b) => _naturalCompare(a.code, b.code));
+
+    final entered = _entered;
+    final missing = [
+      for (final machine in expected)
+        if (!entered.contains(machine.code.toUpperCase())) machine,
+    ];
+    final seenOut = <InventoryItem>[];
+    final unknown = <String>[];
+    for (final token in entered) {
+      InventoryItem? found;
+      for (final machine in machines) {
+        if (machine.code.toUpperCase() == token) {
+          found = machine;
+          break;
+        }
+      }
+      if (found == null) {
+        unknown.add(token);
+      } else if (found.status != 'In Stock') {
+        seenOut.add(found);
+      }
+    }
+    seenOut.sort((a, b) => _naturalCompare(a.code, b.code));
+    unknown.sort(_naturalCompare);
+
+    const sectionStyle =
+        TextStyle(fontSize: 15, fontWeight: FontWeight.w800);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Stock check',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+            'Count the machines standing in the room and type their IDs — '
+            'one per line, or separated by spaces or commas.',
+            style: TextStyle(color: kMuted, fontSize: 13)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _input,
+          minLines: 4,
+          maxLines: 6,
+          autocorrect: false,
+          textCapitalization: TextCapitalization.characters,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            labelText: 'Machine IDs you can see',
+            hintText: '23T\n60T\n71T',
+          ),
+        ),
+        const SizedBox(height: 16),
+        AppCard(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: [
+              KeyValue(
+                  label: 'App expects in stock',
+                  value: '${expected.length}'),
+              KeyValue(label: 'You typed', value: '${entered.length}'),
+              KeyValue(label: 'Missing', value: '${missing.length}'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (entered.isEmpty)
+          const Text(
+              'Type what you see — the machines you missed are listed here.',
+              style: TextStyle(color: kHint, fontSize: 13))
+        else ...[
+          Text('Missing — should be in stock (${missing.length})',
+              style: sectionStyle),
+          const SizedBox(height: 8),
+          if (missing.isEmpty)
+            const Text(
+                'Every machine the app expects in stock was counted.',
+                style: TextStyle(color: Color(0xFF1B7F4B), fontSize: 13.5))
+          else
+            AppCard(
+              padding: const EdgeInsets.all(4),
+              child: Column(
+                children: [
+                  for (final machine in missing)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.help_outline, size: 20),
+                      title: Text(machine.code,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14)),
+                      subtitle: Text(
+                          '${machine.title} · ${machine.location}',
+                          style: const TextStyle(fontSize: 12.5)),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => showItemDetails(context, ref, machine),
+                    ),
+                ],
+              ),
+            ),
+          if (seenOut.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('You typed these — the app says they are out (${seenOut.length})',
+                style: sectionStyle),
+            const SizedBox(height: 8),
+            AppCard(
+              padding: const EdgeInsets.all(4),
+              child: Column(
+                children: [
+                  for (final machine in seenOut)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.outbox_outlined, size: 20),
+                      title: Text(machine.code,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14)),
+                      subtitle: Text('${machine.status} · ${machine.location}',
+                          style: const TextStyle(fontSize: 12.5)),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => showItemDetails(context, ref, machine),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          if (unknown.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Not found in the app (${unknown.length})',
+                style: sectionStyle),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final token in unknown)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFB3261E).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFF1D9D7)),
+                    ),
+                    child: Text(token,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFB3261E))),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+}
 
 /// Sheet for one box: the probes inside it and a way to put more in.
 Future<void> showBoxSheet(
