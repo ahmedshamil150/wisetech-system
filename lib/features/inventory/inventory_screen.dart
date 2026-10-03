@@ -31,6 +31,7 @@ const _statusFilters = [
   'With Machine',
   'With Workshop',
   'With Dealer',
+  'With Customer',
   'Archived',
 ];
 
@@ -542,7 +543,11 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
         .toList();
     final candidates = items.where((item) {
       if (item.kind != 'probe') return false;
-      if (item.status == 'Sold' || item.status == 'Archived') return false;
+      if (item.status == 'Sold' ||
+          item.status == 'Archived' ||
+          item.status == 'With Customer') {
+        return false;
+      }
       if (item.boxId != null) return false;
       final probeType = item.probeType;
       return probeType == null || probeType.isEmpty || probeType == type;

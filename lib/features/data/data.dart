@@ -517,12 +517,20 @@ String itemKindLabel(String kind) => switch (kind) {
 
 /// Status options offered for a given item kind (mirrors the CHECK constraints).
 List<String> statusOptions(String kind) => kind == 'machine'
-    ? const ['In Stock', 'With Workshop', 'With Dealer', 'Sold', 'Archived']
+    ? const [
+        'In Stock',
+        'With Workshop',
+        'With Dealer',
+        'With Customer',
+        'Sold',
+        'Archived',
+      ]
     : const [
         'Available',
         'With Machine',
         'With Workshop',
         'With Dealer',
+        'With Customer',
         'Sold',
         'Archived',
       ];
@@ -533,6 +541,7 @@ String defaultStatus(String kind) =>
 String defaultLocationFor(String status) => switch (status) {
       'With Workshop' => 'Workshop',
       'With Dealer' => 'Dealer',
+      'With Customer' => 'Customer',
       'Sold' => 'Customer',
       _ => 'Company',
     };

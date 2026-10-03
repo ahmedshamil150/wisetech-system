@@ -82,6 +82,7 @@ Color statusColor(String status) => switch (status) {
       'In Stock' || 'Available' => const Color(0xFF1B7F4B),
       'With Workshop' => const Color(0xFFB26A00),
       'With Dealer' => const Color(0xFF6A3FB2),
+      'With Customer' => const Color(0xFF0E7C86),
       'With Machine' => const Color(0xFF1668A8),
       'Sold' => const Color(0xFFB3261E),
       'Archived' => kHint,
