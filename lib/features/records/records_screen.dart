@@ -51,7 +51,7 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
     return Column(
       children: [
         Material(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           child: TabBar(
             controller: _tab,
             isScrollable: true,
@@ -180,7 +180,7 @@ class _ProductsPane extends ConsumerWidget {
         child: ListTile(
           onTap: isAdmin ? openEdit : null,
           leading: CircleAvatar(
-            backgroundColor: const Color(0xFFEAF3F8),
+            backgroundColor: context.colors.tintBlue,
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
           title: Text((row['name_model'] ?? '').toString(),
@@ -283,8 +283,8 @@ class _BrandsPane extends ConsumerWidget {
               child: AppCard(
                 child: ListTile(
                   onTap: isAdmin ? openEdit : null,
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFEAF3F8),
+                  leading: CircleAvatar(
+                    backgroundColor: context.colors.tintBlue,
                     child: Icon(Icons.branding_watermark_outlined),
                   ),
                   title: Text((row['name'] ?? '').toString(),
@@ -409,7 +409,7 @@ class _PeoplePane extends ConsumerWidget {
                       ? () => showRecordForm(context, kind, editRow: row)
                       : null,
                   leading: CircleAvatar(
-                    backgroundColor: const Color(0xFFEAF3F8),
+                    backgroundColor: context.colors.tintBlue,
                     child: Icon(
                       table == 'customers'
                           ? Icons.person_outline
@@ -557,7 +557,7 @@ class _BatchesPane extends ConsumerWidget {
                       ? () => showRecordForm(context, 'batch', editRow: row)
                       : null,
                   leading: CircleAvatar(
-                    backgroundColor: const Color(0xFFEAF3F8),
+                    backgroundColor: context.colors.tintBlue,
                     child: Text(letter,
                         style: TextStyle(
                             color: Theme.of(context).colorScheme.primary,
@@ -696,8 +696,8 @@ class _BoxesPane extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: AppCard(
                 child: ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFEAF3F8),
+                  leading: CircleAvatar(
+                    backgroundColor: context.colors.tintBlue,
                     child: Icon(Icons.inbox_outlined),
                   ),
                   title: Text((row['name'] ?? '').toString(),
@@ -1341,8 +1341,8 @@ class _RecordFormState extends ConsumerState<_RecordForm> {
                       pickTitle: 'products',
                     ),
                     const SizedBox(height: 12),
-                    const Text('Category',
-                        style: TextStyle(fontSize: 13, color: kMuted)),
+                    Text('Category',
+                        style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       key: ValueKey('category-$_category'),

@@ -181,12 +181,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       onSelected: (_) => onTap(),
       selectedColor: Theme.of(context).colorScheme.primary,
       labelStyle: TextStyle(
-        color: selected ? Colors.white : kMuted,
+        color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
         fontWeight: FontWeight.w700,
         fontSize: 13,
       ),
-      backgroundColor: Colors.white,
-      side: const BorderSide(color: Color(0xFFE2E9F0)),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
     );
   }
 
@@ -365,8 +365,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: AppCard(
                 child: ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFEAF3F8),
+                  leading: CircleAvatar(
+                    backgroundColor: context.colors.tintBlue,
                     child: Icon(Icons.inbox_outlined),
                   ),
                   title: Text((box['name'] ?? '').toString(),
@@ -393,7 +393,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         child: ListTile(
           onTap: () => showItemDetails(context, ref, item),
           leading: CircleAvatar(
-            backgroundColor: const Color(0xFFEAF3F8),
+            backgroundColor: context.colors.tintBlue,
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
           title: Text(item.code,
@@ -412,7 +412,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       '${item.location}${item.date == null ? '' : ' · ${item.date}'}',
                       overflow: TextOverflow.ellipsis,
                       style:
-                          const TextStyle(fontSize: 12, color: kHint),
+                          TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline),
                     ),
                   ),
                 ],
@@ -575,10 +575,10 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           ],
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
             'Pick what you are counting, then type the IDs you see — '
             'one per line, or separated by spaces or commas.',
-            style: TextStyle(color: kMuted, fontSize: 13)),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -597,12 +597,14 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                 }),
                 selectedColor: Theme.of(context).colorScheme.primary,
                 labelStyle: TextStyle(
-                  color: _kind == kind ? Colors.white : kMuted,
+                  color: _kind == kind
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: Color(0xFFE2E9F0)),
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               ),
           ],
         ),
@@ -636,17 +638,17 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
         ),
         const SizedBox(height: 16),
         if (entered.isEmpty)
-          const Text(
+          Text(
               'Type what you see — the items you missed are listed here.',
-              style: TextStyle(color: kHint, fontSize: 13))
+              style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: 13))
         else ...[
           Text('Missing — should be in stock (${missing.length})',
               style: sectionStyle),
           const SizedBox(height: 8),
           if (missing.isEmpty)
-            const Text(
+            Text(
                 'Everything the app expects in stock was counted.',
-                style: TextStyle(color: Color(0xFF1B7F4B), fontSize: 13.5))
+                style: TextStyle(color: context.colors.success, fontSize: 13.5))
           else
             AppCard(
               padding: const EdgeInsets.all(4),
@@ -707,15 +709,15 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1668A8).withValues(alpha: 0.08),
+                      color: context.colors.primaryTint,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFD5E4F2)),
+                      border: Border.all(color: context.colors.primaryBorder),
                     ),
                     child: Text('${item.code} · ${item.kindLabel}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF1668A8))),
+                            color: Theme.of(context).colorScheme.primary)),
                   ),
               ],
             ),
@@ -734,15 +736,15 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFB3261E).withValues(alpha: 0.08),
+                      color: context.colors.errorContainer,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFF1D9D7)),
+                      border: Border.all(color: context.colors.errorBorder),
                     ),
                     child: Text(token,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFFB3261E))),
+                            color: Theme.of(context).colorScheme.error)),
                   ),
               ],
             ),
@@ -919,15 +921,15 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
         if (((box['notes'] ?? '') as String).isNotEmpty) ...[
           const SizedBox(height: 4),
           Text((box['notes'] ?? '').toString(),
-              style: const TextStyle(color: kMuted)),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ],
         const SizedBox(height: 16),
         const Text('Probes in this box',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
         if (inBox.isEmpty)
-          const Text('Empty — no probes in it yet.',
-              style: TextStyle(color: kMuted, fontSize: 13))
+          Text('Empty — no probes in it yet.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))
         else
           AppCard(
             padding: const EdgeInsets.all(4),
@@ -988,7 +990,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                   'No $type probe is free to box right now.',
-                  style: const TextStyle(color: kMuted, fontSize: 12.5)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5)),
             ),
           const SizedBox(height: 8),
           if (!_adding)
@@ -1028,14 +1030,14 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const Icon(Icons.lock_outline, size: 16, color: kHint),
+                      Icon(Icons.lock_outline, size: 16, color: Theme.of(context).colorScheme.outline),
                       const SizedBox(width: 6),
                       Text(
                         _loadingId
                             ? 'Generating ID…'
                             : 'ID: ${_id ?? 'not available'}',
                         style:
-                            const TextStyle(fontSize: 13, color: kMuted),
+                            TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -1139,7 +1141,7 @@ class _ItemDetails extends ConsumerWidget {
             StatusChip(status: item.status),
           ],
         ),
-        Text(item.title, style: const TextStyle(color: kMuted)),
+        Text(item.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 12),
         AppCard(
           padding: const EdgeInsets.all(12),
@@ -1229,8 +1231,8 @@ class _ItemDetails extends ConsumerWidget {
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
         if (history.isEmpty)
-          const Text('No movements recorded for this item.',
-              style: TextStyle(color: kMuted, fontSize: 13))
+          Text('No movements recorded for this item.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))
         else
           AppCard(
             padding: const EdgeInsets.all(4),
@@ -1242,7 +1244,7 @@ class _ItemDetails extends ConsumerWidget {
                     leading: Icon(_historyIcon('${row['movement_type']}'),
                         size: 20,
                         color: row['movement_type'] == 'Return'
-                            ? const Color(0xFF2E7D32)
+                            ? context.colors.success
                             : Theme.of(context).colorScheme.primary),
                     title: Text(_historyTitle(row),
                         style: const TextStyle(
@@ -1251,14 +1253,14 @@ class _ItemDetails extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(_historyMeta(row),
-                            style: const TextStyle(
-                                fontSize: 12, color: kMuted)),
+                            style: TextStyle(
+                                fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                         if ('${row['notes'] ?? ''}'.trim().isNotEmpty)
                           Text('${row['notes']}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 12, color: kHint)),
+                              style: TextStyle(
+                                  fontSize: 12, color: Theme.of(context).colorScheme.outline)),
                       ],
                     ),
                     trailing: isAdmin || row['actor_id'] == myId
@@ -1534,8 +1536,8 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                         hintText: 'Empty → new system number (WT-…)'),
                   ),
                   const SizedBox(height: 12),
-                  const Text('Status',
-                      style: TextStyle(fontSize: 13, color: kMuted)),
+                  Text('Status',
+                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('edit-status-$_status'),
@@ -1822,8 +1824,8 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('Item type',
-                      style: TextStyle(fontSize: 13, color: kMuted)),
+                  Text('Item type',
+                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('kind-$_kind'),
@@ -1844,8 +1846,8 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  const Text('Batch',
-                      style: TextStyle(fontSize: 13, color: kMuted)),
+                  Text('Batch',
+                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
                   if (batches.isEmpty)
                     AppCard(
@@ -1853,10 +1855,10 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                               'No batch yet. Create one so stock can be entered.',
                               style:
-                                  TextStyle(color: kMuted, fontSize: 13.5)),
+                                  TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
                           const SizedBox(height: 8),
                           FilledButton.tonal(
                             onPressed: () {
@@ -1892,7 +1894,7 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                           : 'Vendor: '
                               '${((batch['vendors'] as Map?)?['name'] ?? '').toString().isEmpty ? '—' : ((batch['vendors'] as Map?)?['name'] ?? '')}  ·  '
                               'Arrived: ${batch['arrival_date'] ?? '—'}',
-                      style: const TextStyle(fontSize: 12.5, color: kMuted),
+                      style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ],
                   const SizedBox(height: 16),

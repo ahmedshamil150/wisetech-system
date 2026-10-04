@@ -82,12 +82,12 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 }),
                 selectedColor: Theme.of(context).colorScheme.primary,
                 labelStyle: TextStyle(
-                  color: selected ? Colors.white : kMuted,
+                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: Color(0xFFE2E9F0)),
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               );
             },
           ),
@@ -147,22 +147,22 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 7),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFB3261E).withValues(alpha: 0.07),
+                        color: context.colors.errorContainer,
                         borderRadius: BorderRadius.circular(20),
                         border:
-                            Border.all(color: const Color(0xFFF1D9D7)),
+                            Border.all(color: context.colors.errorBorder),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.close,
-                              size: 14, color: Color(0xFFB3261E)),
+                              size: 14, color: Theme.of(context).colorScheme.error),
                           SizedBox(width: 4),
                           Text('Reset',
                               style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFFB3261E))),
+                                  color: Theme.of(context).colorScheme.error)),
                         ],
                       ),
                     ),
@@ -267,8 +267,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                           '$shown movement${shown == 1 ? '' : 's'}',
-                          style: const TextStyle(
-                              fontSize: 12.5, color: kMuted)),
+                          style: TextStyle(
+                              fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     ),
                   ),
                   Expanded(
@@ -459,7 +459,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     required ValueChanged<String> onSelected,
   }) {
     final primary = Theme.of(context).colorScheme.primary;
-    final color = active ? primary : kMuted;
+    final color = active ? primary : Theme.of(context).colorScheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: PopupMenuButton<String>(
@@ -468,10 +468,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
-            color: active ? primary.withValues(alpha: 0.10) : Colors.white,
+            color: active ? primary.withValues(alpha: 0.10) : Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
             border:
-                Border.all(color: active ? primary : const Color(0xFFE2E9F0)),
+                Border.all(color: active ? primary : Theme.of(context).colorScheme.outlineVariant),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -601,7 +601,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
           children: [
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: const Color(0xFFEAF3F8),
+                backgroundColor: context.colors.tintBlue,
                 child: Icon(icon, color: Theme.of(context).colorScheme.primary),
               ),
               title: Text('$label → ${row['to_location'] ?? ''}',
@@ -620,7 +620,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   ].join(' · ')),
                 ],
               ),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: kHint),
+              trailing: Icon(Icons.chevron_right, size: 20, color: Theme.of(context).colorScheme.outline),
               onTap: () => _openItem(rows.first),
             ),
             if (canFixParty)
@@ -637,18 +637,18 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 ),
               ),
             if (back)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
                 child: Row(
                   children: [
                     Icon(Icons.check_circle_outline,
-                        size: 15, color: Color(0xFF2E7D32)),
+                        size: 15, color: context.colors.success),
                     SizedBox(width: 6),
                     Text('Back in inventory',
                         style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF2E7D32))),
+                            color: context.colors.success)),
                   ],
                 ),
               ),
@@ -671,7 +671,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                       icon: const Icon(Icons.delete_outline, size: 18),
                       label: const Text('Delete'),
                       style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFFB3261E)),
+                          foregroundColor: Theme.of(context).colorScheme.error),
                     ),
                   ],
                 ),
@@ -685,23 +685,23 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                       const EdgeInsets.only(left: 16, right: 16, bottom: 8),
                   child: Row(
                     children: [
-                      const Icon(Icons.subdirectory_arrow_right,
-                          size: 16, color: kHint),
+                      Icon(Icons.subdirectory_arrow_right,
+                          size: 16, color: Theme.of(context).colorScheme.outline),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(_labelFor(other, labels),
                             overflow: TextOverflow.ellipsis,
                             style:
-                                const TextStyle(fontSize: 13, color: kMuted)),
+                                TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ),
                       if (other['is_demo'] == true)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(left: 6),
                           child: Text('Demo',
                               style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: kHint)),
+                                  color: Theme.of(context).colorScheme.outline)),
                         ),
                     ],
                   ),
@@ -1015,10 +1015,10 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
               ],
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
                 'Tick the items that came back — the rest of the send stays '
                 'out with them.',
-                style: TextStyle(color: kMuted, fontSize: 13)),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
             const SizedBox(height: 8),
             for (final row in outRows)
               CheckboxListTile(
@@ -1041,21 +1041,21 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading:
-                    const Icon(Icons.check_circle, size: 20, color: Color(0xFF1B7F4B)),
+                    Icon(Icons.check_circle, size: 20, color: context.colors.success),
                 title: Text(labelOf(row),
-                    style: const TextStyle(fontSize: 14, color: kMuted)),
-                subtitle: const Text('Already back in inventory',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF1B7F4B))),
+                    style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                subtitle: Text('Already back in inventory',
+                    style: TextStyle(fontSize: 12, color: context.colors.success)),
               ),
             for (final row in movedRows)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.swap_horiz, size: 20, color: kHint),
+                leading: Icon(Icons.swap_horiz, size: 20, color: Theme.of(context).colorScheme.outline),
                 title: Text(labelOf(row),
-                    style: const TextStyle(fontSize: 14, color: kMuted)),
-                subtitle: const Text('Moved on with a later movement',
-                    style: TextStyle(fontSize: 12, color: kHint)),
+                    style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                subtitle: Text('Moved on with a later movement',
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline)),
               ),
             const SizedBox(height: 8),
             DateField(controller: _date, label: 'Date they came back'),
@@ -1284,8 +1284,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('Items to send *',
-                      style: TextStyle(fontSize: 13, color: kMuted)),
+                  Text('Items to send *',
+                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
                   AppCard(
                     child: Column(
@@ -1293,8 +1293,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                         if (_selection.isEmpty)
                           ListTile(
                             leading: const Icon(Icons.search),
-                            title: const Text('Choose an item',
-                                style: TextStyle(color: kHint)),
+                            title: Text('Choose an item',
+                                style: TextStyle(color: Theme.of(context).colorScheme.outline)),
                             subtitle: const Text(
                                 'Pick a machine and its probes and printer '
                                 'come with it'),
@@ -1329,8 +1329,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Sent to *',
-                      style: TextStyle(fontSize: 13, color: kMuted)),
+                  Text('Sent to *',
+                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
                   SegmentedButton<String>(
                     segments: const [
@@ -1367,12 +1367,12 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                                 .colorScheme
                                 .primary
                                 .withValues(alpha: 0.07)
-                            : const Color(0xFFF6F9FC),
+                            : context.colors.quietFill,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                             color: _demo
                                 ? Theme.of(context).colorScheme.primary
-                                : const Color(0xFFE2E9F0)),
+                                : Theme.of(context).colorScheme.outlineVariant),
                       ),
                       child: SwitchListTile.adaptive(
                         value: _demo,
@@ -1384,27 +1384,27 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                         title: const Text('Send as demo',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 14)),
-                        subtitle: const Text(
+                        subtitle: Text(
                             'Stays company stock — record a return when '
                             'it comes back',
-                            style: TextStyle(fontSize: 12, color: kMuted)),
+                            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ),
                     ),
                   ],
                   const SizedBox(height: 16),
                   if (_kind == 'Workshop')
-                    const AppCard(
+                    AppCard(
                       padding: EdgeInsets.all(14),
                       child: Text('The company workshop (single location).',
-                          style: TextStyle(color: kMuted, fontSize: 13.5)),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
                     )
                   else if (_kind == 'Branch')
-                    const AppCard(
+                    AppCard(
                       padding: EdgeInsets.all(14),
                       child: Text(
                           'The Lahore branch — the company\'s own location. '
                           'Items sent there show as With Branch.',
-                          style: TextStyle(color: kMuted, fontSize: 13.5)),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
                     )
                   else if (_kind == 'Dealer')
                     PickyField(
@@ -1508,12 +1508,12 @@ Future<void> showAddPartySheet(
                     ],
                   ),
                 ),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: Text(
                     'These sends went out without a dealer or customer '
                     'name — pick it now and the items follow.',
-                    style: TextStyle(color: kMuted, fontSize: 13),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                   ),
                 ),
                 Expanded(
@@ -1527,11 +1527,11 @@ Future<void> showAddPartySheet(
                             padding: const EdgeInsets.all(4),
                             child: ListTile(
                               dense: true,
-                              leading: const CircleAvatar(
+                              leading: CircleAvatar(
                                 radius: 18,
-                                backgroundColor: Color(0xFFFFF6E5),
+                                backgroundColor: context.colors.warningContainer,
                                 child: Icon(Icons.person_add_alt_outlined,
-                                    size: 20, color: Color(0xFFF2B01E)),
+                                    size: 20, color: kAmber),
                               ),
                               title: Text(
                                 _sendTitle(entry.value, labels),
@@ -1543,8 +1543,8 @@ Future<void> showAddPartySheet(
                                 entry.value.first['movement_date'] ?? '',
                                 entry.value.first['movement_type'] ?? '',
                               ].join(' · ')),
-                              trailing: const Icon(Icons.chevron_right,
-                                  size: 20, color: kHint),
+                              trailing: Icon(Icons.chevron_right,
+                                  size: 20, color: Theme.of(context).colorScheme.outline),
                               onTap: () async {
                                 final groupRows = entry.value;
                                 final isDealer = groupRows

@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config.dart';
 import 'core/theme.dart';
+import 'core/theme_controller.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/shell/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  initialThemeMode = switch (prefs.getString('themeMode')) {
+    'dark' => ThemeMode.dark,
+    'system' => ThemeMode.system,
+    _ => ThemeMode.light,
+  };
   if (!Config.isConfigured) {
     runApp(const MissingConfigApp());
     return;
@@ -21,15 +29,18 @@ Future<void> main() async {
   runApp(const ProviderScope(child: UltrasoundInventoryApp()));
 }
 
-class UltrasoundInventoryApp extends StatelessWidget {
+class UltrasoundInventoryApp extends ConsumerWidget {
   const UltrasoundInventoryApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp(
       title: 'WTS',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
+      darkTheme: buildAppTheme(Brightness.dark),
+      themeMode: themeMode,
       home: const AuthGate(),
     );
   }

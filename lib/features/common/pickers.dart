@@ -105,8 +105,8 @@ Future<InventoryItem?> showPickItem(
                               return ListTile(
                                 dense: true,
                                 leading: Text(item.kindLabel,
-                                    style: const TextStyle(
-                                        fontSize: 12, color: kHint)),
+                                    style: TextStyle(
+                                        fontSize: 12, color: Theme.of(context).colorScheme.outline)),
                                 title: Text('${item.code}  ${item.title}',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700, fontSize: 14)),

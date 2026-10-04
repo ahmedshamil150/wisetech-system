@@ -123,7 +123,7 @@ class DashboardScreen extends ConsumerWidget {
           total == 0
               ? 'Here is your activity with the team inventory.'
               : 'Here is your activity with the team inventory · $total items.',
-          style: const TextStyle(color: Color(0xFF5B6B7B)),
+          style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
         GridView.count(
@@ -135,13 +135,7 @@ class DashboardScreen extends ConsumerWidget {
           childAspectRatio: 1.5,
           children: [
             for (final (label, icon, value) in stats)
-              Card(
-                elevation: 0,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: const BorderSide(color: Color(0xFFE2E9F0)),
-                ),
+              AppCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -151,8 +145,8 @@ class DashboardScreen extends ConsumerWidget {
                       Icon(icon, color: scheme.primary),
                       const SizedBox(height: 10),
                       Text(label,
-                          style: const TextStyle(
-                              fontSize: 13, color: Color(0xFF5B6B7B))),
+                          style: TextStyle(
+                              fontSize: 13, color: scheme.onSurfaceVariant)),
                       const SizedBox(height: 2),
                       Text(value,
                           style: const TextStyle(
@@ -167,10 +161,10 @@ class DashboardScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           Card(
             elevation: 0,
-            color: const Color(0xFFFFF6E5),
+            color: context.colors.warningContainer,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: Color(0xFFF2C94C)),
+              side: BorderSide(color: context.colors.warningBorder),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -180,7 +174,7 @@ class DashboardScreen extends ConsumerWidget {
                   Row(
                     children: [
                       const Icon(Icons.warning_amber_rounded,
-                          color: Color(0xFFF2B01E), size: 20),
+                          color: kAmber, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -193,10 +187,11 @@ class DashboardScreen extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'You recorded these without the dealer or customer '
                     'name. Add it whenever you know it.',
-                    style: TextStyle(color: Color(0xFF5B6B7B), fontSize: 13),
+                    style: TextStyle(
+                        color: scheme.onSurfaceVariant, fontSize: 13),
                   ),
                   const SizedBox(height: 10),
                   FilledButton.tonal(
@@ -218,9 +213,10 @@ class DashboardScreen extends ConsumerWidget {
                 const Text('Recently added',
                     style:
                         TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                const Text(
+                Text(
                   'Customers and dealers anyone just added.',
-                  style: TextStyle(color: kMuted, fontSize: 12.5),
+                  style: TextStyle(
+                      color: scheme.onSurfaceVariant, fontSize: 12.5),
                 ),
                 const SizedBox(height: 6),
                 for (var i = 0; i < newPeople.length; i++) ...[
@@ -230,7 +226,7 @@ class DashboardScreen extends ConsumerWidget {
                     child: Row(
                       children: [
                         const Icon(Icons.person_add_alt_outlined,
-                            size: 20, color: Color(0xFFF2B01E)),
+                            size: 20, color: kAmber),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -244,8 +240,9 @@ class DashboardScreen extends ConsumerWidget {
                                 '${newPeople[i]['by']} added a '
                                 '${newPeople[i]['kind']} · '
                                 '${_shopDate(newPeople[i]['at'])}',
-                                style: const TextStyle(
-                                    color: kMuted, fontSize: 12),
+                                style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontSize: 12),
                               ),
                             ],
                           ),
@@ -268,9 +265,10 @@ class DashboardScreen extends ConsumerWidget {
                     style:
                         TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 2),
-                const Text(
+                Text(
                   'Machines out to the workshop, dealers and customers.',
-                  style: TextStyle(color: kMuted, fontSize: 12.5),
+                  style: TextStyle(
+                      color: scheme.onSurfaceVariant, fontSize: 12.5),
                 ),
                 const SizedBox(height: 10),
                 for (var i = 0; i < ranking.length; i++) ...[
@@ -287,7 +285,7 @@ class DashboardScreen extends ConsumerWidget {
                                   fontSize: 13,
                                   color: i == 0
                                       ? scheme.primary
-                                      : kHint)),
+                                      : scheme.outline)),
                         ),
                         Expanded(
                           child: Column(
@@ -305,8 +303,9 @@ class DashboardScreen extends ConsumerWidget {
                                 'Customer ${ranking[i].value['Customer']} · '
                                 'Workshop ${ranking[i].value['Workshop']}'
                                 ' · Branch ${ranking[i].value['Branch']}',
-                                style: const TextStyle(
-                                    color: kMuted, fontSize: 12),
+                                style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontSize: 12),
                               ),
                             ],
                           ),
@@ -315,7 +314,7 @@ class DashboardScreen extends ConsumerWidget {
                           const Padding(
                             padding: EdgeInsets.only(right: 8),
                             child: Icon(Icons.emoji_events_outlined,
-                                color: Color(0xFFF2B01E), size: 20),
+                                color: kAmber, size: 20),
                           ),
                         Text('${ranking[i].value['total']}',
                             style: const TextStyle(
@@ -331,16 +330,16 @@ class DashboardScreen extends ConsumerWidget {
         const SizedBox(height: 16),
         Card(
           elevation: 0,
-          color: const Color(0xFFEAF3F8),
+          color: context.colors.tintBlue,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Padding(
-            padding: EdgeInsets.all(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
             child: Text(
               'Send an item to the workshop or a dealer on the Movements '
               'page, or record a sale — the numbers above update right away.',
-              style: TextStyle(color: Color(0xFF1668A8)),
+              style: TextStyle(color: scheme.primary),
             ),
           ),
         ),

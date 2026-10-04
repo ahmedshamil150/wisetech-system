@@ -5,8 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/data.dart';
 
-const Color kMuted = Color(0xFF5B6B7B);
-const Color kHint = Color(0xFF666F7A);
+export '../../core/palette.dart';
 
 class AppCard extends StatelessWidget {
   const AppCard({super.key, required this.child, this.padding});
@@ -16,14 +15,8 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // cardTheme (light + dark) carries the colour, radius and border.
     return Card(
-      elevation: 0,
-      color: Colors.white,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: Color(0xFFE2E9F0)),
-      ),
       child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
     );
   }
@@ -37,17 +30,18 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: kHint),
+            Icon(icon, size: 48, color: scheme.outline),
             const SizedBox(height: 12),
             Text(message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: kMuted, fontSize: 14)),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14)),
           ],
         ),
       ),
@@ -79,17 +73,25 @@ class SearchField extends StatelessWidget {
   }
 }
 
-Color statusColor(String status) => switch (status) {
-      'In Stock' || 'Available' => const Color(0xFF1B7F4B),
-      'With Workshop' => const Color(0xFF9A5A00),
-      'With Branch' => const Color(0xFF6D4C41),
-      'With Dealer' => const Color(0xFF6A3FB2),
-      'With Customer' => const Color(0xFF0E7C86),
-      'With Machine' => const Color(0xFF1668A8),
-      'Sold' => const Color(0xFFB3261E),
-      'Archived' => kHint,
-      _ => kMuted,
-    };
+/// The colour of a status pill; dark mode gets lightened variants so the
+/// small bold text keeps its contrast on dark cards.
+Color statusColor(String status, [Brightness brightness = Brightness.light]) {
+  final Color base = switch (status) {
+    'In Stock' || 'Available' => const Color(0xFF1B7F4B),
+    'With Workshop' => const Color(0xFF9A5A00),
+    'With Branch' => const Color(0xFF6D4C41),
+    'With Dealer' => const Color(0xFF6A3FB2),
+    'With Customer' => const Color(0xFF0E7C86),
+    'With Machine' => const Color(0xFF1668A8),
+    'Sold' => const Color(0xFFB3261E),
+    'Archived' => const Color(0xFF666F7A),
+    _ => const Color(0xFF5B6B7B),
+  };
+  if (brightness == Brightness.dark) {
+    return Color.lerp(base, Colors.white, 0.42)!;
+  }
+  return base;
+}
 
 class StatusChip extends StatelessWidget {
   const StatusChip({super.key, required this.status});
@@ -98,7 +100,7 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = statusColor(status);
+    final color = statusColor(status, Theme.of(context).brightness);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -115,11 +117,18 @@ class StatusChip extends StatelessWidget {
 }
 
 void showSnack(BuildContext context, String message, {bool error = false}) {
+  final scheme = Theme.of(context).colorScheme;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: error ? const Color(0xFFB3261E) : null,
+      content: error
+          ? Text(message,
+              style: TextStyle(
+                  color: scheme.onError,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600))
+          : Text(message),
+      backgroundColor: error ? scheme.error : null,
     ));
 }
 
@@ -184,6 +193,7 @@ class KeyValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -192,12 +202,11 @@ class KeyValue extends StatelessWidget {
           SizedBox(
             width: 110,
             child: Text(label,
-                style: const TextStyle(color: kHint, fontSize: 13)),
+                style: TextStyle(color: scheme.outline, fontSize: 13)),
           ),
           Expanded(
             child: Text(value,
-                style:
-                    const TextStyle(fontSize: 13.5, color: Color(0xFF25313D))),
+                style: TextStyle(fontSize: 13.5, color: scheme.onSurface)),
           ),
         ],
       ),
@@ -309,7 +318,9 @@ class _PickyFieldState extends State<PickyField> {
       children: [
         if (widget.label != null) ...[
           Text(widget.label!,
-              style: const TextStyle(fontSize: 13, color: kMuted)),
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 6),
         ],
         TextField(
@@ -369,7 +380,10 @@ class _PickyFieldState extends State<PickyField> {
                                   child: Text(option,
                                       style: const TextStyle(fontSize: 14)),
                                 ),
-                                Icon(Icons.north_west, size: 14, color: kHint),
+                                Icon(Icons.north_west,
+                                    size: 14,
+                                    color:
+                                        Theme.of(context).colorScheme.outline),
                               ],
                             ),
                           ),

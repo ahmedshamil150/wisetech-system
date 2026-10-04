@@ -49,7 +49,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
               Center(
                 child: Text('@$username',
-                    style: const TextStyle(color: Color(0xFF5B6B7B))),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
               Center(
                 child: Container(
@@ -58,8 +58,8 @@ class ProfileScreen extends ConsumerWidget {
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: (isAdmin
-                            ? const Color(0xFF1668A8)
-                            : const Color(0xFF5B6B7B))
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.onSurfaceVariant)
                         .withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
@@ -69,8 +69,8 @@ class ProfileScreen extends ConsumerWidget {
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: isAdmin
-                            ? const Color(0xFF1668A8)
-                            : const Color(0xFF5B6B7B)),
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
               ),
@@ -78,18 +78,12 @@ class ProfileScreen extends ConsumerWidget {
                 const SizedBox(height: 4),
                 Center(
                   child: Text('Member since ${createdAt.split('T').first}',
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF8A97A3))),
+                      style: TextStyle(
+                          fontSize: 12, color: Theme.of(context).colorScheme.outline)),
                 ),
               ],
               const SizedBox(height: 24),
-              Card(
-                elevation: 0,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: const BorderSide(color: Color(0xFFE2E9F0)),
-                ),
+              AppCard(
                 child: ListTile(
                   leading: Icon(isAdmin
                       ? Icons.verified_user_outlined

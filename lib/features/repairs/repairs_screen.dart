@@ -54,12 +54,12 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
                 onSelected: (_) => setState(() => _filter = label),
                 selectedColor: Theme.of(context).colorScheme.primary,
                 labelStyle: TextStyle(
-                  color: selected ? Colors.white : kMuted,
+                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: Color(0xFFE2E9F0)),
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               );
             },
           ),
@@ -143,7 +143,7 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
     final customer =
         ((row['customers'] as Map?)?['name'] ?? '').toString();
     final items = _itemsOf(row);
-    final color = open ? const Color(0xFF9A5A00) : const Color(0xFF1B7F4B);
+    final color = open ? context.colors.warning : context.colors.success;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -185,7 +185,7 @@ class _RepairStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final open = repairIsOpen(status);
-    final color = open ? const Color(0xFF9A5A00) : const Color(0xFF1B7F4B);
+    final color = open ? context.colors.warning : context.colors.success;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -234,7 +234,7 @@ class _RepairDetails extends ConsumerWidget {
             _RepairStatusChip(status: '${job['status']}'),
           ],
         ),
-        Text(customer, style: const TextStyle(color: kMuted)),
+        Text(customer, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 12),
         AppCard(
           padding: const EdgeInsets.all(12),
@@ -267,7 +267,7 @@ class _RepairDetails extends ConsumerWidget {
                   dense: true,
                   leading: Text(
                     itemKindLabel('${item['equipment_type'] ?? 'other'}'),
-                    style: const TextStyle(fontSize: 12, color: kHint),
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline),
                   ),
                   title: Text('${item['name_model']}',
                       style: const TextStyle(
@@ -615,9 +615,9 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text('Items *',
-                            style: TextStyle(fontSize: 13, color: kMuted)),
+                            style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ),
                       TextButton.icon(
                         onPressed: () async {
@@ -636,11 +636,11 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
                     ],
                   ),
                   if (_lines.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
                           'Add the machine — plus its probes and printer.',
-                          style: TextStyle(color: kHint, fontSize: 13)),
+                          style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: 13)),
                     )
                   else
                     for (var index = 0; index < _lines.length; index++)
