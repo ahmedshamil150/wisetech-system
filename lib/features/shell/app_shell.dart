@@ -8,6 +8,7 @@ import '../movements/movements_screen.dart';
 import '../records/records_screen.dart';
 import '../repairs/repairs_screen.dart';
 import 'dashboard_screen.dart';
+import 'navigation_providers.dart';
 import 'profile_screen.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -18,8 +19,6 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _index = 0;
-
   static const _titles = [
     'Dashboard',
     'Inventory',
@@ -46,15 +45,17 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final index = ref.watch(shellTabProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[_index]),
+        title: Text(_titles[index]),
         actions: const [_ProfileMenuButton()],
       ),
-      body: IndexedStack(index: _index, children: _pages),
+      body: IndexedStack(index: index, children: _pages),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        selectedIndex: index,
+        onDestinationSelected: (i) =>
+            ref.read(shellTabProvider.notifier).set(i),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: [
           for (final (icon, activeIcon, label) in _destinations)

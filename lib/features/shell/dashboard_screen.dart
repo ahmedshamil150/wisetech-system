@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
+import 'navigation_providers.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -21,13 +23,13 @@ class DashboardScreen extends ConsumerWidget {
 
     final inRepair = ref.watch(openRepairsCountProvider);
     final stats = ref.watch(inventoryProvider).when(
-          loading: () => <(String, IconData, String)>[
-            for (final (label, icon) in _statSlots)
-              (label, icon, '…'),
+          loading: () => <(String, IconData, String, String)>[
+            for (final (label, icon, target) in _statSlots)
+              (label, icon, '…', target),
           ],
-          error: (_, _) => <(String, IconData, String)>[
-            for (final (label, icon) in _statSlots)
-              (label, icon, '—'),
+          error: (_, _) => <(String, IconData, String, String)>[
+            for (final (label, icon, target) in _statSlots)
+              (label, icon, '—', target),
           ],
           data: (items) {
             int count(Iterable<InventoryItem> rows) => rows.length;
@@ -36,12 +38,20 @@ class DashboardScreen extends ConsumerWidget {
             final workshop = items.where((i) => i.status == 'With Workshop');
             final branch = items.where((i) => i.status == 'With Branch');
             final dealer = items.where((i) => i.status == 'With Dealer');
-            return <(String, IconData, String)>[
-              ('In stock', Icons.inventory_2_outlined, '${count(inStock)}'),
-              ('With workshop', Icons.build_outlined, '${count(workshop)}'),
-              ('With branch', Icons.storefront_outlined, '${count(branch)}'),
-              ('With dealer', Icons.handshake_outlined, '${count(dealer)}'),
-              ('In repair', Icons.handyman_outlined, '$inRepair'),
+            final customer =
+                items.where((i) => i.status == 'With Customer');
+            return <(String, IconData, String, String)>[
+              ('In stock', Icons.inventory_2_outlined, '${count(inStock)}',
+                  'In Stock'),
+              ('With workshop', Icons.build_outlined, '${count(workshop)}',
+                  'With Workshop'),
+              ('With branch', Icons.storefront_outlined, '${count(branch)}',
+                  'With Branch'),
+              ('With dealer', Icons.handshake_outlined, '${count(dealer)}',
+                  'With Dealer'),
+              ('With customer', Icons.person_outline, '${count(customer)}',
+                  'With Customer'),
+              ('In repair', Icons.handyman_outlined, '$inRepair', 'repairs'),
             ];
           },
         );
@@ -134,8 +144,9 @@ class DashboardScreen extends ConsumerWidget {
           crossAxisSpacing: 12,
           childAspectRatio: 1.5,
           children: [
-            for (final (label, icon, value) in stats)
+            for (final (label, icon, value, target) in stats)
               AppCard(
+                onTap: () => openStat(ref, target),
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -207,123 +218,129 @@ class DashboardScreen extends ConsumerWidget {
         if (isAdmin && newPeople.isNotEmpty) ...[
           const SizedBox(height: 16),
           AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Recently added',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                Text(
-                  'Customers and dealers anyone just added.',
-                  style: TextStyle(
-                      color: scheme.onSurfaceVariant, fontSize: 12.5),
-                ),
-                const SizedBox(height: 6),
-                for (var i = 0; i < newPeople.length; i++) ...[
-                  if (i > 0) const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person_add_alt_outlined,
-                            size: 20, color: kAmber),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${newPeople[i]['name']}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13.5)),
-                              Text(
-                                '${newPeople[i]['by']} added a '
-                                '${newPeople[i]['kind']} · '
-                                '${_shopDate(newPeople[i]['at'])}',
-                                style: TextStyle(
-                                    color: scheme.onSurfaceVariant,
-                                    fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Recently added',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                  Text(
+                    'Customers and dealers anyone just added.',
+                    style: TextStyle(
+                        color: scheme.onSurfaceVariant, fontSize: 12.5),
                   ),
+                  const SizedBox(height: 6),
+                  for (var i = 0; i < newPeople.length; i++) ...[
+                    if (i > 0) const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_add_alt_outlined,
+                              size: 20, color: kAmber),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${newPeople[i]['name']}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13.5)),
+                                Text(
+                                  '${newPeople[i]['by']} added a '
+                                  '${newPeople[i]['kind']} · '
+                                  '${_shopDate(newPeople[i]['at'])}',
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ],
         if (ranking.isNotEmpty) ...[
           const SizedBox(height: 16),
           AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Who sent the most?',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 2),
-                Text(
-                  'Machines out to the workshop, dealers and customers.',
-                  style: TextStyle(
-                      color: scheme.onSurfaceVariant, fontSize: 12.5),
-                ),
-                const SizedBox(height: 10),
-                for (var i = 0; i < ranking.length; i++) ...[
-                  if (i > 0) const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 28,
-                          child: Text('#${i + 1}',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13,
-                                  color: i == 0
-                                      ? scheme.primary
-                                      : scheme.outline)),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${ranking[i].value['name']}'
-                                '${ranking[i].key == myId ? ' (you)' : ''}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13.5),
-                              ),
-                              Text(
-                                'Dealer ${ranking[i].value['Dealer']} · '
-                                'Customer ${ranking[i].value['Customer']} · '
-                                'Workshop ${ranking[i].value['Workshop']}'
-                                ' · Branch ${ranking[i].value['Branch']}',
-                                style: TextStyle(
-                                    color: scheme.onSurfaceVariant,
-                                    fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (i == 0)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 8),
-                            child: Icon(Icons.emoji_events_outlined,
-                                color: kAmber, size: 20),
-                          ),
-                        Text('${ranking[i].value['total']}',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 16)),
-                      ],
-                    ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Who sent the most?',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Machines out to the workshop, dealers and customers.',
+                    style: TextStyle(
+                        color: scheme.onSurfaceVariant, fontSize: 12.5),
                   ),
+                  const SizedBox(height: 10),
+                  for (var i = 0; i < ranking.length; i++) ...[
+                    if (i > 0) const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 28,
+                            child: Text('#${i + 1}',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13,
+                                    color: i == 0
+                                        ? scheme.primary
+                                        : scheme.outline)),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${ranking[i].value['name']}'
+                                  '${ranking[i].key == myId ? ' (you)' : ''}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5),
+                                ),
+                                Text(
+                                  'Dealer ${ranking[i].value['Dealer']} · '
+                                  'Customer ${ranking[i].value['Customer']} · '
+                                  'Workshop ${ranking[i].value['Workshop']}'
+                                  ' · Branch ${ranking[i].value['Branch']}',
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (i == 0)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 8),
+                              child: Icon(Icons.emoji_events_outlined,
+                                  color: kAmber, size: 20),
+                            ),
+                          Text('${ranking[i].value['total']}',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 16)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -348,12 +365,23 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 const _statSlots = [
-  ('In stock', Icons.inventory_2_outlined),
-  ('With workshop', Icons.build_outlined),
-  ('With branch', Icons.storefront_outlined),
-  ('With dealer', Icons.handshake_outlined),
-  ('In repair', Icons.handyman_outlined),
+  ('In stock', Icons.inventory_2_outlined, 'In Stock'),
+  ('With workshop', Icons.build_outlined, 'With Workshop'),
+  ('With branch', Icons.storefront_outlined, 'With Branch'),
+  ('With dealer', Icons.handshake_outlined, 'With Dealer'),
+  ('With customer', Icons.person_outline, 'With Customer'),
+  ('In repair', Icons.handyman_outlined, 'repairs'),
 ];
+
+/// A stat card was tapped — open the page it counts, pre-filtered.
+void openStat(WidgetRef ref, String target) {
+  if (target == 'repairs') {
+    ref.read(shellTabProvider.notifier).set(4);
+    return;
+  }
+  ref.read(inventoryStatusFilterProvider.notifier).set(target);
+  ref.read(shellTabProvider.notifier).set(1);
+}
 
 /// `2026-09-28T…` → `28-09-2026` (the shop's date format).
 String _shopDate(Object? iso) {

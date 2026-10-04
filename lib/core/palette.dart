@@ -25,35 +25,36 @@ class AppColors {
   Color get warning => isDark ? const Color(0xFFE8A34A) : const Color(0xFF9A5A00);
 
   /// Soft blue tint behind avatars and quiet icons.
-  Color get tintBlue => isDark ? const Color(0xFF1B2A38) : const Color(0xFFEAF3F8);
+  Color get tintBlue =>
+      isDark ? const Color(0xFF171717) : const Color(0xFFEAF3F8);
 
   /// Pale amber card background (the dashboard "needs attention" card).
   Color get warningContainer =>
-      isDark ? const Color(0xFF3A2A10) : const Color(0xFFFFF6E5);
+      isDark ? const Color(0xFF241A08) : const Color(0xFFFFF6E5);
 
   /// Border of that amber card.
   Color get warningBorder =>
-      isDark ? const Color(0xFF5A4318) : const Color(0xFFF2C94C);
+      isDark ? const Color(0xFF4E3A14) : const Color(0xFFF2C94C);
 
   /// Soft red card background (the dashboard "missing name" card).
   Color get errorContainer =>
-      isDark ? const Color(0xFF3A1B1B) : const Color(0xFFFDEEEC);
+      isDark ? const Color(0xFF2B1211) : const Color(0xFFFDEEEC);
 
   /// Border of that red card.
   Color get errorBorder =>
-      isDark ? const Color(0xFF6E2E2A) : const Color(0xFFF1D9D7);
+      isDark ? const Color(0xFF5C2723) : const Color(0xFFF1D9D7);
 
   /// Fill for the demo-switch container when it is off.
-  Color get quietFill => isDark ? const Color(0xFF1B2430) : const Color(0xFFF6F9FC);
+  Color get quietFill =>
+      isDark ? const Color(0xFF161616) : const Color(0xFFF6F9FC);
 
   /// Primary-tinted fill (badges, soft buttons) that survives both modes.
-  Color get primaryTint => isDark
-      ? const Color(0xFF12314A)
-      : const Color(0xFFE7F1FA);
+  Color get primaryTint =>
+      isDark ? const Color(0xFF0C2740) : const Color(0xFFE7F1FA);
 
   /// Border of that primary-tinted fill.
   Color get primaryBorder =>
-      isDark ? const Color(0xFF1E4A6B) : const Color(0xFFD5E4F2);
+      isDark ? const Color(0xFF1B4160) : const Color(0xFFD5E4F2);
 }
 
 extension AppColorsX on BuildContext {

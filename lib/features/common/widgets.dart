@@ -8,16 +8,21 @@ import '../data/data.dart';
 export '../../core/palette.dart';
 
 class AppCard extends StatelessWidget {
-  const AppCard({super.key, required this.child, this.padding});
+  const AppCard({super.key, required this.child, this.padding, this.onTap});
 
   final Widget child;
   final EdgeInsets? padding;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     // cardTheme (light + dark) carries the colour, radius and border.
     return Card(
-      child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
+      ),
     );
   }
 }

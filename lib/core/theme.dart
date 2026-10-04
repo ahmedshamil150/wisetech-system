@@ -7,31 +7,31 @@ export 'palette.dart';
 /// Builds the app theme for [brightness].
 ///
 /// The light values are the palette the app has always shipped (white cards
-/// on a pale blue-grey canvas, brand blue actions); the dark values mirror
-/// the same layout on a deep slate canvas.
+/// on a pale blue-grey canvas, brand blue actions); dark mode is a true
+/// black canvas with near-black surfaces stepping up from it.
 ThemeData buildAppTheme([Brightness brightness = Brightness.light]) {
   final isDark = brightness == Brightness.dark;
   const brand = kBrandBlue;
 
   // canvas / surfaces
   const lightScaffold = Color(0xFFF5F8FB);
-  const darkScaffold = Color(0xFF10161C);
+  const darkScaffold = Color(0xFF000000);
   const lightSurface = Colors.white;
-  const darkSurface = Color(0xFF151C24);
+  const darkSurface = Color(0xFF0B0B0B);
   const lightFill = Colors.white;
-  const darkFill = Color(0xFF1C2530);
+  const darkFill = Color(0xFF161616);
   const lightBorder = Color(0xFFE2E9F0);
-  const darkBorder = Color(0xFF28323D);
+  const darkBorder = Color(0xFF2C2C2C);
   const lightOutlineField = Color(0xFFD5DEE7);
-  const darkOutlineField = Color(0xFF36424F);
+  const darkOutlineField = Color(0xFF3D3D3D);
 
   // text
   const lightOnSurface = Color(0xFF1C2733);
-  const darkOnSurface = Color(0xFFE7EEF4);
+  const darkOnSurface = Color(0xFFF2F2F2);
   const lightMuted = Color(0xFF5B6B7B); // the app's long-standing kMuted
-  const darkMuted = Color(0xFF9FB1C0);
+  const darkMuted = Color(0xFFA6A6A6);
   const lightHint = Color(0xFF666F7A); // the app's long-standing kHint
-  const darkHint = Color(0xFF8B9AA8);
+  const darkHint = Color(0xFF8F8F8F);
 
   const lightError = Color(0xFFB3261E);
   const darkError = Color(0xFFFFB4AB);
@@ -179,7 +179,7 @@ ThemeData buildAppTheme([Brightness brightness = Brightness.light]) {
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: isDark ? darkSurface : Colors.white,
-      indicatorColor: isDark ? const Color(0xFF12314A) : const Color(0xFFDCEBF7),
+      indicatorColor: isDark ? const Color(0xFF0E2B42) : const Color(0xFFDCEBF7),
       elevation: 0,
       height: 68,
     ),

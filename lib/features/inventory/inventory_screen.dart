@@ -95,10 +95,31 @@ List<(InventoryItem, bool)> arrangeAsKits(List<InventoryItem> items) {
   ];
 }
 
+/// Which status chip the inventory shows — the dashboard sets this before
+/// jumping to the tab so a stat card lands on the right list.
+class _StatusFilterNotifier extends Notifier<String> {
+  @override
+  String build() => 'All';
+
+  void set(String status) => state = status;
+}
+
+final inventoryStatusFilterProvider =
+    NotifierProvider<_StatusFilterNotifier, String>(_StatusFilterNotifier.new);
+
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String _query = '';
   String _type = 'Equipment';
   String _status = 'All';
+
+  @override
+  void initState() {
+    super.initState();
+    _status = ref.read(inventoryStatusFilterProvider);
+    ref.listenManual(inventoryStatusFilterProvider, (previous, next) {
+      if (next != _status) setState(() => _status = next);
+    });
+  }
 
   bool _matchesFilter(InventoryItem item) => switch (_type) {
         'Equipment' => item.kind != 'part',
@@ -260,7 +281,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   label,
                   statusCounts[label] ?? 0,
                   selected: _status == label,
-                  onTap: () => setState(() => _status = label),
+                  onTap: () {
+                    setState(() => _status = label);
+                    ref.read(inventoryStatusFilterProvider.notifier).set(label);
+                  },
                 );
               },
             ),
