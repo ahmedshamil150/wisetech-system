@@ -445,10 +445,22 @@ int _naturalCompare(String a, String b) {
   return a.toLowerCase().compareTo(b.toLowerCase());
 }
 
-/// Admin tool for a physical count: type the machine ids that stand in
-/// the room and the sheet lists every machine the app still has as
-/// "In Stock" but that was not typed — plus typed ids the app has as
-/// out somewhere or does not know at all.
+/// The categories a physical count can target, and what counts as
+/// "in stock" for each: machines say "In Stock", everything else
+/// says "Available".
+const _stockKinds = [
+  ('machine', 'Machines'),
+  ('probe', 'Probes'),
+  ('printer', 'Printers'),
+  ('part', 'Parts'),
+];
+
+String _stockStatusFor(String kind) => kind == 'machine' ? 'In Stock' : 'Available';
+
+/// Admin tool for a physical count: pick a category, type the ids of
+/// the items you can see in the room, and the sheet lists everything
+/// the app still has as in stock that was not typed — plus typed ids
+/// the app has as out, in a different category, or does not know.
 Future<void> showStockCheckSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -469,6 +481,7 @@ class _StockCheckSheet extends ConsumerStatefulWidget {
 
 class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
   final _input = TextEditingController();
+  String _kind = 'machine';
 
   @override
   void dispose() {
@@ -484,42 +497,64 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
       .where((token) => token.isNotEmpty)
       .toSet();
 
+  /// An item matches a typed token by its code or its serial, so the
+  /// count works whether the label shows the WT number or the maker's.
+  static InventoryItem? _matchToken(
+      String token, Iterable<InventoryItem> pool) {
+    for (final item in pool) {
+      if (item.code.toUpperCase() == token) return item;
+      final serial = item.serial;
+      if (serial != null && serial.isNotEmpty && serial.toUpperCase() == token) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = ref.watch(inventoryProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
-    final machines = [for (final item in items) if (item.kind == 'machine') item];
+    final stockStatus = _stockStatusFor(_kind);
+    final sameKind = [for (final item in items) if (item.kind == _kind) item];
     final expected = [
-      for (final machine in machines)
-        if (machine.status == 'In Stock') machine,
+      for (final item in sameKind)
+        if (item.status == stockStatus) item,
     ]..sort((a, b) => _naturalCompare(a.code, b.code));
 
     final entered = _entered;
     final missing = [
-      for (final machine in expected)
-        if (!entered.contains(machine.code.toUpperCase())) machine,
+      for (final item in expected)
+        if (!entered.contains(item.code.toUpperCase()) &&
+            (item.serial == null ||
+                item.serial!.isEmpty ||
+                !entered.contains(item.serial!.toUpperCase())))
+          item,
     ];
     final seenOut = <InventoryItem>[];
+    final wrongKind = <InventoryItem>[];
     final unknown = <String>[];
     for (final token in entered) {
-      InventoryItem? found;
-      for (final machine in machines) {
-        if (machine.code.toUpperCase() == token) {
-          found = machine;
-          break;
-        }
+      final found = _matchToken(token, sameKind);
+      if (found != null) {
+        if (found.status != stockStatus) seenOut.add(found);
+        continue;
       }
-      if (found == null) {
+      final elsewhere = _matchToken(token, items);
+      if (elsewhere != null) {
+        wrongKind.add(elsewhere);
+      } else {
         unknown.add(token);
-      } else if (found.status != 'In Stock') {
-        seenOut.add(found);
       }
     }
     seenOut.sort((a, b) => _naturalCompare(a.code, b.code));
+    wrongKind.sort((a, b) => _naturalCompare(a.code, b.code));
     unknown.sort(_naturalCompare);
 
+    final kindWord =
+        _kind[0].toUpperCase() + _kind.substring(1); // Machine, Probe, …
     const sectionStyle =
         TextStyle(fontSize: 15, fontWeight: FontWeight.w800);
 
@@ -540,9 +575,36 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
         ),
         const SizedBox(height: 4),
         const Text(
-            'Count the machines standing in the room and type their IDs — '
+            'Pick what you are counting, then type the IDs you see — '
             'one per line, or separated by spaces or commas.',
             style: TextStyle(color: kMuted, fontSize: 13)),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (kind, label) in _stockKinds)
+              ChoiceChip(
+                label: Text(
+                    '$label (${[for (final item in items) if (item.kind == kind && item.status == _stockStatusFor(kind)) item].length})'),
+                selected: _kind == kind,
+                onSelected: (_) => setState(() {
+                  if (_kind != kind) {
+                    _kind = kind;
+                    _input.clear();
+                  }
+                }),
+                selectedColor: Theme.of(context).colorScheme.primary,
+                labelStyle: TextStyle(
+                  color: _kind == kind ? Colors.white : kMuted,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+                backgroundColor: Colors.white,
+                side: const BorderSide(color: Color(0xFFE2E9F0)),
+              ),
+          ],
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: _input,
@@ -551,9 +613,11 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           autocorrect: false,
           textCapitalization: TextCapitalization.characters,
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: 'Machine IDs you can see',
-            hintText: '23T\n60T\n71T',
+          decoration: InputDecoration(
+            labelText: '$kindWord IDs you can see',
+            hintText: _kind == 'machine'
+                ? '23T\n60T\n71T'
+                : 'Serial or WT number\none per line',
           ),
         ),
         const SizedBox(height: 16),
@@ -572,7 +636,7 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
         const SizedBox(height: 16),
         if (entered.isEmpty)
           const Text(
-              'Type what you see — the machines you missed are listed here.',
+              'Type what you see — the items you missed are listed here.',
               style: TextStyle(color: kHint, fontSize: 13))
         else ...[
           Text('Missing — should be in stock (${missing.length})',
@@ -580,25 +644,24 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           const SizedBox(height: 8),
           if (missing.isEmpty)
             const Text(
-                'Every machine the app expects in stock was counted.',
+                'Everything the app expects in stock was counted.',
                 style: TextStyle(color: Color(0xFF1B7F4B), fontSize: 13.5))
           else
             AppCard(
               padding: const EdgeInsets.all(4),
               child: Column(
                 children: [
-                  for (final machine in missing)
+                  for (final item in missing)
                     ListTile(
                       dense: true,
                       leading: const Icon(Icons.help_outline, size: 20),
-                      title: Text(machine.code,
+                      title: Text(item.code,
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 14)),
-                      subtitle: Text(
-                          '${machine.title} · ${machine.location}',
+                      subtitle: Text('${item.title} · ${item.location}',
                           style: const TextStyle(fontSize: 12.5)),
                       trailing: const Icon(Icons.chevron_right, size: 20),
-                      onTap: () => showItemDetails(context, ref, machine),
+                      onTap: () => showItemDetails(context, ref, item),
                     ),
                 ],
               ),
@@ -612,20 +675,48 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
               padding: const EdgeInsets.all(4),
               child: Column(
                 children: [
-                  for (final machine in seenOut)
+                  for (final item in seenOut)
                     ListTile(
                       dense: true,
                       leading: const Icon(Icons.outbox_outlined, size: 20),
-                      title: Text(machine.code,
+                      title: Text(item.code,
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 14)),
-                      subtitle: Text('${machine.status} · ${machine.location}',
+                      subtitle: Text('${item.status} · ${item.location}',
                           style: const TextStyle(fontSize: 12.5)),
                       trailing: const Icon(Icons.chevron_right, size: 20),
-                      onTap: () => showItemDetails(context, ref, machine),
+                      onTap: () => showItemDetails(context, ref, item),
                     ),
                 ],
               ),
+            ),
+          ],
+          if (wrongKind.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+                'Found, but not a ${kindWord.toLowerCase()} (${wrongKind.length})',
+                style: sectionStyle),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final item in wrongKind)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1668A8).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFD5E4F2)),
+                    ),
+                    child: Text('${item.code} · ${item.kindLabel}',
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1668A8))),
+                  ),
+              ],
             ),
           ],
           if (unknown.isNotEmpty) ...[
