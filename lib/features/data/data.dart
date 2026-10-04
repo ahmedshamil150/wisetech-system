@@ -298,10 +298,15 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
 
 /// Puts an item back into stock from wherever it is: status and location
 /// are restored and a 'Return' movement records when it came back.
-Future<int> returnToInventory(InventoryItem item) async {
+/// [date] is dd-MM-yyyy (defaults to today) and [notes] is free text —
+/// both let a partial return say when and why items came back.
+Future<int> returnToInventory(InventoryItem item,
+    {String? date, String? notes}) async {
   return await _db.rpc('return_to_inventory', params: {
     'p_item_type': item.kind,
     'p_item_id': item.id,
+    if (date != null && date.isNotEmpty) 'p_date': date,
+    if (notes != null && notes.isNotEmpty) 'p_notes': notes,
   }) as int;
 }
 

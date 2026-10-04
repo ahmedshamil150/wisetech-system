@@ -658,7 +658,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   children: [
                     if (!back)
                       TextButton.icon(
-                        onPressed: () => _returnGroup(rows),
+                        onPressed: rows.length > 1
+                            ? () => _showReturnSheet(rows)
+                            : () => _returnGroup(rows),
                         icon: const Icon(Icons.login_outlined, size: 18),
                         label: const Text('Back to inventory'),
                       ),
@@ -783,6 +785,20 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         error: failure != null);
   }
 
+  /// Opens the tick-list sheet for a multi-item send: the sender picks
+  /// which of the items actually came back; the rest stay out.
+  void _showReturnSheet(List<Map<String, dynamic>> rows) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        child: _ReturnFromSendSheet(rows: rows),
+      ),
+    );
+  }
+
   /// Erases this send completely: the movement history is gone, the
   /// items simply live in the inventory again, and a customer/dealer
   /// added with this send is deleted too when nothing else uses it.
@@ -849,6 +865,224 @@ int _rankOf(Map<String, dynamic> row) {
   if (row['probe_id'] != null) return 2;
   if (row['part_id'] != null) return 3;
   return 4;
+}
+
+/// Where a send's member stands right now: still out with this send,
+/// already back, or moved on to a later movement.
+enum _SendRowState { out, back, movedOn }
+
+/// Partial (or full) return from a send — a customer sends one or two
+/// machines back while the others stay with them. Everything still out
+/// is ticked by default; untick what is not coming, set the date and
+/// notes, and only the ticked items go back to stock.
+class _ReturnFromSendSheet extends ConsumerStatefulWidget {
+  const _ReturnFromSendSheet({required this.rows});
+
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  ConsumerState<_ReturnFromSendSheet> createState() =>
+      _ReturnFromSendSheetState();
+}
+
+class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
+  final _date = TextEditingController();
+  final _notes = TextEditingController();
+  final _selected = <int>{}; // movement-row ids ticked to come back
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _date.text = DateField.format(DateTime.now());
+    // everything still out with this send starts ticked, so a plain
+    // "everything is back" case is one tap like it always was
+    for (final row in widget.rows) {
+      if (_stateOf(row) == _SendRowState.out) {
+        _selected.add(row['id'] as int);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_date, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Map<String, Map<String, dynamic>> _latestByItem() {
+    final movements = ref.read(movementsProvider).maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final latest = <String, Map<String, dynamic>>{};
+    for (final row in movements) {
+      final key = _MovementsScreenState._itemKey(row);
+      if (key == null) continue;
+      final mapKey = '${key.key}:${key.value}';
+      final id = row['id'] as int;
+      final seen = latest[mapKey];
+      if (seen == null || id > (seen['id'] as int)) latest[mapKey] = row;
+    }
+    return latest;
+  }
+
+  _SendRowState _stateOf(Map<String, dynamic> row) {
+    final key = _MovementsScreenState._itemKey(row);
+    if (key == null) return _SendRowState.movedOn;
+    final last = _latestByItem()['${key.key}:${key.value}'];
+    if (last == null) return _SendRowState.out;
+    if (last['movement_type'] == 'Return') return _SendRowState.back;
+    if (last['id'] == row['id']) return _SendRowState.out;
+    return _SendRowState.movedOn;
+  }
+
+  Future<void> _returnSelected(
+      Map<String, InventoryItem> itemsByKey) async {
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    var count = 0;
+    String? failure;
+    try {
+      for (final row in widget.rows) {
+        if (!_selected.contains(row['id'] as int)) continue;
+        final key = _MovementsScreenState._itemKey(row);
+        if (key == null) continue;
+        final item = itemsByKey['${key.key}:${key.value}'];
+        if (item == null) continue;
+        await returnToInventory(item,
+            date: _date.text.trim(), notes: _notes.text.trim());
+        count++;
+      }
+    } catch (error) {
+      failure = errorMessage(error);
+    } finally {
+      ref.invalidate(movementsProvider);
+      ref.invalidate(inventoryProvider);
+    }
+    if (!mounted) return;
+    Navigator.pop(context);
+    messenger.showSnackBar(SnackBar(
+        content: Text(failure ??
+            '$count item${count == 1 ? '' : 's'} back in inventory.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = ref.watch(inventoryProvider).maybeWhen(
+          data: (value) => value,
+          orElse: () => const <InventoryItem>[],
+        );
+    final itemsByKey = {for (final item in items) item.key: item};
+    final labels = ref.watch(itemLabelsProvider);
+
+    String labelOf(Map<String, dynamic> row) {
+      final key = _MovementsScreenState._itemKey(row);
+      if (key == null) return 'Unknown item';
+      return labels['${key.key}:${key.value}'] ?? 'Unknown item';
+    }
+
+    final outRows =
+        widget.rows.where((r) => _stateOf(r) == _SendRowState.out).toList();
+    final backRows =
+        widget.rows.where((r) => _stateOf(r) == _SendRowState.back).toList();
+    final movedRows = widget.rows
+        .where((r) => _stateOf(r) == _SendRowState.movedOn)
+        .toList();
+
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Back to inventory',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+                'Tick the items that came back — the rest of the send stays '
+                'out with them.',
+                style: TextStyle(color: kMuted, fontSize: 13)),
+            const SizedBox(height: 8),
+            for (final row in outRows)
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _selected.contains(row['id'] as int),
+                onChanged: _saving
+                    ? null
+                    : (_) => setState(() {
+                          final id = row['id'] as int;
+                          if (!_selected.remove(id)) _selected.add(id);
+                        }),
+                title: Text(labelOf(row),
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+              ),
+            for (final row in backRows)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading:
+                    const Icon(Icons.check_circle, size: 20, color: Color(0xFF1B7F4B)),
+                title: Text(labelOf(row),
+                    style: const TextStyle(fontSize: 14, color: kMuted)),
+                subtitle: const Text('Already back in inventory',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF1B7F4B))),
+              ),
+            for (final row in movedRows)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.swap_horiz, size: 20, color: kHint),
+                title: Text(labelOf(row),
+                    style: const TextStyle(fontSize: 14, color: kMuted)),
+                subtitle: const Text('Moved on with a later movement',
+                    style: TextStyle(fontSize: 12, color: kHint)),
+              ),
+            const SizedBox(height: 8),
+            DateField(controller: _date, label: 'Date they came back'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _notes,
+              autocorrect: false,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: (_saving || _selected.isEmpty)
+                  ? null
+                  : () => _returnSelected(itemsByKey),
+              child: _saving
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text('Return ${_selected.length} item'
+                      '${_selected.length == 1 ? '' : 's'}'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
