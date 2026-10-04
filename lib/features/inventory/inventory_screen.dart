@@ -30,6 +30,7 @@ const _statusFilters = [
   'In Stock',
   'With Machine',
   'With Workshop',
+  'With Branch',
   'With Dealer',
   'With Customer',
   'Archived',
@@ -1581,6 +1582,7 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
 IconData _historyIcon(String type) => switch (type) {
       'Return' => Icons.undo_outlined,
       'Workshop' => Icons.build_outlined,
+      'Branch' => Icons.storefront_outlined,
       'Dealer' => Icons.handshake_outlined,
       _ => Icons.person_outline,
     };

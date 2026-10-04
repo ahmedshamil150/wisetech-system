@@ -18,7 +18,7 @@ class MovementsScreen extends ConsumerStatefulWidget {
   ConsumerState<MovementsScreen> createState() => _MovementsScreenState();
 }
 
-const _filters = ['All', 'Workshop', 'Dealer', 'Customer', 'Returned'];
+const _filters = ['All', 'Workshop', 'Branch', 'Dealer', 'Customer', 'Returned'];
 
 class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _filter = 'All';
@@ -574,6 +574,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final kind = (row['movement_type'] ?? '').toString();
     final icon = switch (kind) {
       'Workshop' => Icons.build_outlined,
+      'Branch' => Icons.storefront_outlined,
       'Dealer' => Icons.handshake_outlined,
       _ => Icons.person_outline,
     };
@@ -1213,12 +1214,17 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       Navigator.pop(context);
       final where = _kind == 'Workshop'
           ? 'the workshop'
-          : target.isEmpty
-              ? (_kind == 'Dealer' ? 'a dealer' : 'a customer')
-              : target;
+          : _kind == 'Branch'
+              ? 'the Lahore branch'
+              : target.isEmpty
+                  ? (_kind == 'Dealer' ? 'a dealer' : 'a customer')
+                  : target;
       final added = newParty ? ' — $target added to the records' : '';
-      final pending =
-          target.isEmpty && _kind != 'Workshop' ? ' — add the name later' : '';
+      final pending = target.isEmpty &&
+              _kind != 'Workshop' &&
+              _kind != 'Branch'
+          ? ' — add the name later'
+          : '';
       messenger.showSnackBar(SnackBar(
           content: Text(
               '${_selection.length} item(s) sent to $where$added$pending'
@@ -1333,6 +1339,10 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                           label: Text('Workshop'),
                           icon: Icon(Icons.build_outlined, size: 18)),
                       ButtonSegment(
+                          value: 'Branch',
+                          label: Text('Branch'),
+                          icon: Icon(Icons.storefront_outlined, size: 18)),
+                      ButtonSegment(
                           value: 'Dealer',
                           label: Text('Dealer'),
                           icon: Icon(Icons.handshake_outlined, size: 18)),
@@ -1348,7 +1358,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                       _demo = false;
                     }),
                   ),
-                  if (_kind != 'Workshop') ...[
+                  if (_kind == 'Dealer' || _kind == 'Customer') ...[
                     const SizedBox(height: 8),
                     Container(
                       decoration: BoxDecoration(
@@ -1386,6 +1396,14 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     const AppCard(
                       padding: EdgeInsets.all(14),
                       child: Text('The company workshop (single location).',
+                          style: TextStyle(color: kMuted, fontSize: 13.5)),
+                    )
+                  else if (_kind == 'Branch')
+                    const AppCard(
+                      padding: EdgeInsets.all(14),
+                      child: Text(
+                          'The Lahore branch — the company\'s own location. '
+                          'Items sent there show as With Branch.',
                           style: TextStyle(color: kMuted, fontSize: 13.5)),
                     )
                   else if (_kind == 'Dealer')

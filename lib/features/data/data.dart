@@ -525,6 +525,7 @@ List<String> statusOptions(String kind) => kind == 'machine'
     ? const [
         'In Stock',
         'With Workshop',
+        'With Branch',
         'With Dealer',
         'With Customer',
         'Sold',
@@ -534,6 +535,7 @@ List<String> statusOptions(String kind) => kind == 'machine'
         'Available',
         'With Machine',
         'With Workshop',
+        'With Branch',
         'With Dealer',
         'With Customer',
         'Sold',
@@ -545,6 +547,7 @@ String defaultStatus(String kind) =>
 
 String defaultLocationFor(String status) => switch (status) {
       'With Workshop' => 'Workshop',
+      'With Branch' => 'Lahore branch',
       'With Dealer' => 'Dealer',
       'With Customer' => 'Customer',
       'Sold' => 'Customer',

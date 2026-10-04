@@ -34,10 +34,12 @@ class DashboardScreen extends ConsumerWidget {
             final inStock = items.where((i) =>
                 i.status == 'In Stock' || i.status == 'Available');
             final workshop = items.where((i) => i.status == 'With Workshop');
+            final branch = items.where((i) => i.status == 'With Branch');
             final dealer = items.where((i) => i.status == 'With Dealer');
             return <(String, IconData, String)>[
               ('In stock', Icons.inventory_2_outlined, '${count(inStock)}'),
               ('With workshop', Icons.build_outlined, '${count(workshop)}'),
+              ('With branch', Icons.storefront_outlined, '${count(branch)}'),
               ('With dealer', Icons.handshake_outlined, '${count(dealer)}'),
               ('In repair', Icons.handyman_outlined, '$inRepair'),
             ];
@@ -79,7 +81,10 @@ class DashboardScreen extends ConsumerWidget {
     for (final row in movementRows) {
       if (row['machine_id'] == null) continue;
       final kind = row['movement_type'];
-      if (kind != 'Workshop' && kind != 'Dealer' && kind != 'Customer') {
+      if (kind != 'Workshop' &&
+          kind != 'Branch' &&
+          kind != 'Dealer' &&
+          kind != 'Customer') {
         continue;
       }
       final actorId = (row['actor_id'] ?? '').toString();
@@ -92,6 +97,7 @@ class DashboardScreen extends ConsumerWidget {
       final entry = byPerson.putIfAbsent(actorId, () => {
             'name': person,
             'Workshop': 0,
+            'Branch': 0,
             'Dealer': 0,
             'Customer': 0,
             'total': 0,
@@ -297,7 +303,8 @@ class DashboardScreen extends ConsumerWidget {
                               Text(
                                 'Dealer ${ranking[i].value['Dealer']} · '
                                 'Customer ${ranking[i].value['Customer']} · '
-                                'Workshop ${ranking[i].value['Workshop']}',
+                                'Workshop ${ranking[i].value['Workshop']}'
+                                ' · Branch ${ranking[i].value['Branch']}',
                                 style: const TextStyle(
                                     color: kMuted, fontSize: 12),
                               ),
@@ -344,6 +351,7 @@ class DashboardScreen extends ConsumerWidget {
 const _statSlots = [
   ('In stock', Icons.inventory_2_outlined),
   ('With workshop', Icons.build_outlined),
+  ('With branch', Icons.storefront_outlined),
   ('With dealer', Icons.handshake_outlined),
   ('In repair', Icons.handyman_outlined),
 ];
