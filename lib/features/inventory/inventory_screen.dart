@@ -136,6 +136,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         (item.serial ?? '').toLowerCase().contains(_query);
   }
 
+  /// A box matches when its name or type matches the search, or when it
+  /// holds a probe that does — so searching a serial finds its box too.
+  bool _boxMatchesQuery(Map<String, dynamic> box, List<InventoryItem> items) {
+    if (_query.isEmpty) return true;
+    final name = (box['name'] ?? '').toString().toLowerCase();
+    final type = (box['probe_type'] ?? '').toString().toLowerCase();
+    if (name.contains(_query) || type.contains(_query)) return true;
+    return items.any((item) =>
+        item.kind == 'probe' &&
+        !item.isSold &&
+        item.boxId == box['id'] &&
+        _matchesQuery(item));
+  }
+
   bool _matchesStatus(InventoryItem item) => switch (_status) {
         'All' => true,
         'In Stock' =>
@@ -165,12 +179,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     }
     var boxCount = 0;
     for (final box in boxes) {
-      if (_query.isNotEmpty) {
-        final name = (box['name'] ?? '').toString().toLowerCase();
-        final type = (box['probe_type'] ?? '').toString().toLowerCase();
-        if (!name.contains(_query) && !type.contains(_query)) continue;
-      }
-      boxCount++;
+      if (_boxMatchesQuery(box, rows)) boxCount++;
     }
     counts['Boxes'] = boxCount;
     return counts;
@@ -363,45 +372,54 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       error: (error, _) =>
           EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
       data: (rows) {
-        final filtered = rows.where((row) {
-          if (_query.isEmpty) return true;
-          final name = (row['name'] ?? '').toString().toLowerCase();
-          final type = (row['probe_type'] ?? '').toString().toLowerCase();
-          return name.contains(_query) || type.contains(_query);
-        }).toList();
-        if (filtered.isEmpty) {
-          return const EmptyState(
+        // Searching a serial or model shows the probe itself right here —
+        // no need to open each box to find it.
+        final matchingProbes = _query.isEmpty
+            ? const <InventoryItem>[]
+            : (items
+                .where((item) =>
+                    item.kind == 'probe' &&
+                    !item.isSold &&
+                    _matchesQuery(item))
+                .toList()
+                  ..sort(_newestFirst));
+        final filtered =
+            rows.where((box) => _boxMatchesQuery(box, items)).toList();
+        if (filtered.isEmpty && matchingProbes.isEmpty) {
+          return EmptyState(
               icon: Icons.inbox_outlined,
-              message: 'No boxes yet. The admin adds them under Records.');
+              message: _query.isEmpty
+                  ? 'No boxes yet. The admin adds them under Records.'
+                  : 'No boxes or probes match this search.');
         }
         return AppRefresh(
-          child: ListView.builder(
+          child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            itemCount: filtered.length,
-            itemBuilder: (context, index) {
-              final box = filtered[index];
-            final count = items
-                .where(
-                    (item) => item.kind == 'probe' && item.boxId == box['id'])
-                .length;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: AppCard(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: context.colors.tintBlue,
-                    child: Icon(Icons.inbox_outlined),
+            children: [
+              for (final probe in matchingProbes) _itemTile(context, probe),
+              for (final box in filtered)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: AppCard(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: context.colors.tintBlue,
+                        child: Icon(Icons.inbox_outlined),
+                      ),
+                      title: Text((box['name'] ?? '').toString(),
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle:
+                          Text('${box['probe_type']} · ${items.where((item) =>
+                              item.kind == 'probe' &&
+                              item.boxId == box['id']).length} probes'),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => showBoxSheet(context, ref, box),
+                    ),
                   ),
-                  title: Text((box['name'] ?? '').toString(),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text('${box['probe_type']} · $count probes'),
-                  trailing: const Icon(Icons.chevron_right, size: 20),
-                  onTap: () => showBoxSheet(context, ref, box),
                 ),
-              ),
-            );
-            },
+            ],
           ),
         );
       },
@@ -420,7 +438,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             backgroundColor: context.colors.tintBlue,
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
-          title: Text(item.code,
+          title: Text(item.code.isNotEmpty
+              ? item.code
+              : (item.serial ?? item.title),
               style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
