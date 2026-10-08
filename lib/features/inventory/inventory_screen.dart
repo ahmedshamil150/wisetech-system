@@ -215,7 +215,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         fontWeight: FontWeight.w700,
         fontSize: 13,
       ),
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: context.colors.isDark
+          ? context.colors.quietFill
+          : Theme.of(context).colorScheme.surface,
       side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
     );
   }
@@ -647,7 +649,9 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
-                backgroundColor: Theme.of(context).colorScheme.surface,
+                backgroundColor: context.colors.isDark
+              ? context.colors.quietFill
+              : Theme.of(context).colorScheme.surface,
                 side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               ),
           ],

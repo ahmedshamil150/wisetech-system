@@ -18,6 +18,10 @@ class AppColors {
 
   bool get isDark => brightness == Brightness.dark;
 
+  /// Brand blue that stays legible as text — in dark mode it lifts to a
+  /// lighter blue so titles and accents read clearly on black.
+  Color get brandText => isDark ? const Color(0xFF86C6EE) : kBrandBlue;
+
   /// Success / "in stock" green.
   Color get success => isDark ? const Color(0xFF57D08A) : const Color(0xFF1B7F4B);
 

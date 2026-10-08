@@ -86,7 +86,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
-                backgroundColor: Theme.of(context).colorScheme.surface,
+                backgroundColor: context.colors.isDark
+                    ? context.colors.quietFill
+                    : Theme.of(context).colorScheme.surface,
                 side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               );
             },
@@ -1160,6 +1162,49 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     return (inserted['id'] as int, true);
   }
 
+  /// One selectable tile in the 2x2 "Sent to" grid.
+  Widget _kindTile(BuildContext context, String value, IconData icon) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _kind == value;
+    return Material(
+      color: selected
+          ? scheme.primary
+          : context.colors.quietFill,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => setState(() {
+          _kind = value;
+          _target.clear();
+          _demo = false;
+        }),
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: selected ? scheme.primary : scheme.outlineVariant),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  size: 18,
+                  color: selected ? scheme.onPrimary : scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? scheme.onPrimary : scheme.onSurface)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (_selection.isEmpty) {
       showSnack(context, 'Choose what you are sending.', error: true);
@@ -1330,33 +1375,37 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                   ),
                   const SizedBox(height: 16),
                   Text('Sent to *',
-                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                          value: 'Workshop',
-                          label: Text('Workshop'),
-                          icon: Icon(Icons.build_outlined, size: 18)),
-                      ButtonSegment(
-                          value: 'Branch',
-                          label: Text('Branch'),
-                          icon: Icon(Icons.storefront_outlined, size: 18)),
-                      ButtonSegment(
-                          value: 'Dealer',
-                          label: Text('Dealer'),
-                          icon: Icon(Icons.handshake_outlined, size: 18)),
-                      ButtonSegment(
-                          value: 'Customer',
-                          label: Text('Customer'),
-                          icon: Icon(Icons.person_outline, size: 18)),
+                  // Two per row — four side by side is too tight on a phone.
+                  Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                              child: _kindTile(context, 'Workshop',
+                                  Icons.build_outlined)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                              child: _kindTile(
+                                  context, 'Branch', Icons.storefront_outlined)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                              child: _kindTile(
+                                  context, 'Dealer', Icons.handshake_outlined)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                              child: _kindTile(
+                                  context, 'Customer', Icons.person_outline)),
+                        ],
+                      ),
                     ],
-                    selected: {_kind},
-                    onSelectionChanged: (value) => setState(() {
-                      _kind = value.first;
-                      _target.clear();
-                      _demo = false;
-                    }),
                   ),
                   if (_kind == 'Dealer' || _kind == 'Customer') ...[
                     const SizedBox(height: 8),

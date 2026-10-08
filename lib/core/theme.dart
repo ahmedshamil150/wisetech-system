@@ -181,7 +181,7 @@ ThemeData buildAppTheme([Brightness brightness = Brightness.light]) {
       backgroundColor: isDark ? darkSurface : Colors.white,
       indicatorColor: isDark ? const Color(0xFF0E2B42) : const Color(0xFFDCEBF7),
       elevation: 0,
-      height: 68,
+      height: 62,
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: isDark ? darkSurface : Colors.white,

@@ -56,7 +56,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         selectedIndex: index,
         onDestinationSelected: (i) =>
             ref.read(shellTabProvider.notifier).set(i),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         destinations: [
           for (final (icon, activeIcon, label) in _destinations)
             NavigationDestination(

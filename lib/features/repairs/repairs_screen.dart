@@ -58,7 +58,9 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
-                backgroundColor: Theme.of(context).colorScheme.surface,
+                backgroundColor: context.colors.isDark
+              ? context.colors.quietFill
+              : Theme.of(context).colorScheme.surface,
                 side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               );
             },

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/username.dart';
+import '../common/widgets.dart';
 import 'auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -76,7 +77,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       fontSize: 14,
                       letterSpacing: 4,
                       fontWeight: FontWeight.w700,
-                      color: scheme.primary,
+                      color: context.colors.brandText,
                     ),
                   ),
                   const SizedBox(height: 4),

@@ -142,26 +142,26 @@ class DashboardScreen extends ConsumerWidget {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.5,
+          childAspectRatio: 1.4,
           children: [
             for (final (label, icon, value, target) in stats)
               AppCard(
                 onTap: () => openStat(ref, target),
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(icon, color: scheme.primary),
-                      const SizedBox(height: 10),
+                      Icon(icon, size: 22, color: scheme.primary),
+                      const SizedBox(height: 8),
                       Text(label,
                           style: TextStyle(
                               fontSize: 13, color: scheme.onSurfaceVariant)),
                       const SizedBox(height: 2),
                       Text(value,
                           style: const TextStyle(
-                              fontSize: 22, fontWeight: FontWeight.w800)),
+                              fontSize: 20, fontWeight: FontWeight.w800)),
                     ],
                   ),
                 ),
@@ -299,9 +299,9 @@ class DashboardScreen extends ConsumerWidget {
                                 style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 13,
-                                    color: i == 0
-                                        ? scheme.primary
-                                        : scheme.outline)),
+                                color: i == 0
+                                    ? context.colors.brandText
+                                    : scheme.outline)),
                           ),
                           Expanded(
                             child: Column(
@@ -356,7 +356,7 @@ class DashboardScreen extends ConsumerWidget {
             child: Text(
               'Send an item to the workshop or a dealer on the Movements '
               'page, or record a sale — the numbers above update right away.',
-              style: TextStyle(color: scheme.primary),
+                                style: TextStyle(color: context.colors.brandText),
             ),
           ),
         ),

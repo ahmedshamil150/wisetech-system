@@ -560,7 +560,7 @@ class _BatchesPane extends ConsumerWidget {
                     backgroundColor: context.colors.tintBlue,
                     child: Text(letter,
                         style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
+                            color: context.colors.brandText,
                             fontWeight: FontWeight.w800)),
                   ),
                   title: Text('Batch $letter',
