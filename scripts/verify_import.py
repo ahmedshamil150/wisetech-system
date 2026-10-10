@@ -3,9 +3,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psycopg2
-from run_sql import dsn_from_env
+from import_legacy import load_env
 
-conn = psycopg2.connect(**dsn_from_env())
+env = load_env(Path(__file__).resolve().parent.parent / '.env')
+conn = psycopg2.connect(
+    host=env['SUPABASE_DB_HOST'], port=int(env.get('SUPABASE_DB_PORT', '5432')),
+    dbname=env.get('SUPABASE_DB_NAME', 'postgres'), user=env['SUPABASE_DB_USER'],
+    password=env['SUPABASE_DB_PASSWORD'], sslmode='require')
 cur = conn.cursor()
 
 def q(sql):

@@ -8,6 +8,8 @@ import 'core/theme.dart';
 import 'core/theme_controller.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
+import 'features/data/data_era.dart';
+import 'features/era/era_choice_screen.dart';
 import 'features/shell/app_shell.dart';
 
 Future<void> main() async {
@@ -18,6 +20,8 @@ Future<void> main() async {
     'system' => ThemeMode.system,
     _ => ThemeMode.light,
   };
+  // Remember the era choice so providers can read it before the first frame.
+  initialDataEra = storedDataEra(prefs.getString('dataEra'));
   if (!Config.isConfigured) {
     runApp(const MissingConfigApp());
     return;
@@ -57,6 +61,12 @@ class AuthGate extends ConsumerWidget {
       error: (error, stack) => const LoginScreen(),
       data: (state) {
         if (state.session == null) return const LoginScreen();
+        // Admins who have not picked an era yet see the choice screen first.
+        final isAdmin = ref.watch(isAdminProvider);
+        final eraChoiceMade = ref.watch(eraChoiceMadeProvider);
+        if (isAdmin && !eraChoiceMade) {
+          return const EraChoiceScreen();
+        }
         return const AppShell();
       },
     );

@@ -2,10 +2,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_controller.dart';
+import 'data_era.dart';
 
 SupabaseClient get db => Supabase.instance.client;
 
 SupabaseClient get _db => db;
+
+// ---------------------------------------------------------------------------
+// era filter (before = BATCH-OLD + BATCH-PARTS, after = BATCH-3 + BATCH-PARTS)
+// ---------------------------------------------------------------------------
+
+Future<Set<int>> _eraBatchIds(DataEra era) async {
+  final rows = await _db.from('batches').select('id, code');
+  final before = <int>{};
+  final after = <int>{};
+  for (final row in rows) {
+    final code = (row['code'] ?? '').toString();
+    final id = row['id'] as int;
+    if (code == 'BATCH-OLD') before.add(id);
+    if (code == 'BATCH-PARTS') {
+      before.add(id);
+      after.add(id);
+    }
+    if (code == 'BATCH-3') after.add(id);
+  }
+  return era.isBefore ? before : after;
+}
+
+/// Builds the `.or()` filter that keeps only rows in the chosen era's
+/// batches, or with no batch at all (legacy rows).
+String _eraOrFilter(Set<int> batchIds) {
+  final ids = batchIds.map((id) => id.toString()).join(',');
+  return 'batch_id.is.null,batch_id.in.($ids)';
+}
 
 String errorMessage(Object error) {
   if (error is PostgrestException) {
@@ -227,19 +256,27 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
       'catalog_product_id, vendor_id, batches(code)';
   const linked = 'assigned_machine_id, ';
 
+  final era = ref.watch(dataEraProvider);
+  final batchIds = await _eraBatchIds(era);
+  final eraFilter = _eraOrFilter(batchIds);
+
   final machines = await _db
       .from('machines')
       .select('$fields, machine_id, model')
+      .or(eraFilter)
       .order('id', ascending: false);
   final probes = await _db
       .from('probes')
       .select(
           '$fields, $linked box_id, catalog_products(probe_type), internal_id, model')
+      .or(eraFilter)
       .order('id', ascending: false);
   final printers = await _db
       .from('printers')
       .select('$fields, $linked internal_id, name_model')
+      .or(eraFilter)
       .order('id', ascending: false);
+  // Parts are not era-filtered — they live in BATCH-PARTS in both eras.
   final parts = await _db
       .from('parts')
       .select('$fields, $linked internal_id, name_model')
@@ -279,14 +316,21 @@ final itemLabelsProvider = Provider<Map<String, String>>((ref) {
 // ---------------------------------------------------------------------------
 
 final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final rows = await _db
+  // Before mode shows only movements dated 2026-09-13 or earlier; after
+  // mode shows only movements from 2026-09-14 onwards (the new system
+  // started that day, so every new movement is dated on/after it).
+  final era = ref.watch(dataEraProvider);
+  final query = _db
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
         'reason, notes, reference, is_demo, created_at, actor_id, machine_id, '
         'probe_id, printer_id, part_id, dealers(name), customers(name), '
         'workshops(name), profiles(display_name, username)',
-      )
+      );
+  final rows = await (era.isBefore
+          ? query.lte('movement_date', '13-09-2026')
+          : query.gte('movement_date', '14-09-2026'))
       .order('id', ascending: false);
   rows.sort((a, b) {
     final byDate = (_parseDate(b['movement_date']) ?? DateTime(0))
@@ -344,6 +388,47 @@ bool movementPartyMissing(Map<String, dynamic> row) {
 
 /// Fills in the dealer/customer name of a movement that was recorded
 /// without one — only the sender or an admin may (enforced by the RPC).
+/// The sales recorded against a customer (via customer_id).
+final customerSalesProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, name) async {
+  // Look the customer up by name so the sheet can be opened from the people
+  // list (which is keyed by name, not id).
+  final party = await _db
+      .from('customers')
+      .select('id')
+      .ilike('name', name)
+      .limit(1);
+  if (party.isEmpty) return const <Map<String, dynamic>>[];
+  final rows = await _db
+      .from('sales')
+      .select(
+        'id, sale_date, invoice_number, total_amount, notes, old_source_id, '
+        'sale_items(quantity, unit_price, item_type, machines(machine_id, model), '
+        'probes(internal_id, model), printers(internal_id, name_model), '
+        'parts(internal_id, name_model))',
+      )
+      .eq('customer_id', party.first['id'] as int)
+      .order('sale_date', ascending: false);
+  return rows;
+});
+
+/// The sales whose party tag names this dealer (imported legacy rows have no
+/// customer_id, only a `party:dealer:NAME` line in notes).
+final dealerSalesProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, name) async {
+  final rows = await _db
+      .from('sales')
+      .select(
+        'id, sale_date, invoice_number, total_amount, notes, old_source_id, '
+        'sale_items(quantity, unit_price, item_type, machines(machine_id, model), '
+        'probes(internal_id, model), printers(internal_id, name_model), '
+        'parts(internal_id, name_model))',
+      )
+      .like('notes', 'party:dealer:${name.toUpperCase()}%')
+      .order('sale_date', ascending: false);
+  return rows;
+});
+
 Future<void> setMovementParty(
   int movementId, {
   int? dealerId,

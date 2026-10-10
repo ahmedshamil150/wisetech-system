@@ -421,25 +421,31 @@ class _PeoplePane extends ConsumerWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   subtitle:
                       parts.isEmpty ? null : Text(parts.join(' · ')),
-                  trailing: isAdmin
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: 'Edit $kind',
-                              icon: const Icon(Icons.edit_outlined, size: 20),
-                              onPressed: () =>
-                                  showRecordForm(context, kind, editRow: row),
-                            ),
-                            IconButton(
-                              tooltip: 'Delete $kind',
-                              icon:
-                                  const Icon(Icons.delete_outline, size: 20),
-                              onPressed: () => _confirmDelete(context, ref, row),
-                            ),
-                          ],
-                        )
-                      : null,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'View sales',
+                        icon: const Icon(Icons.receipt_long_outlined, size: 20),
+                        onPressed: () => showSalesSheet(context, ref, kind,
+                            (row['name'] ?? '').toString()),
+                      ),
+                      if (isAdmin) ...[
+                        IconButton(
+                          tooltip: 'Edit $kind',
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          onPressed: () =>
+                              showRecordForm(context, kind, editRow: row),
+                        ),
+                        IconButton(
+                          tooltip: 'Delete $kind',
+                          icon:
+                              const Icon(Icons.delete_outline, size: 20),
+                          onPressed: () => _confirmDelete(context, ref, row),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -494,6 +500,110 @@ class _PeoplePane extends ConsumerWidget {
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
     }
+  }
+}
+
+/// Shows the sales recorded against a customer or dealer — the receipt-style
+/// sheet used from the people pane in Records.
+void showSalesSheet(BuildContext context, WidgetRef ref, String kind, String name) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheetContext) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.8,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      builder: (sheetContext, scrollController) => _SalesSheet(
+        kind: kind,
+        name: name,
+        scrollController: scrollController,
+      ),
+    ),
+  );
+}
+
+class _SalesSheet extends ConsumerWidget {
+  const _SalesSheet({
+    required this.kind,
+    required this.name,
+    required this.scrollController,
+  });
+
+  final String kind; // customer | dealer
+  final String name;
+  final ScrollController scrollController;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sales = kind == 'dealer'
+        ? ref.watch(dealerSalesProvider(name))
+        : ref.watch(customerSalesProvider(name));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: sales.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) =>
+            EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+        data: (rows) {
+          if (rows.isEmpty) {
+            return EmptyState(
+              icon: Icons.receipt_long_outlined,
+              message: 'No sales recorded for $name.',
+            );
+          }
+          return ListView.builder(
+            controller: scrollController,
+            itemCount: rows.length,
+            itemBuilder: (context, index) {
+              final row = rows[index];
+              final date = (row['sale_date'] ?? '').toString();
+              final invoice = (row['invoice_number'] ?? '').toString();
+              final total = row['total_amount'];
+              final notes = (row['notes'] ?? '').toString();
+              final lines = (row['sale_items'] as List?)?.cast<Map>() ?? [];
+              final lineSummary = lines
+                  .map((line) {
+                    final item = (line['machines'] ??
+                        line['probes'] ??
+                        line['printers'] ??
+                        line['parts']) as Map?;
+                    final label = (item?['machine_id'] ??
+                            item?['internal_id'] ??
+                            item?['name_model'] ??
+                            item?['model'] ??
+                            '')
+                        .toString();
+                    final qty = line['quantity'];
+                    return '$label ×$qty';
+                  })
+                  .join(' · ');
+              return AppCard(
+                child: ListTile(
+                  title: Text(
+                    [if (date.isNotEmpty) date, if (invoice.isNotEmpty) invoice]
+                        .join(' · '),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (lineSummary.isNotEmpty) Text(lineSummary),
+                      if (total != null)
+                        Text('Total: $total',
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                      if (notes.isNotEmpty && notes != 'Imported legacy line (no invoice).')
+                        Text(notes, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 }
 
