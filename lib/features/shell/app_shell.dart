@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/layout.dart';
 import '../../core/theme_controller.dart';
 import '../auth/auth_controller.dart';
 import '../data/data_era.dart';
@@ -47,26 +48,52 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final index = ref.watch(shellTabProvider);
+    final desktop = isDesktopLayout(context);
+    final body = IndexedStack(index: index, children: _pages);
     return Scaffold(
       appBar: AppBar(
         title: Text(_titles[index]),
         actions: const [_ProfileMenuButton()],
       ),
-      body: IndexedStack(index: index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (i) =>
-            ref.read(shellTabProvider.notifier).set(i),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-        destinations: [
-          for (final (icon, activeIcon, label) in _destinations)
-            NavigationDestination(
-              icon: Icon(icon),
-              selectedIcon: Icon(activeIcon),
-              label: label,
+      body: desktop
+          ? Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: index,
+                  onDestinationSelected: (i) =>
+                      ref.read(shellTabProvider.notifier).set(i),
+                  labelType: NavigationRailLabelType.all,
+                  minWidth: 160,
+                  destinations: [
+                    for (final (icon, activeIcon, label) in _destinations)
+                      NavigationRailDestination(
+                        icon: Icon(icon),
+                        selectedIcon: Icon(activeIcon),
+                        label: Text(label),
+                      ),
+                  ],
+                ),
+                const VerticalDivider(width: 1, thickness: 1),
+                Expanded(child: body),
+              ],
+            )
+          : body,
+      bottomNavigationBar: desktop
+          ? null
+          : NavigationBar(
+              selectedIndex: index,
+              onDestinationSelected: (i) =>
+                  ref.read(shellTabProvider.notifier).set(i),
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+              destinations: [
+                for (final (icon, activeIcon, label) in _destinations)
+                  NavigationDestination(
+                    icon: Icon(icon),
+                    selectedIcon: Icon(activeIcon),
+                    label: label,
+                  ),
+              ],
             ),
-        ],
-      ),
     );
   }
 }

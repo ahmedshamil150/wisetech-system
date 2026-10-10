@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/data.dart';
+import '../../core/layout.dart';
 
 export '../../core/palette.dart';
 
@@ -412,9 +413,10 @@ Future<String?> showPickFromList({
   required List<String> options,
   String? selected,
 }) {
-  return showModalBottomSheet<String>(
+  return showAppSheet<String>(
     context: context,
-    isScrollControlled: true,
+    title: title,
+    heightFraction: 0.75,
     builder: (sheetContext) {
       var query = '';
       return StatefulBuilder(

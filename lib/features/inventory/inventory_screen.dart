@@ -6,6 +6,7 @@ import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../records/records_screen.dart';
+import '../../core/layout.dart';
 
 /// Full list of machines, probes, printers and parts, newest first.
 /// Admins get an "Add product" form; viewers can only browse.
@@ -344,9 +345,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: FilledButton.icon(
-              onPressed: () => showModalBottomSheet<void>(
+              onPressed: () => showAppSheet<void>(
                 context: context,
-                isScrollControlled: true,
+                title: 'Add product',
+                heightFraction: 0.85,
                 builder: (sheetContext) => Padding(
                   padding: EdgeInsets.only(
                       bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -532,13 +534,11 @@ String _stockStatusFor(String kind) => kind == 'machine' ? 'In Stock' : 'Availab
 /// the app still has as in stock that was not typed — plus typed ids
 /// the app has as out, in a different category, or does not know.
 Future<void> showStockCheckSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
-    builder: (sheetContext) => SizedBox(
-      height: MediaQuery.of(sheetContext).size.height * 0.85,
-      child: const _StockCheckSheet(),
-    ),
+    title: 'Stock check',
+    heightFraction: 0.85,
+    builder: (sheetContext) => const _StockCheckSheet(),
   );
 }
 
@@ -1084,16 +1084,14 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
 /// Sheet for one box: the probes inside it and a way to put more in.
 Future<void> showBoxSheet(
     BuildContext context, WidgetRef ref, Map<String, dynamic> box) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
+    title: (box['name'] ?? 'Box').toString(),
+    heightFraction: 0.75,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-      child: SizedBox(
-        height: MediaQuery.of(sheetContext).size.height * 0.75,
-        child: _BoxSheet(box: box),
-      ),
+      child: _BoxSheet(box: box),
     ),
   );
 }
@@ -1407,13 +1405,11 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
 /// Read-only sheet with everything we know about one item.
 Future<void> showItemDetails(
     BuildContext context, WidgetRef ref, InventoryItem item) {
-  return showModalBottomSheet<void>(
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
-    builder: (sheetContext) => SizedBox(
-      height: MediaQuery.of(sheetContext).size.height * 0.75,
-      child: _ItemDetails(item: item),
-    ),
+    title: item.code.isNotEmpty ? item.code : item.title,
+    heightFraction: 0.75,
+    builder: (sheetContext) => _ItemDetails(item: item),
   );
 }
 
@@ -1489,9 +1485,10 @@ class _ItemDetails extends ConsumerWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => showModalBottomSheet<void>(
+                  onPressed: () => showAppSheet<void>(
                     context: context,
-                    isScrollControlled: true,
+                    title: 'Edit ${item.code.isNotEmpty ? item.code : item.title}',
+                    heightFraction: 0.85,
                     builder: (sheetContext) => Padding(
                       padding: EdgeInsets.only(
                           bottom: MediaQuery.of(sheetContext)

@@ -5,6 +5,7 @@ import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../inventory/inventory_screen.dart';
+import '../../core/layout.dart';
 
 /// Reference data: products, brands, customers, dealers and batches.
 /// Admins can add records here; viewers can only read them.
@@ -105,9 +106,15 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
 
 Future<void> showRecordForm(BuildContext context, String kind,
     {Map<String, dynamic>? editRow}) {
-  return showModalBottomSheet<void>(
+  final label = kind == 'batch'
+      ? 'Batch'
+      : kind == 'box'
+          ? 'Box'
+          : kind[0].toUpperCase() + kind.substring(1);
+  return showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
+    title: editRow != null ? 'Edit $label' : 'New $label',
+    heightFraction: 0.85,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -506,10 +513,10 @@ class _PeoplePane extends ConsumerWidget {
 /// Shows the sales recorded against a customer or dealer — the receipt-style
 /// sheet used from the people pane in Records.
 void showSalesSheet(BuildContext context, WidgetRef ref, String kind, String name) {
-  showModalBottomSheet<void>(
+  showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
+    title: 'Sales — $name',
+    heightFraction: 0.85,
     builder: (sheetContext) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.8,

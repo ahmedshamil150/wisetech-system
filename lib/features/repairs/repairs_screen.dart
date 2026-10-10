@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import '../../core/layout.dart';
 
 /// Repair jobs: machines fixed for customers — ours or theirs.
 /// Everyone on the team can add and update them.
@@ -107,9 +108,10 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           child: FilledButton.icon(
-            onPressed: () => showModalBottomSheet<void>(
+            onPressed: () => showAppSheet<void>(
               context: context,
-              isScrollControlled: true,
+              title: 'New repair',
+              heightFraction: 0.85,
               builder: (sheetContext) => Padding(
                 padding: EdgeInsets.only(
                     bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -151,13 +153,11 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
         child: ListTile(
-          onTap: () => showModalBottomSheet<void>(
+          onTap: () => showAppSheet<void>(
             context: context,
-            isScrollControlled: true,
-            builder: (sheetContext) => SizedBox(
-              height: MediaQuery.of(sheetContext).size.height * 0.8,
-              child: _RepairDetails(job: row),
-            ),
+            title: '${row['job_number']}  ·  $customer',
+            heightFraction: 0.8,
+            builder: (sheetContext) => _RepairDetails(job: row),
           ),
           leading: CircleAvatar(
             backgroundColor: color.withValues(alpha: 0.12),
@@ -301,9 +301,10 @@ class _RepairDetails extends ConsumerWidget {
         const SizedBox(height: 20),
         if (open)
           FilledButton.icon(
-            onPressed: () => showModalBottomSheet<void>(
+            onPressed: () => showAppSheet<void>(
               context: context,
-              isScrollControlled: true,
+              title: 'Repaired — send it back',
+              heightFraction: 0.8,
               builder: (sheetContext) => Padding(
                 padding: EdgeInsets.only(
                     bottom: MediaQuery.of(sheetContext).viewInsets.bottom),

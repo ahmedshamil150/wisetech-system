@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/layout.dart';
 import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
@@ -119,10 +120,12 @@ class DashboardScreen extends ConsumerWidget {
       ..sort((a, b) =>
           (b.value['total'] as int).compareTo(a.value['total'] as int));
 
+    final desktop = isDesktopLayout(context);
+
     return AppRefresh(
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(desktop ? 24 : 16),
         children: [
         Text(
           name.isEmpty ? 'Welcome' : 'Welcome, $name',
@@ -137,7 +140,7 @@ class DashboardScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 20),
         GridView.count(
-          crossAxisCount: 2,
+          crossAxisCount: desktop ? 4 : 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,

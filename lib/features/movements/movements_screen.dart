@@ -8,6 +8,7 @@ import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../inventory/inventory_screen.dart';
+import '../../core/layout.dart';
 
 /// Every recorded move, newest first.
 /// Both admins and viewers can record a movement; only admins can edit data.
@@ -295,9 +296,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           child: FilledButton.icon(
-            onPressed: () => showModalBottomSheet<void>(
+            onPressed: () => showAppSheet<void>(
               context: context,
-              isScrollControlled: true,
+              title: 'New movement',
+              heightFraction: 0.85,
               builder: (sheetContext) => Padding(
                 padding: EdgeInsets.only(
                     bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -791,9 +793,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// Opens the tick-list sheet for a multi-item send: the sender picks
   /// which of the items actually came back; the rest stay out.
   void _showReturnSheet(List<Map<String, dynamic>> rows) {
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
+      title: 'Return from send',
+      heightFraction: 0.8,
       builder: (sheetContext) => Padding(
         padding:
             EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -1528,9 +1531,10 @@ Future<void> showAddPartySheet(
         .add(row);
   }
 
-  await showModalBottomSheet<void>(
+  await showAppSheet<void>(
     context: context,
-    isScrollControlled: true,
+    title: 'Add the name',
+    heightFraction: 0.6,
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setSheetState) {
         return Padding(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/data.dart';
 import 'widgets.dart';
+import '../../core/layout.dart';
 
 /// Relevance score for a search query; lower is better.
 /// -1 = no match.
@@ -30,9 +31,10 @@ Future<InventoryItem?> showPickItem(
   required List<InventoryItem> items,
   String? selectedKey,
 }) {
-  return showModalBottomSheet<InventoryItem>(
+  return showAppSheet<InventoryItem>(
     context: context,
-    isScrollControlled: true,
+    title: 'Pick an item',
+    heightFraction: 0.75,
     builder: (sheetContext) {
       var query = '';
       return StatefulBuilder(
