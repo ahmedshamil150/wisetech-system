@@ -452,6 +452,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               Row(
                 children: [
                   StatusChip(status: item.status),
+                  if (item.kind == 'probe') ...[
+                    const SizedBox(width: 6),
+                    _probeBadge(context, item),
+                  ],
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -468,6 +472,24 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           trailing: const Icon(Icons.chevron_right, size: 20),
         ),
       ),
+    );
+  }
+
+  Widget _probeBadge(BuildContext context, InventoryItem item) {
+    final (label, color) = item.boxId != null
+        ? ('In box', context.colors.tintBlue)
+        : item.assignedMachineId != null
+            ? ('With machine', Theme.of(context).colorScheme.primary)
+            : ('In stock', context.colors.success);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w700, color: color)),
     );
   }
 }
@@ -530,6 +552,16 @@ class _StockCheckSheet extends ConsumerStatefulWidget {
 class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
   final _input = TextEditingController();
   String _kind = 'machine';
+  String _probeStatus = 'Available';
+
+  static const _probeStatuses = [
+    'Available',
+    'With Machine',
+    'With Workshop',
+    'With Branch',
+    'With Dealer',
+    'With Customer',
+  ];
 
   @override
   void dispose() {
@@ -728,7 +760,7 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           orElse: () => const <Map<String, dynamic>>[],
         );
     final isBox = _kind == 'box';
-    final stockStatus = _stockStatusFor(_kind);
+    final stockStatus = _kind == 'probe' ? _probeStatus : _stockStatusFor(_kind);
     final sameKind = [for (final item in items) if (item.kind == _kind) item];
     final expected = [
       for (final item in sameKind)
@@ -823,7 +855,7 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
               ChoiceChip(
                 label: Text('$label (${kind == 'box'
                     ? boxes.length
-                    : [for (final item in items) if (item.kind == kind && item.status == _stockStatusFor(kind)) item].length})'),
+                    : [for (final item in items) if (item.kind == kind && item.status == (kind == 'probe' ? _probeStatus : _stockStatusFor(kind))) item].length})'),
                 selected: _kind == kind,
                 onSelected: (_) => setState(() {
                   if (_kind != kind) {
@@ -846,6 +878,38 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
               ),
           ],
         ),
+        if (_kind == 'probe') ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final status in _probeStatuses)
+                ChoiceChip(
+                  label: Text('$status (${[for (final item in sameKind) if (item.status == status) item].length})'),
+                  selected: _probeStatus == status,
+                  onSelected: (_) => setState(() {
+                    if (_probeStatus != status) {
+                      _probeStatus = status;
+                      _input.clear();
+                    }
+                  }),
+                  selectedColor: Theme.of(context).colorScheme.primary,
+                  labelStyle: TextStyle(
+                    color: _probeStatus == status
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                  backgroundColor: context.colors.isDark
+                      ? context.colors.quietFill
+                      : Theme.of(context).colorScheme.surface,
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 12),
         TextField(
           controller: _input,
