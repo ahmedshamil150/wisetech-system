@@ -500,6 +500,7 @@ const _stockKinds = [
   ('probe', 'Probes'),
   ('printer', 'Printers'),
   ('part', 'Parts'),
+  ('box', 'Boxes'),
 ];
 
 String _stockStatusFor(String kind) => kind == 'machine' ? 'In Stock' : 'Available';
@@ -544,9 +545,25 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
       .where((token) => token.isNotEmpty)
       .toSet();
 
+  /// Box names can contain spaces ("T14 (2)"), so a line that names a
+  /// known box counts as one entry; anything else splits on spaces.
+  Set<String> _enteredBoxes(Set<String> names) {
+    final out = <String>{};
+    for (final seg in _input.text.split(RegExp(r'[\n,;]+'))) {
+      final s = seg.trim().toUpperCase();
+      if (s.isEmpty) continue;
+      if (names.contains(s)) {
+        out.add(s);
+      } else {
+        out.addAll(s.split(RegExp(r'\s+')).where((part) => part.isNotEmpty));
+      }
+    }
+    return out;
+  }
+
   /// An item matches a typed token by its code or its serial, so the
   /// count works whether the label shows the WT number or the maker's.
-  static InventoryItem? _matchToken(
+  static InventoryItem? _matchTokenExact(
       String token, Iterable<InventoryItem> pool) {
     for (final item in pool) {
       if (item.code.toUpperCase() == token) return item;
@@ -558,12 +575,159 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
     return null;
   }
 
+  /// Levenshtein distance, giving up (returning max + 1) as soon as it
+  /// is hopeless — keeps typo checking fast over a few hundred serials.
+  static int _editDistance(String a, String b, int max) {
+    if ((a.length - b.length).abs() > max) return max + 1;
+    var prev = List<int>.generate(b.length + 1, (j) => j);
+    for (var i = 1; i <= a.length; i++) {
+      final curr = <int>[i];
+      var rowMin = i;
+      for (var j = 1; j <= b.length; j++) {
+        final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
+        var best = prev[j] + 1;
+        final ins = curr[j - 1] + 1;
+        if (ins < best) best = ins;
+        final sub = prev[j - 1] + cost;
+        if (sub < best) best = sub;
+        curr.add(best);
+        if (best < rowMin) rowMin = best;
+      }
+      if (rowMin > max) return max + 1;
+      prev = curr;
+    }
+    return prev[b.length];
+  }
+
+  /// How one typed token resolves: exact code/serial first, then a unique
+  /// match on its last characters (last 4 or 5 of a serial), else
+  /// "did you mean" candidates when it is off by a digit or two, or the
+  /// suffix is shared by more than one item.
+  static ({InventoryItem? item, List<InventoryItem> suggestions})
+      _matchToken(String token, Iterable<InventoryItem> pool) {
+    final items = pool.toList();
+    final exact = _matchTokenExact(token, items);
+    if (exact != null) return (item: exact, suggestions: const []);
+
+    if (token.length >= 4) {
+      bool ends(String? value) =>
+          value != null &&
+          value.length >= token.length &&
+          value.toUpperCase().endsWith(token);
+      final suffixHits = [
+        for (final item in items)
+          if (ends(item.code) || ends(item.serial)) item,
+      ];
+      if (suffixHits.length == 1) {
+        return (item: suffixHits.first, suggestions: const []);
+      }
+      if (suffixHits.isNotEmpty) {
+        return (item: null, suggestions: suffixHits.take(3).toList());
+      }
+    }
+
+    final scored = <(int, InventoryItem)>[];
+    for (final item in items) {
+      final target =
+          (item.serial?.isNotEmpty ?? false) ? item.serial! : item.code;
+      if (target.isEmpty) continue;
+      final d = _editDistance(token, target.toUpperCase(), 2);
+      if (d <= 2) scored.add((d, item));
+    }
+    scored.sort((x, y) => x.$1 != y.$1
+        ? x.$1.compareTo(y.$1)
+        : _naturalCompare(x.$2.code, y.$2.code));
+    return (item: null, suggestions: [for (final s in scored.take(3)) s.$2]);
+  }
+
+  /// Swap a mistyped token for the real serial right where it was typed,
+  /// so the count picks it up on the next rebuild.
+  void _applySuggestion(String token, InventoryItem item) {
+    final correct =
+        (item.serial?.isNotEmpty ?? false) ? item.serial! : item.code;
+    if (correct.isEmpty) return;
+    final idx = _input.text.toLowerCase().indexOf(token.toLowerCase());
+    if (idx >= 0) {
+      _input.text = _input.text.replaceRange(idx, idx + token.length, correct);
+      _input.selection = TextSelection.collapsed(offset: idx + correct.length);
+    } else {
+      _input.text = '${_input.text}\n$correct';
+      _input.selection = TextSelection.collapsed(offset: _input.text.length);
+    }
+    setState(() {});
+  }
+
+  /// One unrecognised token: a red chip, plus tappable "did you mean"
+  /// candidates when the typed serial was off by a digit or two.
+  Widget _unknownEntry(String token, List<InventoryItem> hints) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: context.colors.errorContainer,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: context.colors.errorBorder),
+            ),
+            child: Text(token,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.error)),
+          ),
+          if (hints.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('Did you mean…',
+                style: TextStyle(fontSize: 12, color: scheme.outline)),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final item in hints)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _applySuggestion(token, item),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: context.colors.primaryTint,
+                        borderRadius: BorderRadius.circular(20),
+                        border:
+                            Border.all(color: context.colors.primaryBorder),
+                      ),
+                      child: Text(
+                          '${(item.serial?.isNotEmpty ?? false) ? item.serial : item.code} · ${item.name}',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.primary)),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = ref.watch(inventoryProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
+    final boxes = ref.watch(probeBoxesProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final isBox = _kind == 'box';
     final stockStatus = _stockStatusFor(_kind);
     final sameKind = [for (final item in items) if (item.kind == _kind) item];
     final expected = [
@@ -571,33 +735,54 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
         if (item.status == stockStatus) item,
     ]..sort((a, b) => _naturalCompare(a.code, b.code));
 
-    final entered = _entered;
-    final missing = [
-      for (final item in expected)
-        if (!entered.contains(item.code.toUpperCase()) &&
-            (item.serial == null ||
-                item.serial!.isEmpty ||
-                !entered.contains(item.serial!.toUpperCase())))
-          item,
+    final boxNames = {
+      for (final box in boxes) (box['name'] ?? '').toString().toUpperCase(),
+    };
+    final entered = isBox ? _enteredBoxes(boxNames) : _entered;
+    final missing = isBox
+        ? <InventoryItem>[]
+        : [
+            for (final item in expected)
+              if (!entered.contains(item.code.toUpperCase()) &&
+                  (item.serial == null ||
+                      item.serial!.isEmpty ||
+                      !entered.contains(item.serial!.toUpperCase())))
+                item,
+          ];
+    final missingBoxes = [
+      for (final box in boxes)
+        if (!entered.contains((box['name'] ?? '').toString().toUpperCase()))
+          box,
     ];
     final seenOut = <InventoryItem>[];
     final wrongKind = <InventoryItem>[];
     final unknown = <String>[];
-    for (final token in entered) {
-      final found = _matchToken(token, sameKind);
-      if (found != null) {
-        if (found.status != stockStatus) seenOut.add(found);
-        continue;
+    final suggestions = <String, List<InventoryItem>>{};
+    if (isBox) {
+      for (final token in entered) {
+        if (!boxNames.contains(token)) unknown.add(token);
       }
-      final elsewhere = _matchToken(token, items);
-      if (elsewhere != null) {
-        wrongKind.add(elsewhere);
-      } else {
-        unknown.add(token);
+    } else {
+      for (final token in entered) {
+        final found = _matchToken(token, sameKind);
+        final item = found.item;
+        if (item != null) {
+          if (item.status != stockStatus) seenOut.add(item);
+          continue;
+        }
+        final elsewhere = _matchTokenExact(token, items);
+        if (elsewhere != null) {
+          wrongKind.add(elsewhere);
+        } else {
+          unknown.add(token);
+          if (found.suggestions.isNotEmpty) {
+            suggestions[token] = found.suggestions;
+          }
+        }
       }
+      seenOut.sort((a, b) => _naturalCompare(a.code, b.code));
+      wrongKind.sort((a, b) => _naturalCompare(a.code, b.code));
     }
-    seenOut.sort((a, b) => _naturalCompare(a.code, b.code));
-    wrongKind.sort((a, b) => _naturalCompare(a.code, b.code));
     unknown.sort(_naturalCompare);
 
     final kindWord =
@@ -622,8 +807,12 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
         ),
         const SizedBox(height: 4),
         Text(
-            'Pick what you are counting, then type the IDs you see — '
-            'one per line, or separated by spaces or commas.',
+            isBox
+                ? 'Type the box names you can see — one per line.'
+                : 'Pick what you are counting, then type the IDs you see — '
+                    'one per line, or separated by spaces or commas. '
+                    'The last 4–5 digits of a serial work too, and a typo '
+                    'gets a "did you mean" suggestion.',
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
         const SizedBox(height: 10),
         Wrap(
@@ -632,8 +821,9 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           children: [
             for (final (kind, label) in _stockKinds)
               ChoiceChip(
-                label: Text(
-                    '$label (${[for (final item in items) if (item.kind == kind && item.status == _stockStatusFor(kind)) item].length})'),
+                label: Text('$label (${kind == 'box'
+                    ? boxes.length
+                    : [for (final item in items) if (item.kind == kind && item.status == _stockStatusFor(kind)) item].length})'),
                 selected: _kind == kind,
                 onSelected: (_) => setState(() {
                   if (_kind != kind) {
@@ -665,10 +855,13 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           textCapitalization: TextCapitalization.characters,
           onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
-            labelText: '$kindWord IDs you can see',
-            hintText: _kind == 'machine'
-                ? '23T\n60T\n71T'
-                : 'Serial or WT number\none per line',
+            labelText:
+                isBox ? 'Box names you can see' : '$kindWord IDs you can see',
+            hintText: isBox
+                ? 'T14\nT11 (2)\nH5'
+                : _kind == 'machine'
+                    ? '23T\n60T\n71T'
+                    : 'Serial or WT number\none per line\nlast 4 digits work',
           ),
         ),
         const SizedBox(height: 16),
@@ -677,10 +870,12 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           child: Column(
             children: [
               KeyValue(
-                  label: 'App expects in stock',
-                  value: '${expected.length}'),
+                  label: isBox ? 'Boxes in the app' : 'App expects in stock',
+                  value: '${isBox ? boxes.length : expected.length}'),
               KeyValue(label: 'You typed', value: '${entered.length}'),
-              KeyValue(label: 'Missing', value: '${missing.length}'),
+              KeyValue(
+                  label: 'Missing',
+                  value: '${isBox ? missingBoxes.length : missing.length}'),
             ],
           ),
         ),
@@ -689,7 +884,45 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           Text(
               'Type what you see — the items you missed are listed here.',
               style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: 13))
-        else ...[
+        else if (isBox) ...[
+          Text(
+              'Missing — the app has these but you did not type them (${missingBoxes.length})',
+              style: sectionStyle),
+          const SizedBox(height: 8),
+          if (missingBoxes.isEmpty)
+            Text('Every box was counted.',
+                style: TextStyle(color: context.colors.success, fontSize: 13.5))
+          else
+            AppCard(
+              padding: const EdgeInsets.all(4),
+              child: Column(
+                children: [
+                  for (final box in missingBoxes)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.inbox_outlined, size: 20),
+                      title: Text((box['name'] ?? '').toString(),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14)),
+                      subtitle: Text(
+                          '${box['probe_type']} · ${items.where((item) =>
+                              item.kind == 'probe' &&
+                              item.boxId == box['id']).length} probes',
+                          style: const TextStyle(fontSize: 12.5)),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => showBoxSheet(context, ref, box),
+                    ),
+                ],
+              ),
+            ),
+          if (unknown.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Not found in the app (${unknown.length})',
+                style: sectionStyle),
+            const SizedBox(height: 8),
+            for (final token in unknown) _unknownEntry(token, const []),
+          ],
+        ] else ...[
           Text('Missing — should be in stock (${missing.length})',
               style: sectionStyle),
           const SizedBox(height: 8),
@@ -775,27 +1008,8 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
             Text('Not found in the app (${unknown.length})',
                 style: sectionStyle),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final token in unknown)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: context.colors.errorContainer,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: context.colors.errorBorder),
-                    ),
-                    child: Text(token,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.error)),
-                  ),
-              ],
-            ),
+            for (final token in unknown)
+              _unknownEntry(token, suggestions[token] ?? const []),
           ],
         ],
       ],
