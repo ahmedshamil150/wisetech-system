@@ -5,6 +5,7 @@ import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import 'old_data.dart';
+import 'old_item_form.dart';
 import 'old_table.dart';
 
 /// The old stock: BATCH-OLD machines, probes and printers plus the shared
@@ -84,13 +85,46 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: FilledButton.icon(
-              onPressed: () => showSnack(context,
-                  'Adding new old-stock rows is done through Records → New batch.'),
+              onPressed: () => _pickKind(context),
               icon: const Icon(Icons.add),
               label: const Text('Add to old stock'),
             ),
           ),
       ],
+    );
+  }
+
+  /// Asks which kind of item to add, then opens the form for it.
+  void _pickKind(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text('Add to old stock',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
+            for (final (kind, label, icon) in const [
+              ('machine', 'Machine', Icons.computer_outlined),
+              ('probe', 'Probe', Icons.cable_outlined),
+              ('printer', 'Printer', Icons.print_outlined),
+              ('part', 'Part', Icons.settings_outlined),
+            ])
+              ListTile(
+                leading: Icon(icon),
+                title: Text(label),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  showOldItemForm(context, kind: kind);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -169,7 +203,8 @@ class _MachinesPane extends ConsumerWidget {
         emptyMessage: 'No old machines match this search.',
         rowBuilder: (row) => _oldItemTile(context, row,
             code: (row['machine_id'] ?? '').toString(),
-            name: (row['model'] ?? '').toString()),
+            name: (row['model'] ?? '').toString(),
+            onTap: () => showOldItemForm(context, kind: 'machine', row: row)),
       ),
     );
   }
@@ -198,7 +233,8 @@ class _ProbesPane extends ConsumerWidget {
         emptyMessage: 'No old probes match this search.',
         rowBuilder: (row) => _oldItemTile(context, row,
             code: (row['internal_id'] ?? '').toString(),
-            name: (row['model'] ?? '').toString()),
+            name: (row['model'] ?? '').toString(),
+            onTap: () => showOldItemForm(context, kind: 'probe', row: row)),
       ),
     );
   }
@@ -227,7 +263,8 @@ class _PrintersPane extends ConsumerWidget {
         emptyMessage: 'No old printers match this search.',
         rowBuilder: (row) => _oldItemTile(context, row,
             code: (row['internal_id'] ?? '').toString(),
-            name: (row['name_model'] ?? '').toString()),
+            name: (row['name_model'] ?? '').toString(),
+            onTap: () => showOldItemForm(context, kind: 'printer', row: row)),
       ),
     );
   }
@@ -283,7 +320,21 @@ class _PartsPane extends ConsumerWidget {
       emptyMessage: 'No parts match this search.',
       rowBuilder: (row) => _oldItemTile(context, row,
           code: (row['code'] ?? '').toString(),
-          name: (row['name'] ?? '').toString()),
+          name: (row['name'] ?? '').toString(),
+          onTap: () => _openPart(context, row['id'] as int)),
     );
+  }
+
+  /// The parts list only carries display fields, so pull the full row
+  /// before opening the form — otherwise saving would blank out notes.
+  Future<void> _openPart(BuildContext context, int id) async {
+    final rows = await db
+        .from('parts')
+        .select(
+            'id, internal_id, name_model, serial_number, status, current_location, notes')
+        .eq('id', id)
+        .limit(1);
+    if (!context.mounted || rows.isEmpty) return;
+    await showOldItemForm(context, kind: 'part', row: rows.first);
   }
 }
