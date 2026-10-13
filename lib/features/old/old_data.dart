@@ -171,7 +171,7 @@ final oldSalesProvider =
     () {
       PostgrestFilterBuilder<PostgrestList> query = _db.from('sales').select(
           'id, sale_date, invoice_reference, sale_price, notes, old_trno, old_source_id, '
-          'customers(name), '
+          'customer_id, customers(name), '
           'sale_items(item_description, item_serial, item_price, item_type)');
       if (args.search.isNotEmpty) {
         final t = args.search;

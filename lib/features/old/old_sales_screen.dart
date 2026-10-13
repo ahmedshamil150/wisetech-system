@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import 'old_data.dart';
+import 'old_record_forms.dart';
 import 'old_table.dart';
 
 /// Every imported sale with its line items — the receipt history that
@@ -21,6 +23,7 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = ref.watch(isAdminProvider);
     final data = ref.watch(oldSalesProvider((page: _page, search: _query)));
     return Column(
       children: [
@@ -41,7 +44,7 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
               page: _page,
               onPageChanged: (p) => setState(() => _page = p),
               emptyMessage: 'No old sales match this search.',
-              rowBuilder: _saleTile,
+              rowBuilder: (row) => _saleTile(row, isAdmin: isAdmin),
             ),
           ),
         ),
@@ -49,7 +52,7 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
     );
   }
 
-  Widget _saleTile(Map<String, dynamic> row) {
+  Widget _saleTile(Map<String, dynamic> row, {required bool isAdmin}) {
     final date = (row['sale_date'] ?? '').toString();
     final trno = (row['old_trno'] ?? '').toString();
     final invoice = (row['invoice_reference'] ?? '').toString();
@@ -64,6 +67,7 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
+        onTap: isAdmin ? () => showOldSaleForm(context, row: row) : null,
         child: ListTile(
           leading: CircleAvatar(
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,

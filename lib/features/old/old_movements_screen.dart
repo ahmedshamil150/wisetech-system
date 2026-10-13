@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import 'old_data.dart';
+import 'old_record_forms.dart';
 import 'old_table.dart';
 
 /// The imported Legacy movements — the history that came in with the old
@@ -21,6 +23,7 @@ class _OldMovementsScreenState extends ConsumerState<OldMovementsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = ref.watch(isAdminProvider);
     final data = ref.watch(
         oldMovementsProvider((page: _page, search: _query)));
     return Column(
@@ -42,7 +45,7 @@ class _OldMovementsScreenState extends ConsumerState<OldMovementsScreen> {
               page: _page,
               onPageChanged: (p) => setState(() => _page = p),
               emptyMessage: 'No old movements match this search.',
-              rowBuilder: _movementTile,
+              rowBuilder: (row) => _movementTile(row, isAdmin: isAdmin),
             ),
           ),
         ),
@@ -50,7 +53,7 @@ class _OldMovementsScreenState extends ConsumerState<OldMovementsScreen> {
     );
   }
 
-  Widget _movementTile(Map<String, dynamic> row) {
+  Widget _movementTile(Map<String, dynamic> row, {required bool isAdmin}) {
     final date = (row['movement_date'] ?? '').toString();
     final from = (row['from_location'] ?? '').toString();
     final to = (row['to_location'] ?? '').toString();
@@ -68,6 +71,7 @@ class _OldMovementsScreenState extends ConsumerState<OldMovementsScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
+        onTap: isAdmin ? () => showOldMovementForm(context, row: row) : null,
         child: ListTile(
           leading: CircleAvatar(
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
