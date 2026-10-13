@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/layout.dart';
 import '../../core/theme_controller.dart';
 import '../auth/auth_controller.dart';
-import '../data/data_era.dart';
 import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
 import '../records/records_screen.dart';
@@ -106,8 +105,6 @@ class _ProfileMenuButton extends ConsumerWidget {
     final profile = ref.watch(profileProvider);
     final auth = ref.read(authControllerProvider);
     final themeMode = ref.watch(themeModeProvider);
-    final isAdmin = ref.watch(isAdminProvider);
-    final era = ref.watch(dataEraProvider);
     final name = profile.maybeWhen(
           data: (p) => (p?['display_name'] ?? p?['username'] ?? '') as String,
           orElse: () => '',
@@ -120,10 +117,6 @@ class _ProfileMenuButton extends ConsumerWidget {
           );
         } else if (value == 'theme') {
           ref.read(themeModeProvider.notifier).toggle();
-        } else if (value == 'era') {
-          ref.read(dataEraProvider.notifier).set(
-                era == DataEra.before ? DataEra.after : DataEra.before,
-              );
         } else if (value == 'logout') {
           auth.signOut();
         }
@@ -152,24 +145,6 @@ class _ProfileMenuButton extends ConsumerWidget {
             ],
           ),
         ),
-        if (isAdmin)
-          PopupMenuItem(
-            value: 'era',
-            child: Row(
-              children: [
-                Icon(
-                  era == DataEra.before
-                      ? Icons.inventory_2_outlined
-                      : Icons.archive_outlined,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Text(era == DataEra.before
-                    ? 'Switch to current stock'
-                    : 'Switch to old stock'),
-              ],
-            ),
-          ),
         const PopupMenuItem(value: 'logout', child: Text('Log out')),
       ],
       child: Padding(

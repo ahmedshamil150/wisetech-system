@@ -2,36 +2,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_controller.dart';
-import 'data_era.dart';
 
 SupabaseClient get db => Supabase.instance.client;
 
 SupabaseClient get _db => db;
 
 // ---------------------------------------------------------------------------
-// era filter (before = BATCH-OLD + BATCH-PARTS, after = BATCH-3 + BATCH-PARTS)
+// Current-data filter: the app shows BATCH-3 stock + BATCH-PARTS + probes
+// with no batch. Old imported stock lives in BATCH-OLD and stays hidden
+// until the old-data side of the app is built.
 // ---------------------------------------------------------------------------
 
-Future<Set<int>> _eraBatchIds(DataEra era) async {
+Future<Set<int>> _currentBatchIds() async {
   final rows = await _db.from('batches').select('id, code');
-  final before = <int>{};
-  final after = <int>{};
-  for (final row in rows) {
-    final code = (row['code'] ?? '').toString();
-    final id = row['id'] as int;
-    if (code == 'BATCH-OLD') before.add(id);
-    if (code == 'BATCH-PARTS') {
-      before.add(id);
-      after.add(id);
-    }
-    if (code == 'BATCH-3') after.add(id);
-  }
-  return era.isBefore ? before : after;
+  return {
+    for (final row in rows)
+      if (row['code'] == 'BATCH-3' || row['code'] == 'BATCH-PARTS')
+        row['id'] as int,
+  };
 }
 
-/// Builds the `.or()` filter that keeps only rows in the chosen era's
-/// batches, or with no batch at all (legacy rows).
-String _eraOrFilter(Set<int> batchIds) {
+/// Builds the `.or()` filter that keeps only rows in the current batches,
+/// or with no batch at all.
+String _currentBatchOrFilter(Set<int> batchIds) {
   final ids = batchIds.map((id) => id.toString()).join(',');
   return 'batch_id.is.null,batch_id.in.($ids)';
 }
@@ -88,6 +81,7 @@ final batchesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
       .from('batches')
       .select(
           'id, code, letter, arrival_date, vendor_id, notes, vendors(name)')
+      .neq('code', 'BATCH-OLD')
       .order('id');
 });
 
@@ -256,27 +250,26 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
       'catalog_product_id, vendor_id, batches(code)';
   const linked = 'assigned_machine_id, ';
 
-  final era = ref.watch(dataEraProvider);
-  final batchIds = await _eraBatchIds(era);
-  final eraFilter = _eraOrFilter(batchIds);
+  final batchIds = await _currentBatchIds();
+  final batchFilter = _currentBatchOrFilter(batchIds);
 
   final machines = await _db
       .from('machines')
       .select('$fields, machine_id, model')
-      .or(eraFilter)
+      .or(batchFilter)
       .order('id', ascending: false);
   final probes = await _db
       .from('probes')
       .select(
           '$fields, $linked box_id, catalog_products(probe_type), internal_id, model')
-      .or(eraFilter)
+      .or(batchFilter)
       .order('id', ascending: false);
   final printers = await _db
       .from('printers')
       .select('$fields, $linked internal_id, name_model')
-      .or(eraFilter)
+      .or(batchFilter)
       .order('id', ascending: false);
-  // Parts are not era-filtered — they live in BATCH-PARTS in both eras.
+  // Parts are not batch-filtered — they live in BATCH-PARTS.
   final parts = await _db
       .from('parts')
       .select('$fields, $linked internal_id, name_model')
@@ -315,10 +308,10 @@ final itemLabelsProvider = Provider<Map<String, String>>((ref) {
 // movements + sales
 // ---------------------------------------------------------------------------
 
-/// Every movement, no era filter. Any logic that must see the whole
-/// history — whether an item is back, return latest-movement checks,
-/// an item's history sheet — reads this. [movementsProvider] derives
-/// from it for display.
+/// Every current movement. Imported Legacy history (old stock) is
+/// excluded at the query level so no screen can leak it — item history,
+/// return checks and group counts all read this. [movementsProvider]
+/// derives from it for display.
 final allMovementsProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final rows = await _db
@@ -329,6 +322,7 @@ final allMovementsProvider =
         'probe_id, printer_id, part_id, dealers(name), customers(name), '
         'workshops(name), profiles(display_name, username)',
       )
+      .neq('movement_type', 'Legacy')
       .order('id', ascending: false);
   rows.sort((a, b) {
     final byDate = (_parseDate(b['movement_date']) ?? DateTime(0))
@@ -339,24 +333,7 @@ final allMovementsProvider =
 });
 
 final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  // Before mode shows only movements dated 2026-09-13 or earlier; after
-  // mode shows only movements from 2026-09-14 onwards (the new system
-  // started that day, so every new movement is dated on/after it).
-  // movement_date is dd-MM-yyyy text, so the cutoff is applied after
-  // parsing — a string comparison would hide e.g. 06-10-2026 from
-  // "after" (it sorts before 14-09-2026).
-  final era = ref.watch(dataEraProvider);
-  final all = await ref.watch(allMovementsProvider.future);
-  final cutoff = DateTime(2026, 9, 14);
-  return [
-    for (final row in all)
-      if (era.isBefore
-          ? (_parseDate(row['movement_date']) ?? DateTime(2100))
-              .isBefore(cutoff)
-          : (_parseDate(row['movement_date']) ?? DateTime(0))
-              .isAfter(cutoff.subtract(const Duration(days: 1))))
-        row,
-  ];
+  return await ref.watch(allMovementsProvider.future);
 });
 
 /// Puts an item back into stock from wherever it is: status and location

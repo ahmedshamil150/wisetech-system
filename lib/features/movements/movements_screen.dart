@@ -195,7 +195,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             data: (allRows) {
               // the latest movement of an item decides whether it is
               // already back in stock — computed from the full history,
-              // not the era-filtered display rows
+              // not the display rows
               final fullHistory = ref
                   .watch(allMovementsProvider)
                   .maybeWhen(
@@ -330,7 +330,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
   /// How many send cards every tab would show with the other filters
   /// (party, actor, item kind, date, search) kept as they are.
-  /// [fullHistory] is every movement (no era filter) so the
+  /// [fullHistory] is every current movement so the
   /// latest-movement check behind "Returned" is correct.
   Map<String, int> _groupCounts(List<Map<String, dynamic>> allRows,
       List<Map<String, dynamic>> fullHistory, Map<String, String> labels) {
@@ -1263,7 +1263,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       }
 
       ref
-        ..invalidate(movementsProvider)
+        ..invalidate(allMovementsProvider)
         ..invalidate(inventoryProvider);
       if (newParty) {
         ref
@@ -1695,7 +1695,7 @@ Future<void> showAddPartySheet(
                                   }
                                 }
                                 ref
-                                  ..invalidate(movementsProvider)
+                                  ..invalidate(allMovementsProvider)
                                   ..invalidate(inventoryProvider);
                                 if (!sheetContext.mounted) return;
                                 if (failure != null) {
