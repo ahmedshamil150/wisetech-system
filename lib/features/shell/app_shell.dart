@@ -6,20 +6,34 @@ import '../../core/theme_controller.dart';
 import '../auth/auth_controller.dart';
 import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
+import '../old/data_side.dart';
+import '../old/old_shell.dart';
 import '../records/records_screen.dart';
 import '../repairs/repairs_screen.dart';
 import 'dashboard_screen.dart';
 import 'navigation_providers.dart';
 import 'profile_screen.dart';
 
-class AppShell extends ConsumerStatefulWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
   @override
-  ConsumerState<AppShell> createState() => _AppShellState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The old-data side has its own shell with three simple tabs.
+    final side = ref.watch(dataSideProvider);
+    if (side == 'old') return const OldShell();
+    return const _CurrentShell();
+  }
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _CurrentShell extends ConsumerStatefulWidget {
+  const _CurrentShell();
+
+  @override
+  ConsumerState<_CurrentShell> createState() => _CurrentShellState();
+}
+
+class _CurrentShellState extends ConsumerState<_CurrentShell> {
   static const _titles = [
     'Dashboard',
     'Inventory',
@@ -117,6 +131,8 @@ class _ProfileMenuButton extends ConsumerWidget {
           );
         } else if (value == 'theme') {
           ref.read(themeModeProvider.notifier).toggle();
+        } else if (value == 'old') {
+          ref.read(dataSideProvider.notifier).set('old');
         } else if (value == 'logout') {
           auth.signOut();
         }
@@ -145,6 +161,7 @@ class _ProfileMenuButton extends ConsumerWidget {
             ],
           ),
         ),
+        const PopupMenuItem(value: 'old', child: Text('Switch to old data')),
         const PopupMenuItem(value: 'logout', child: Text('Log out')),
       ],
       child: Padding(

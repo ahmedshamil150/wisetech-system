@@ -566,8 +566,11 @@ class _SalesSheet extends ConsumerWidget {
             itemBuilder: (context, index) {
               final row = rows[index];
               final date = (row['sale_date'] ?? '').toString();
-              final invoice = (row['invoice_number'] ?? '').toString();
-              final total = row['total_amount'];
+              final invoice = (row['invoice_reference'] ??
+                      row['old_trno'] ??
+                      '')
+                  .toString();
+              final total = row['sale_price'];
               final notes = (row['notes'] ?? '').toString();
               final lines = (row['sale_items'] as List?)?.cast<Map>() ?? [];
               final lineSummary = lines
@@ -576,14 +579,17 @@ class _SalesSheet extends ConsumerWidget {
                         line['probes'] ??
                         line['printers'] ??
                         line['parts']) as Map?;
-                    final label = (item?['machine_id'] ??
+                    final label = (line['item_description'] ??
+                            item?['machine_id'] ??
                             item?['internal_id'] ??
                             item?['name_model'] ??
                             item?['model'] ??
                             '')
                         .toString();
-                    final qty = line['quantity'];
-                    return '$label ×$qty';
+                    final price = line['item_price'];
+                    return price != null && (price as num) > 0
+                        ? '$label · $price'
+                        : label;
                   })
                   .join(' · ');
               return AppCard(

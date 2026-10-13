@@ -8,6 +8,7 @@ import 'core/theme.dart';
 import 'core/theme_controller.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
+import 'features/old/data_side.dart';
 import 'features/shell/app_shell.dart';
 
 Future<void> main() async {
@@ -18,6 +19,7 @@ Future<void> main() async {
     'system' => ThemeMode.system,
     _ => ThemeMode.light,
   };
+  initialDataSide = prefs.getString('dataSide') ?? 'current';
   if (!Config.isConfigured) {
     runApp(const MissingConfigApp());
     return;

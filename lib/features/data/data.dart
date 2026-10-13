@@ -417,8 +417,9 @@ final customerSalesProvider =
   final rows = await _db
       .from('sales')
       .select(
-        'id, sale_date, invoice_number, total_amount, notes, old_source_id, '
-        'sale_items(quantity, unit_price, item_type, machines(machine_id, model), '
+        'id, sale_date, invoice_reference, sale_price, notes, old_source_id, old_trno, '
+        'sale_items(item_description, item_serial, item_price, item_type, '
+        'machines(machine_id, model), '
         'probes(internal_id, model), printers(internal_id, name_model), '
         'parts(internal_id, name_model))',
       )
@@ -433,8 +434,9 @@ final dealerSalesProvider =
   final rows = await _db
       .from('sales')
       .select(
-        'id, sale_date, invoice_number, total_amount, notes, old_source_id, '
-        'sale_items(quantity, unit_price, item_type, machines(machine_id, model), '
+        'id, sale_date, invoice_reference, sale_price, notes, old_source_id, old_trno, '
+        'sale_items(item_description, item_serial, item_price, item_type, '
+        'machines(machine_id, model), '
         'probes(internal_id, model), printers(internal_id, name_model), '
         'parts(internal_id, name_model))',
       )
