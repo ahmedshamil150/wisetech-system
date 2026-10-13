@@ -170,7 +170,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       'Equipment': 0,
     };
     for (final item in rows) {
-      if (item.isSold || !_matchesStatus(item) || !_matchesQuery(item)) {
+      // Moved parts stay listed, so they are counted too.
+      if ((item.isSold && item.kind != 'part') ||
+          !_matchesStatus(item) ||
+          !_matchesQuery(item)) {
         continue;
       }
       counts[item.kind] = (counts[item.kind] ?? 0) + 1;
@@ -191,7 +194,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Map<String, int> _statusCounts(List<InventoryItem> rows) {
     final counts = <String, int>{for (final f in _statusFilters) f: 0};
     for (final item in rows) {
-      if (item.isSold || !_matchesFilter(item) || !_matchesQuery(item)) {
+      // Moved parts stay listed, so they are counted too.
+      if ((item.isSold && item.kind != 'part') ||
+          !_matchesFilter(item) ||
+          !_matchesQuery(item)) {
         continue;
       }
       counts['All'] = counts['All']! + 1;
@@ -313,8 +319,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             data: (rows) {
               final filtered = rows.where((item) {
                 // A sold machine already belongs to the dealer or customer,
-                // so it must not show up in the inventory any more.
-                if (item.isSold) return false;
+                // so it must not show up in the inventory any more. Moved
+                // parts stay visible so their stock history is reachable.
+                if (item.isSold && item.kind != 'part') return false;
                 if (!_matchesFilter(item)) return false;
                 if (!_matchesStatus(item)) return false;
                 if (!_matchesQuery(item)) return false;
@@ -458,6 +465,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     const SizedBox(width: 6),
                     _probeBadge(context, item),
                   ],
+                  if (item.kind == 'part' && _partIsMoved(item)) ...[
+                    const SizedBox(width: 6),
+                    _movedBadge(context),
+                  ],
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -490,6 +501,26 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(label,
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+
+  /// A part is moved once it left the company — sold or sitting with a
+  /// dealer/customer. Those stay in the list so history stays reachable.
+  bool _partIsMoved(InventoryItem item) =>
+      item.status != 'Available' && item.status != 'In Stock';
+
+  /// Small red pill marking a part that has left the company.
+  Widget _movedBadge(BuildContext context) {
+    final color = Theme.of(context).colorScheme.error;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text('Moved',
           style: TextStyle(
               fontSize: 11, fontWeight: FontWeight.w700, color: color)),
     );
@@ -1449,6 +1480,11 @@ class _ItemDetails extends ConsumerWidget {
               .join(),
           orElse: () => '',
         );
+    // A moved part belongs to whichever side its latest movement sits on.
+    String? partSide;
+    if (item.kind == 'part' && history.isNotEmpty) {
+      partSide = isOldSideMovement(history.first) ? 'Old side' : 'New side';
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -1476,6 +1512,7 @@ class _ItemDetails extends ConsumerWidget {
                 KeyValue(label: 'Box', value: boxName),
               KeyValue(label: 'Acquired', value: item.date ?? '—'),
               KeyValue(label: 'Batch', value: item.batch ?? '—'),
+              if (partSide != null) KeyValue(label: 'Side', value: partSide),
             ],
           ),
         ),
@@ -1569,9 +1606,20 @@ class _ItemDetails extends ConsumerWidget {
                         color: row['movement_type'] == 'Return'
                             ? context.colors.success
                             : Theme.of(context).colorScheme.primary),
-                    title: Text(_historyTitle(row),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13.5)),
+                    title: Row(
+                      children: [
+                        Flexible(
+                          child: Text(_historyTitle(row),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 13.5)),
+                        ),
+                        if (isOldSideMovement(row)) ...[
+                          const SizedBox(width: 6),
+                          _oldChip(context),
+                        ],
+                      ],
+                    ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1919,6 +1967,21 @@ String _historyTitle(Map<String, dynamic> row) {
   if (type == 'Return') return 'Returned to $to';
   if ('${row['reason'] ?? ''}'.contains('Sold')) return 'Sold to $to';
   return 'Sent to $to';
+}
+
+/// Small amber pill marking a movement that belongs to the old-data side.
+Widget _oldChip(BuildContext context) {
+  final color = const Color(0xFF9A5A00);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text('Old',
+        style: TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+  );
 }
 
 /// Date · type · Demo · who did it · reference.

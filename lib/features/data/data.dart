@@ -189,6 +189,20 @@ DateTime? _parseDate(Object? raw) {
   return null;
 }
 
+/// Movements dated before this day belong to the old-data side of the
+/// app. Only part movements are split this way — equipment movements
+/// all live on the new side.
+final DateTime kOldSideCutoff = DateTime(2026, 9, 14);
+
+/// Whether this movement row is a part movement from the old side.
+/// [allMovementsProvider] keeps them (item history needs them) but the
+/// movement list hides them.
+bool isOldSideMovement(Map<String, dynamic> row) {
+  if (row['part_id'] == null) return false;
+  final date = _parseDate(row['movement_date']);
+  return date != null && date.isBefore(kOldSideCutoff);
+}
+
 InventoryItem _item(String kind, Map<String, dynamic> row,
     {required String codeField, required String nameField}) {
   final batch = row['batches'];
@@ -332,8 +346,13 @@ final allMovementsProvider =
   return rows;
 });
 
+/// The movement list shown on the Movements screen: every current
+/// movement except part movements that belong to the old side (before
+/// 14-9-2026) — those are visible in item history but listed under the
+/// old-data side of the app.
 final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  return await ref.watch(allMovementsProvider.future);
+  final rows = await ref.watch(allMovementsProvider.future);
+  return [for (final row in rows) if (!isOldSideMovement(row)) row];
 });
 
 /// Puts an item back into stock from wherever it is: status and location
