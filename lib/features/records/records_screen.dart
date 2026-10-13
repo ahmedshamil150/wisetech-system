@@ -495,7 +495,7 @@ class _PeoplePane extends ConsumerWidget {
         await deleteParty(table, row['id'] as int);
         ref.invalidate(
             table == 'customers' ? customersProvider : dealersProvider);
-        ref.invalidate(movementsProvider);
+        ref.invalidate(allMovementsProvider);
         ref.invalidate(inventoryProvider);
         ref.invalidate(recentPartiesProvider);
       } else {

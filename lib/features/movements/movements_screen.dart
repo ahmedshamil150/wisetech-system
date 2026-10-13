@@ -60,7 +60,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final labels = ref.watch(itemLabelsProvider);
     final rows = movements.maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final counts = _groupCounts(rows, labels);
+    // counts decide Returned vs out from the latest movement of each
+    // item, so they need the full history behind the filtered list
+    final fullHistory = ref.watch(allMovementsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final counts = _groupCounts(rows, fullHistory, labels);
 
     return Column(
       children: [
@@ -190,9 +194,15 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 icon: Icons.error_outline, message: errorMessage(error)),
             data: (allRows) {
               // the latest movement of an item decides whether it is
-              // already back in stock
+              // already back in stock — computed from the full history,
+              // not the era-filtered display rows
+              final fullHistory = ref
+                  .watch(allMovementsProvider)
+                  .maybeWhen(
+                      data: (value) => value,
+                      orElse: () => const <Map<String, dynamic>>[]);
               final latest = <String, Map<String, dynamic>>{};
-              for (final row in allRows) {
+              for (final row in fullHistory) {
                 final key = _itemKey(row);
                 if (key == null) continue;
                 final mapKey = '${key.key}:${key.value}';
@@ -320,10 +330,12 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
   /// How many send cards every tab would show with the other filters
   /// (party, actor, item kind, date, search) kept as they are.
-  Map<String, int> _groupCounts(
-      List<Map<String, dynamic>> allRows, Map<String, String> labels) {
+  /// [fullHistory] is every movement (no era filter) so the
+  /// latest-movement check behind "Returned" is correct.
+  Map<String, int> _groupCounts(List<Map<String, dynamic>> allRows,
+      List<Map<String, dynamic>> fullHistory, Map<String, String> labels) {
     final latest = <String, Map<String, dynamic>>{};
-    for (final row in allRows) {
+    for (final row in fullHistory) {
       final key = _itemKey(row);
       if (key == null) continue;
       final mapKey = '${key.key}:${key.value}';
@@ -739,7 +751,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// Puts every item of this send back into stock. An item that moved on
   /// to a later send is left alone — only its own last movement decides.
   Future<void> _returnGroup(List<Map<String, dynamic>> rows) async {
-    final allMovements = ref.read(movementsProvider).maybeWhen(
+    final allMovements = ref.read(allMovementsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
     final items = ref.read(inventoryProvider).maybeWhen(
         data: (value) => value, orElse: () => const <InventoryItem>[]);
@@ -777,7 +789,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     } catch (error) {
       failure = errorMessage(error);
     } finally {
-      ref.invalidate(movementsProvider);
+      ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
     }
     if (!mounted) return;
@@ -833,7 +845,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     if (confirmed != true) return;
     try {
       await deleteMovement(rows.first['id'] as int);
-      ref.invalidate(movementsProvider);
+      ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
       ref.invalidate(customersProvider);
       ref.invalidate(dealersProvider);
@@ -919,7 +931,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
   }
 
   Map<String, Map<String, dynamic>> _latestByItem() {
-    final movements = ref.read(movementsProvider).maybeWhen(
+    final movements = ref.read(allMovementsProvider).maybeWhen(
           data: (value) => value,
           orElse: () => const <Map<String, dynamic>>[],
         );
@@ -965,7 +977,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     } catch (error) {
       failure = errorMessage(error);
     } finally {
-      ref.invalidate(movementsProvider);
+      ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
     }
     if (!mounted) return;

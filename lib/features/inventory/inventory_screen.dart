@@ -1429,7 +1429,7 @@ class _ItemDetails extends ConsumerWidget {
     final item = all.firstWhere((i) => i.key == this.item.key,
         orElse: () => this.item);
     final history = ref
-        .watch(movementsProvider)
+        .watch(allMovementsProvider)
         .maybeWhen(
             data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[])
         .where((row) => row['${item.kind}_id'] == item.id)
@@ -1628,7 +1628,7 @@ class _ItemDetails extends ConsumerWidget {
     try {
       await returnToInventory(item);
       ref
-        ..invalidate(movementsProvider)
+        ..invalidate(allMovementsProvider)
         ..invalidate(inventoryProvider);
       if (context.mounted) {
         showSnack(context, '${item.code} is back in inventory.');
@@ -1667,7 +1667,7 @@ class _ItemDetails extends ConsumerWidget {
     try {
       await deleteMovementRow(row['id'] as int);
       ref
-        ..invalidate(movementsProvider)
+        ..invalidate(allMovementsProvider)
         ..invalidate(inventoryProvider);
       if (context.mounted) {
         messenger.showSnackBar(
@@ -1706,7 +1706,7 @@ class _ItemDetails extends ConsumerWidget {
       await db.from(_tableForKind(item.kind)).delete().eq('id', item.id);
       ref
         ..invalidate(inventoryProvider)
-        ..invalidate(movementsProvider);
+        ..invalidate(allMovementsProvider);
       if (!context.mounted) return;
       Navigator.pop(context);
       messenger

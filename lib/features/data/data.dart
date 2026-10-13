@@ -315,22 +315,20 @@ final itemLabelsProvider = Provider<Map<String, String>>((ref) {
 // movements + sales
 // ---------------------------------------------------------------------------
 
-final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  // Before mode shows only movements dated 2026-09-13 or earlier; after
-  // mode shows only movements from 2026-09-14 onwards (the new system
-  // started that day, so every new movement is dated on/after it).
-  final era = ref.watch(dataEraProvider);
-  final query = _db
+/// Every movement, no era filter. Any logic that must see the whole
+/// history — whether an item is back, return latest-movement checks,
+/// an item's history sheet — reads this. [movementsProvider] derives
+/// from it for display.
+final allMovementsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final rows = await _db
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
         'reason, notes, reference, is_demo, created_at, actor_id, machine_id, '
         'probe_id, printer_id, part_id, dealers(name), customers(name), '
         'workshops(name), profiles(display_name, username)',
-      );
-  final rows = await (era.isBefore
-          ? query.lte('movement_date', '13-09-2026')
-          : query.gte('movement_date', '14-09-2026'))
+      )
       .order('id', ascending: false);
   rows.sort((a, b) {
     final byDate = (_parseDate(b['movement_date']) ?? DateTime(0))
@@ -338,6 +336,27 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
     return byDate != 0 ? byDate : (b['id'] as int).compareTo(a['id'] as int);
   });
   return rows;
+});
+
+final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  // Before mode shows only movements dated 2026-09-13 or earlier; after
+  // mode shows only movements from 2026-09-14 onwards (the new system
+  // started that day, so every new movement is dated on/after it).
+  // movement_date is dd-MM-yyyy text, so the cutoff is applied after
+  // parsing — a string comparison would hide e.g. 06-10-2026 from
+  // "after" (it sorts before 14-09-2026).
+  final era = ref.watch(dataEraProvider);
+  final all = await ref.watch(allMovementsProvider.future);
+  final cutoff = DateTime(2026, 9, 14);
+  return [
+    for (final row in all)
+      if (era.isBefore
+          ? (_parseDate(row['movement_date']) ?? DateTime(2100))
+              .isBefore(cutoff)
+          : (_parseDate(row['movement_date']) ?? DateTime(0))
+              .isAfter(cutoff.subtract(const Duration(days: 1))))
+        row,
+  ];
 });
 
 /// Puts an item back into stock from wherever it is: status and location
@@ -407,9 +426,8 @@ final customerSalesProvider =
         'probes(internal_id, model), printers(internal_id, name_model), '
         'parts(internal_id, name_model))',
       )
-      .eq('customer_id', party.first['id'] as int)
-      .order('sale_date', ascending: false);
-  return rows;
+      .eq('customer_id', party.first['id'] as int);
+  return _sortSales(rows);
 });
 
 /// The sales whose party tag names this dealer (imported legacy rows have no
@@ -424,10 +442,21 @@ final dealerSalesProvider =
         'probes(internal_id, model), printers(internal_id, name_model), '
         'parts(internal_id, name_model))',
       )
-      .like('notes', 'party:dealer:${name.toUpperCase()}%')
-      .order('sale_date', ascending: false);
-  return rows;
+      .like('notes', 'party:dealer:${name.toUpperCase()}%');
+  return _sortSales(rows);
 });
+
+/// sale_date is dd-MM-yyyy text, so a server-side order() would sort
+/// lexicographically ("06-10-2026" before "01-01-2026"); newest first
+/// is done here on the parsed date instead.
+List<Map<String, dynamic>> _sortSales(List<Map<String, dynamic>> rows) {
+  rows.sort((a, b) {
+    final byDate = (_parseDate(b['sale_date']) ?? DateTime(0))
+        .compareTo(_parseDate(a['sale_date']) ?? DateTime(0));
+    return byDate != 0 ? byDate : (b['id'] as int).compareTo(a['id'] as int);
+  });
+  return rows;
+}
 
 Future<void> setMovementParty(
   int movementId, {
@@ -480,7 +509,7 @@ Future<void> refreshAll(WidgetRef ref) async {
   await Future.wait<void>([
     for (final future in <Future<Object?>>[
       ref.refresh(inventoryProvider.future),
-      ref.refresh(movementsProvider.future),
+      ref.refresh(allMovementsProvider.future),
       ref.refresh(productsProvider.future),
       ref.refresh(brandsProvider.future),
       ref.refresh(customersProvider.future),
