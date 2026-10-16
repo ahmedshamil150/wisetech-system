@@ -11,6 +11,9 @@
 -- ============================================================
 
 ALTER TABLE machines ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(12,2);
+ALTER TABLE probes  ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(12,2);
+ALTER TABLE printers ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(12,2);
+ALTER TABLE parts   ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(12,2);
 
 INSERT INTO batches (code, letter, arrival_date, supplier_source, notes, is_archived)
 SELECT 'BATCH-LOCAL', 'L', 'Unknown', 'Local purchase',
