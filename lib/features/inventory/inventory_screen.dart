@@ -6,6 +6,7 @@ import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../records/records_screen.dart';
+import 'local_purchase_form.dart';
 import '../../core/layout.dart';
 
 /// Full list of machines, probes, printers and parts, newest first.
@@ -351,19 +352,35 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         if (isAdmin && _type != 'Boxes')
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: FilledButton.icon(
-              onPressed: () => showAppSheet<void>(
-                context: context,
-                title: 'Add product',
-                heightFraction: 0.85,
-                builder: (sheetContext) => Padding(
-                  padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-                  child: const _AddItemForm(),
+            child: Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => showAppSheet<void>(
+                      context: context,
+                      title: 'Add product',
+                      heightFraction: 0.85,
+                      builder: (sheetContext) => Padding(
+                        padding: EdgeInsets.only(
+                            bottom: MediaQuery.of(sheetContext)
+                                .viewInsets
+                                .bottom),
+                        child: const _AddItemForm(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add product'),
+                  ),
                 ),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Add product'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => showLocalPurchaseSheet(context),
+                    icon: const Icon(Icons.person_add_alt_outlined),
+                    label: const Text('Buy local'),
+                  ),
+                ),
+              ],
             ),
           ),
       ],
@@ -1480,6 +1497,13 @@ class _ItemDetails extends ConsumerWidget {
               .join(),
           orElse: () => '',
         );
+    final vendorName = ref.watch(vendorsProvider).maybeWhen(
+          data: (vendors) => vendors
+              .where((row) => row['id'] == item.vendorId)
+              .map((row) => (row['name'] ?? '').toString())
+              .join(),
+          orElse: () => '',
+        );
     // A moved part belongs to whichever side its latest movement sits on.
     String? partSide;
     if (item.kind == 'part' && history.isNotEmpty) {
@@ -1512,6 +1536,10 @@ class _ItemDetails extends ConsumerWidget {
                 KeyValue(label: 'Box', value: boxName),
               KeyValue(label: 'Acquired', value: item.date ?? '—'),
               KeyValue(label: 'Batch', value: item.batch ?? '—'),
+              if (item.batch == 'BATCH-LOCAL' && vendorName.isNotEmpty)
+                KeyValue(label: 'Bought from', value: vendorName),
+              if (item.purchasePrice != null)
+                KeyValue(label: 'Price paid', value: '${item.purchasePrice}'),
               if (partSide != null) KeyValue(label: 'Side', value: partSide),
             ],
           ),

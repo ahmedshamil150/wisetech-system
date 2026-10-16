@@ -8,16 +8,19 @@ SupabaseClient get db => Supabase.instance.client;
 SupabaseClient get _db => db;
 
 // ---------------------------------------------------------------------------
-// Current-data filter: the app shows BATCH-3 stock + BATCH-PARTS + probes
-// with no batch. Old imported stock lives in BATCH-OLD and stays hidden
-// until the old-data side of the app is built.
+// Current-data filter: the app shows BATCH-3 stock + BATCH-PARTS + the
+// standing BATCH-LOCAL (machines bought from local people) + probes with
+// no batch. Old imported stock lives in BATCH-OLD and stays hidden from
+// the new side.
 // ---------------------------------------------------------------------------
 
 Future<Set<int>> _currentBatchIds() async {
   final rows = await _db.from('batches').select('id, code');
   return {
     for (final row in rows)
-      if (row['code'] == 'BATCH-3' || row['code'] == 'BATCH-PARTS')
+      if (row['code'] == 'BATCH-3' ||
+          row['code'] == 'BATCH-PARTS' ||
+          row['code'] == 'BATCH-LOCAL')
         row['id'] as int,
   };
 }
@@ -139,6 +142,7 @@ class InventoryItem {
     this.assignedMachineId,
     this.boxId,
     this.probeType,
+    this.purchasePrice,
   });
 
   final String kind; // machine | probe | printer | part
@@ -153,6 +157,10 @@ class InventoryItem {
   final DateTime? createdAt;
   final int? productId;
   final int? vendorId;
+
+  /// What we paid for this item when it was bought locally.
+  /// NULL for stock that arrived in a container.
+  final double? purchasePrice;
 
   /// For probes and printers: the machine they travel with.
   final int? assignedMachineId;
@@ -222,6 +230,7 @@ InventoryItem _item(String kind, Map<String, dynamic> row,
     assignedMachineId: row['assigned_machine_id'] as int?,
     boxId: row['box_id'] as int?,
     probeType: ((row['catalog_products'] as Map?)?['probe_type'])?.toString(),
+    purchasePrice: (row['purchase_price'] as num?)?.toDouble(),
   );
 }
 
@@ -261,7 +270,7 @@ List<InventoryItem> linkedItems(List<InventoryItem> items, InventoryItem item) {
 final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
   const fields =
       'id, serial_number, status, current_location, acquisition_date, created_at, '
-      'catalog_product_id, vendor_id, batches(code)';
+      'catalog_product_id, vendor_id, purchase_price, batches(code)';
   const linked = 'assigned_machine_id, ';
 
   final batchIds = await _currentBatchIds();
