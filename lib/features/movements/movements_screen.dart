@@ -24,10 +24,13 @@ const _filters = ['All', 'Workshop', 'Branch', 'Dealer', 'Customer', 'Returned']
 class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _filter = 'All';
   String _query = '';
+  // Everything the Filters sheet decides, display form ('' / 'All' = off).
   String _party = 'All'; // customer or dealer name, or 'All'
   String _actor = 'All'; // who sent it, or 'All'
   String _kind = 'All'; // Machine / Probe / Printer / Part, or 'All'
-  DateTime? _date;
+  String _dateFrom = '';
+  String _dateTo = '';
+  String _demo = 'All'; // 'All' / 'Exclude demo' / 'Demo only'
   final _search = TextEditingController();
 
   @override
@@ -36,11 +39,25 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     super.dispose();
   }
 
+  /// Filters the sheet holds — the search box has its own count.
+  int get _activeFilterCount {
+    var n = 0;
+    if (_party != 'All') n++;
+    if (_actor != 'All') n++;
+    if (_kind != 'All') n++;
+    if (_dateFrom.isNotEmpty) n++;
+    if (_dateTo.isNotEmpty) n++;
+    if (_demo != 'All') n++;
+    return n;
+  }
+
   bool get _hasFilters =>
       _party != 'All' ||
       _actor != 'All' ||
       _kind != 'All' ||
-      _date != null ||
+      _dateFrom.isNotEmpty ||
+      _dateTo.isNotEmpty ||
+      _demo != 'All' ||
       _query.isNotEmpty;
 
   void _clearFilters() {
@@ -49,7 +66,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       _party = 'All';
       _actor = 'All';
       _kind = 'All';
-      _date = null;
+      _dateFrom = '';
+      _dateTo = '';
+      _demo = 'All';
       _query = '';
     });
   }
@@ -99,92 +118,36 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             },
           ),
         ),
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            children: [
-              if (_filter == 'Customer' || _filter == 'Dealer')
-                _menuChip(
-                  icon: Icons.person_outline,
-                  label: _party == 'All'
-                      ? (_filter == 'Customer' ? 'Any customer' : 'Any dealer')
-                      : _party,
-                  active: _party != 'All',
-                  entries: [
-                    _menuOption('All',
-                        _filter == 'Customer' ? 'Any customer' : 'Any dealer',
-                        selected: _party == 'All'),
-                    for (final name in _partyOptions(rows))
-                      _menuOption(name, name, selected: _party == name),
-                  ],
-                  onSelected: (value) => setState(() => _party = value),
-                ),
-              _menuChip(
-                icon: Icons.supervisor_account_outlined,
-                label: _actor == 'All' ? 'Anyone' : _actor,
-                active: _actor != 'All',
-                entries: [
-                  _menuOption('All', 'Anyone', selected: _actor == 'All'),
-                  for (final name in _actorOptions(rows))
-                    _menuOption(name, name, selected: _actor == name),
-                ],
-                onSelected: (value) => setState(() => _actor = value),
-              ),
-              _menuChip(
-                icon: Icons.category_outlined,
-                label: _kind == 'All' ? 'Any item' : _kind,
-                active: _kind != 'All',
-                entries: [
-                  _menuOption('All', 'Any item', selected: _kind == 'All'),
-                  for (final kind in _kindOptions(rows))
-                    _menuOption(kind, '${kind}s', selected: _kind == kind),
-                ],
-                onSelected: (value) => setState(() => _kind = value),
-              ),
-              _dateChip(rows),
-              if (_hasFilters)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: _clearFilters,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: context.colors.errorContainer,
-                        borderRadius: BorderRadius.circular(20),
-                        border:
-                            Border.all(color: context.colors.errorBorder),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.close,
-                              size: 14, color: Theme.of(context).colorScheme.error),
-                          SizedBox(width: 4),
-                          Text('Reset',
-                              style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Theme.of(context).colorScheme.error)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-          child: SearchField(
-            controller: _search,
-            hint: 'Search by item, location or reference',
-            onChanged: (value) =>
-                setState(() => _query = value.trim().toLowerCase()),
+          child: Row(
+            children: [
+              Expanded(
+                child: SearchField(
+                  controller: _search,
+                  hint: 'Search by item, location or reference',
+                  onChanged: (value) =>
+                      setState(() => _query = value.trim().toLowerCase()),
+                ),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton.icon(
+                onPressed: _openFilters,
+                icon: Badge(
+                  isLabelVisible: _activeFilterCount > 0,
+                  label: Text('$_activeFilterCount'),
+                  child: const Icon(Icons.filter_list, size: 20),
+                ),
+                label: const Text('Filters'),
+              ),
+              if (_hasFilters)
+                IconButton(
+                  tooltip: 'Clear filters',
+                  icon: Icon(Icons.close,
+                      size: 20, color: Theme.of(context).colorScheme.error),
+                  onPressed: _clearFilters,
+                ),
+            ],
           ),
         ),
         Expanded(
@@ -396,9 +359,16 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     }
     if (_actor != 'All' && _actorOf(row) != _actor) return false;
     if (_kind != 'All' && _kindOf(row) != _kind) return false;
-    if (_date != null &&
-        (row['movement_date'] ?? '').toString() != DateField.format(_date!)) {
-      return false;
+    if (_demo == 'Demo only' && row['is_demo'] != true) return false;
+    if (_demo == 'Exclude demo' && row['is_demo'] == true) return false;
+    if (_dateFrom.isNotEmpty || _dateTo.isNotEmpty) {
+      // a row with no readable date cannot sit inside a range
+      final date = _parseDateText((row['movement_date'] ?? '').toString());
+      if (date == null) return false;
+      final from = _parseDateText(_dateFrom);
+      if (from != null && date.isBefore(from)) return false;
+      final to = _parseDateText(_dateTo);
+      if (to != null && date.isAfter(to)) return false;
     }
     return true;
   }
@@ -455,116 +425,55 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     ];
   }
 
-  List<String> _dateOptions(List<Map<String, dynamic>> rows) {
-    final dates = <String, DateTime>{};
-    for (final row in rows) {
-      final text = (row['movement_date'] ?? '').toString();
-      final parsed = _parseDateText(text);
-      if (parsed != null) dates[text] = parsed;
+  /// Opens the Filters sheet — everything the old second chip row held,
+  /// plus the date range and demo rows. The sheet only narrows the list
+  /// already in memory; nothing is fetched or written.
+  Future<void> _openFilters() async {
+    final rows = ref.read(movementsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final showParty = _filter == 'Customer' || _filter == 'Dealer';
+    // a choice from an earlier visit must still be selectable, even when
+    // the rows behind it have changed
+    final partyOptions = showParty ? _partyOptions(rows) : <String>[];
+    if (_party != 'All' && !partyOptions.contains(_party)) {
+      partyOptions.add(_party);
     }
-    final list = dates.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return [for (final entry in list.take(12)) entry.key];
-  }
-
-  Widget _menuChip({
-    required IconData icon,
-    required String label,
-    required bool active,
-    required List<PopupMenuEntry<String>> entries,
-    required ValueChanged<String> onSelected,
-  }) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final color = active ? primary : Theme.of(context).colorScheme.onSurfaceVariant;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: PopupMenuButton<String>(
-        onSelected: onSelected,
-        itemBuilder: (context) => entries,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: active ? primary.withValues(alpha: 0.10) : Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            border:
-                Border.all(color: active ? primary : Theme.of(context).colorScheme.outlineVariant),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 150),
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: color)),
-              ),
-              Icon(Icons.arrow_drop_down, size: 16, color: color),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  PopupMenuItem<String> _menuOption(String value, String text,
-      {bool selected = false}) {
-    final primary = Theme.of(context).colorScheme.primary;
-    return PopupMenuItem<String>(
-      value: value,
-      child: Row(
-        children: [
-          if (selected) ...[
-            Icon(Icons.check, size: 16, color: primary),
-            const SizedBox(width: 8),
-          ] else
-            const SizedBox(width: 24),
-          Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-    );
-  }
-
-  Widget _dateChip(List<Map<String, dynamic>> rows) {
-    final active = _date != null;
-    return _menuChip(
-      icon: Icons.calendar_today_outlined,
-      label: active ? DateField.format(_date!) : 'Any date',
-      active: active,
-      entries: [
-        _menuOption('__any', 'Any date', selected: !active),
-        _menuOption('__pick', 'Pick a date…'),
-        for (final text in _dateOptions(rows))
-          _menuOption(text, text,
-              selected: active && text == DateField.format(_date!)),
-      ],
-      onSelected: (value) {
-        if (value == '__any') {
-          setState(() => _date = null);
-        } else if (value == '__pick') {
-          _pickDate();
-        } else {
-          setState(() => _date = _parseDateText(value));
-        }
-      },
-    );
-  }
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    final actorOptions = _actorOptions(rows);
+    if (_actor != 'All' && !actorOptions.contains(_actor)) {
+      actorOptions.add(_actor);
+    }
+    final kindOptions = _kindOptions(rows);
+    if (_kind != 'All' && !kindOptions.contains(_kind)) {
+      kindOptions.add(_kind);
+    }
+    final result = await showAppSheet<_MovementFilterValues>(
       context: context,
-      initialDate: _date ?? DateTime.now(),
-      firstDate: DateTime(2015),
-      lastDate: DateTime(2100),
+      title: 'Filters',
+      heightFraction: 0.85,
+      builder: (sheetContext) => _MovementFilterSheet(
+        showParty: showParty,
+        partyLabel:
+            _filter == 'Customer' ? 'Any customer' : 'Any dealer',
+        party: _party,
+        partyOptions: partyOptions,
+        actor: _actor,
+        actorOptions: actorOptions,
+        kind: _kind,
+        kindOptions: kindOptions,
+        dateFrom: _dateFrom,
+        dateTo: _dateTo,
+        demo: _demo,
+      ),
     );
-    if (picked != null && mounted) {
-      setState(() => _date = picked);
-    }
+    if (result == null || !mounted) return;
+    setState(() {
+      _party = result.party;
+      _actor = result.actor;
+      _kind = result.kind;
+      _dateFrom = result.dateFrom;
+      _dateTo = result.dateTo;
+      _demo = result.demo;
+    });
   }
 
   static DateTime? _parseDateText(String text) {
@@ -1769,4 +1678,236 @@ String _sendTitle(List<Map<String, dynamic>> rows, Map<String, String> labels) {
     }
   }
   return 'Sent to ${rows.first['to_location'] ?? ''}';
+}
+
+
+// ---------------------------------------------------------------------------
+// filters sheet
+// ---------------------------------------------------------------------------
+
+/// What the Filters sheet hands back � display form, '' / 'All' meaning
+/// "off".
+typedef _MovementFilterValues = ({
+  String party,
+  String actor,
+  String kind,
+  String dateFrom,
+  String dateTo,
+  String demo,
+});
+
+/// Every movement filter in one sheet: who it went to, who sent it, the
+/// item kind, the date range and whether demo rows are wanted.
+class _MovementFilterSheet extends StatefulWidget {
+  const _MovementFilterSheet({
+    required this.showParty,
+    required this.partyLabel,
+    required this.party,
+    required this.partyOptions,
+    required this.actor,
+    required this.actorOptions,
+    required this.kind,
+    required this.kindOptions,
+    required this.dateFrom,
+    required this.dateTo,
+    required this.demo,
+  });
+
+  /// Only customer and dealer sends have a "sent to" name to pick.
+  final bool showParty;
+  final String partyLabel;
+  final String party;
+  final List<String> partyOptions;
+  final String actor;
+  final List<String> actorOptions;
+  final String kind;
+  final List<String> kindOptions;
+  final String dateFrom;
+  final String dateTo;
+  final String demo;
+
+  @override
+  State<_MovementFilterSheet> createState() => _MovementFilterSheetState();
+}
+
+class _MovementFilterSheetState extends State<_MovementFilterSheet> {
+  late final TextEditingController _from;
+  late final TextEditingController _to;
+  late String _party;
+  late String _actor;
+  late String _kind;
+  late String _demo;
+
+  static const _demoOptions = ['All', 'Exclude demo', 'Demo only'];
+
+  @override
+  void initState() {
+    super.initState();
+    _from = TextEditingController(text: widget.dateFrom);
+    _to = TextEditingController(text: widget.dateTo);
+    _party = widget.party;
+    _actor = widget.actor;
+    _kind = widget.kind;
+    _demo = widget.demo;
+  }
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
+
+  void _apply() {
+    Navigator.pop(context, (
+      party: widget.showParty ? _party : widget.party,
+      actor: _actor,
+      kind: _kind,
+      dateFrom: _from.text.trim(),
+      dateTo: _to.text.trim(),
+      demo: _demo,
+    ));
+  }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Filters',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (widget.showParty) ...[
+                    _label('Sent to'),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('filter-party-$_party'),
+                      initialValue: _party,
+                      items: [
+                        DropdownMenuItem(
+                            value: 'All', child: Text(widget.partyLabel)),
+                        for (final name in widget.partyOptions)
+                          DropdownMenuItem(value: name, child: Text(name)),
+                      ],
+                      onChanged: (v) => setState(() => _party = v ?? 'All'),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  _label('Sent by'),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('filter-actor-$_actor'),
+                    initialValue: _actor,
+                    items: [
+                      const DropdownMenuItem(
+                          value: 'All', child: Text('Anyone')),
+                      for (final name in widget.actorOptions)
+                        DropdownMenuItem(value: name, child: Text(name)),
+                    ],
+                    onChanged: (v) => setState(() => _actor = v ?? 'All'),
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Item'),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('filter-kind-$_kind'),
+                    initialValue: _kind,
+                    items: [
+                      const DropdownMenuItem(
+                          value: 'All', child: Text('Any item')),
+                      for (final kind in widget.kindOptions)
+                        DropdownMenuItem(
+                            value: kind, child: Text('${kind}s')),
+                    ],
+                    onChanged: (v) => setState(() => _kind = v ?? 'All'),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child:
+                            DateField(controller: _from, label: 'Date from'),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DateField(controller: _to, label: 'Date to'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Demo'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final option in _demoOptions)
+                        ChoiceChip(
+                          label: Text(option),
+                          selected: _demo == option,
+                          onSelected: (_) => setState(() => _demo = option),
+                          selectedColor: scheme.primary,
+                          labelStyle: TextStyle(
+                            color: _demo == option
+                                ? Colors.white
+                                : scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                          backgroundColor: context.colors.isDark
+                              ? context.colors.quietFill
+                              : scheme.surface,
+                          side: BorderSide(color: scheme.outlineVariant),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, (
+                  party: 'All',
+                  actor: 'All',
+                  kind: 'All',
+                  dateFrom: '',
+                  dateTo: '',
+                  demo: 'All',
+                )),
+                child: const Text('Clear all'),
+              ),
+              const Spacer(),
+              FilledButton(onPressed: _apply, child: const Text('Apply')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

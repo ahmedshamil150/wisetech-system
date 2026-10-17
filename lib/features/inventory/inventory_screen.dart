@@ -97,6 +97,26 @@ List<(InventoryItem, bool)> arrangeAsKits(List<InventoryItem> items) {
   ];
 }
 
+/// `dd-MM-yyyy` (the shop's date format) → date-only [DateTime], or null.
+DateTime? _dateOnly(String display) {
+  final parts = display.split('-');
+  if (parts.length != 3) return null;
+  final day = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final year = int.tryParse(parts[2]);
+  if (day == null || month == null || year == null) return null;
+  return DateTime(year, month, day);
+}
+
+/// An acquisition date as stored on an item: ISO (`2026-09-14T…`),
+/// `dd-MM-yyyy`, or junk like `Unknown` → date-only [DateTime] or null.
+DateTime? _itemDate(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final iso = DateTime.tryParse(raw.trim());
+  if (iso != null) return DateTime(iso.year, iso.month, iso.day);
+  return _dateOnly(raw.trim());
+}
+
 /// Which status chip the inventory shows — the dashboard sets this before
 /// jumping to the tab so a stat card lands on the right list.
 class _StatusFilterNotifier extends Notifier<String> {
@@ -112,7 +132,16 @@ final inventoryStatusFilterProvider =
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String _query = '';
   String _type = 'Equipment';
+  // The rest of the filters live in the Filters sheet, all in display
+  // form ('' / 'All' / null = off).
   String _status = 'All';
+  String _dateFrom = '';
+  String _dateTo = '';
+  String _location = '';
+  String _batch = '';
+  int? _vendorId;
+  String _priceFrom = '';
+  String _priceTo = '';
 
   @override
   void initState() {
@@ -121,6 +150,54 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     ref.listenManual(inventoryStatusFilterProvider, (previous, next) {
       if (next != _status) setState(() => _status = next);
     });
+  }
+
+  int get _activeFilterCount {
+    var n = 0;
+    if (_status != 'All') n++;
+    if (_dateFrom.isNotEmpty) n++;
+    if (_dateTo.isNotEmpty) n++;
+    if (_location.isNotEmpty) n++;
+    if (_batch.isNotEmpty) n++;
+    if (_vendorId != null) n++;
+    if (_priceFrom.isNotEmpty) n++;
+    if (_priceTo.isNotEmpty) n++;
+    return n;
+  }
+
+  /// Everything the Filters sheet decides, checked straight against the
+  /// item. Only ever narrows the in-memory list — nothing is fetched.
+  bool _matchesAux(InventoryItem item) {
+    if (_location.isNotEmpty &&
+        !item.location
+            .toLowerCase()
+            .contains(_location.trim().toLowerCase())) {
+      return false;
+    }
+    if (_batch.isNotEmpty && item.batch != _batch) return false;
+    if (_vendorId != null && item.vendorId != _vendorId) return false;
+
+    final priceFrom = double.tryParse(_priceFrom.trim());
+    if (priceFrom != null) {
+      final price = item.purchasePrice;
+      if (price == null || price < priceFrom) return false;
+    }
+    final priceTo = double.tryParse(_priceTo.trim());
+    if (priceTo != null) {
+      final price = item.purchasePrice;
+      if (price == null || price > priceTo) return false;
+    }
+
+    if (_dateFrom.isNotEmpty || _dateTo.isNotEmpty) {
+      // an item with no readable date cannot sit inside a range
+      final date = _itemDate(item.date);
+      if (date == null) return false;
+      final from = _dateOnly(_dateFrom);
+      if (from != null && date.isBefore(from)) return false;
+      final to = _dateOnly(_dateTo);
+      if (to != null && date.isAfter(to)) return false;
+    }
+    return true;
   }
 
   bool _matchesFilter(InventoryItem item) => switch (_type) {
@@ -174,6 +251,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       // Moved parts stay listed, so they are counted too.
       if ((item.isSold && item.kind != 'part') ||
           !_matchesStatus(item) ||
+          !_matchesAux(item) ||
           !_matchesQuery(item)) {
         continue;
       }
@@ -198,6 +276,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       // Moved parts stay listed, so they are counted too.
       if ((item.isSold && item.kind != 'part') ||
           !_matchesFilter(item) ||
+          !_matchesAux(item) ||
           !_matchesQuery(item)) {
         continue;
       }
@@ -230,6 +309,67 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
+  /// Opens the Filters sheet — everything the old status row held, plus
+  /// the date range, location, batch, vendor and price. The sheet only
+  /// narrows the list already in memory; nothing is fetched or written.
+  Future<void> _openFilters() async {
+    final rows = ref.read(inventoryProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <InventoryItem>[]);
+    final statusCounts = _statusCounts(rows);
+    final batchOptions = <String>{
+      for (final item in rows)
+        if (item.batch != null && item.batch!.isNotEmpty) item.batch!,
+    }.toList()
+      ..sort();
+    // a choice from an earlier visit must still be selectable, even when
+    // the rows behind it have changed
+    if (_batch.isNotEmpty && !batchOptions.contains(_batch)) {
+      batchOptions.add(_batch);
+    }
+    final vendors = ref.read(vendorsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final vendorOptions = [
+      for (final vendor in vendors)
+        ((vendor['id'] as int?) ?? -1, (vendor['name'] ?? '').toString()),
+    ];
+    if (_vendorId != null &&
+        !vendorOptions.any((option) => option.$1 == _vendorId)) {
+      vendorOptions.add((_vendorId!, 'Vendor #$_vendorId'));
+    }
+
+    final result = await showAppSheet<_InventoryFilterValues>(
+      context: context,
+      title: 'Filters',
+      heightFraction: 0.85,
+      builder: (sheetContext) => _InventoryFilterSheet(
+        status: _status,
+        statusCounts: statusCounts,
+        dateFrom: _dateFrom,
+        dateTo: _dateTo,
+        location: _location,
+        batch: _batch,
+        batchOptions: batchOptions,
+        vendorId: _vendorId,
+        vendorOptions: vendorOptions,
+        priceFrom: _priceFrom,
+        priceTo: _priceTo,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _status = result.status;
+      _dateFrom = result.dateFrom;
+      _dateTo = result.dateTo;
+      _location = result.location;
+      _batch = result.batch;
+      _vendorId = result.vendorId;
+      _priceFrom = result.priceFrom;
+      _priceTo = result.priceTo;
+    });
+    // the dashboard jumps here with a status — keep that link alive
+    ref.read(inventoryStatusFilterProvider.notifier).set(result.status);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(isAdminProvider);
@@ -239,7 +379,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final boxes = ref.watch(probeBoxesProvider).maybeWhen(
         data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[]);
     final typeCounts = _typeCounts(allRows, boxes);
-    final statusCounts = _statusCounts(allRows);
 
     return Column(
       children: [
@@ -254,6 +393,18 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       setState(() => _query = value.trim().toLowerCase()),
                 ),
               ),
+              if (_type != 'Boxes') ...[
+                const SizedBox(width: 6),
+                OutlinedButton.icon(
+                  onPressed: _openFilters,
+                  icon: Badge(
+                    isLabelVisible: _activeFilterCount > 0,
+                    label: Text('$_activeFilterCount'),
+                    child: const Icon(Icons.filter_list, size: 20),
+                  ),
+                  label: const Text('Filters'),
+                ),
+              ],
               if (isAdmin) ...[
                 const SizedBox(width: 4),
                 IconButton(
@@ -284,31 +435,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             },
           ),
         ),
-        if (_type != 'Boxes') ...[
-          const SizedBox(height: 4),
-          SizedBox(
-            height: 40,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _statusFilters.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final label = _statusFilters[index];
-                return _filterChip(
-                  context,
-                  label,
-                  statusCounts[label] ?? 0,
-                  selected: _status == label,
-                  onTap: () {
-                    setState(() => _status = label);
-                    ref.read(inventoryStatusFilterProvider.notifier).set(label);
-                  },
-                );
-              },
-            ),
-          ),
-        ],
         const SizedBox(height: 4),
         Expanded(
           child: _type == 'Boxes'
@@ -325,6 +451,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 if (item.isSold && item.kind != 'part') return false;
                 if (!_matchesFilter(item)) return false;
                 if (!_matchesStatus(item)) return false;
+                if (!_matchesAux(item)) return false;
                 if (!_matchesQuery(item)) return false;
                 return true;
               }).toList();
@@ -2388,6 +2515,258 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the Filters sheet hands back — display form, '' / 'All' / null
+/// meaning "off".
+typedef _InventoryFilterValues = ({
+  String status,
+  String dateFrom,
+  String dateTo,
+  String location,
+  String batch,
+  int? vendorId,
+  String priceFrom,
+  String priceTo,
+});
+
+/// Every inventory filter in one sheet: status with its counts, the
+/// acquisition date range, location, batch, vendor and the price paid.
+class _InventoryFilterSheet extends StatefulWidget {
+  const _InventoryFilterSheet({
+    required this.status,
+    required this.statusCounts,
+    required this.dateFrom,
+    required this.dateTo,
+    required this.location,
+    required this.batch,
+    required this.batchOptions,
+    required this.vendorId,
+    required this.vendorOptions,
+    required this.priceFrom,
+    required this.priceTo,
+  });
+
+  final String status;
+  final Map<String, int> statusCounts;
+  final String dateFrom;
+  final String dateTo;
+  final String location;
+  final String batch;
+  final List<String> batchOptions;
+  final int? vendorId;
+  final List<(int, String)> vendorOptions;
+  final String priceFrom;
+  final String priceTo;
+
+  @override
+  State<_InventoryFilterSheet> createState() => _InventoryFilterSheetState();
+}
+
+class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
+  late final TextEditingController _from;
+  late final TextEditingController _to;
+  late final TextEditingController _location;
+  late final TextEditingController _priceFrom;
+  late final TextEditingController _priceTo;
+  late String _status;
+  late String _batch;
+  late int? _vendorId;
+
+  @override
+  void initState() {
+    super.initState();
+    _from = TextEditingController(text: widget.dateFrom);
+    _to = TextEditingController(text: widget.dateTo);
+    _location = TextEditingController(text: widget.location);
+    _priceFrom = TextEditingController(text: widget.priceFrom);
+    _priceTo = TextEditingController(text: widget.priceTo);
+    _status = widget.status;
+    _batch = widget.batch;
+    _vendorId = widget.vendorId;
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_from, _to, _location, _priceFrom, _priceTo]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _apply() {
+    Navigator.pop(context, (
+      status: _status,
+      dateFrom: _from.text.trim(),
+      dateTo: _to.text.trim(),
+      location: _location.text.trim(),
+      batch: _batch,
+      vendorId: _vendorId,
+      priceFrom: _priceFrom.text.trim(),
+      priceTo: _priceTo.text.trim(),
+    ));
+  }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Filters',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _label('Status'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final label in _statusFilters)
+                        ChoiceChip(
+                          label: Text(
+                              '$label (${widget.statusCounts[label] ?? 0})'),
+                          selected: _status == label,
+                          onSelected: (_) => setState(() => _status = label),
+                          selectedColor: scheme.primary,
+                          labelStyle: TextStyle(
+                            color: _status == label
+                                ? Colors.white
+                                : scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                          backgroundColor: context.colors.isDark
+                              ? context.colors.quietFill
+                              : scheme.surface,
+                          side: BorderSide(color: scheme.outlineVariant),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DateField(
+                            controller: _from, label: 'Acquired from'),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DateField(controller: _to, label: 'Acquired to'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _location,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                        labelText: 'Location contains',
+                        hintText: 'e.g. Lahore'),
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Batch'),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('filter-batch-$_batch'),
+                    initialValue: _batch,
+                    items: [
+                      const DropdownMenuItem(
+                          value: '', child: Text('Any batch')),
+                      for (final code in widget.batchOptions)
+                        DropdownMenuItem(value: code, child: Text(code)),
+                    ],
+                    onChanged: (v) => setState(() => _batch = v ?? ''),
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Vendor'),
+                  DropdownButtonFormField<int>(
+                    key: ValueKey('filter-vendor-$_vendorId'),
+                    initialValue: _vendorId,
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('Any vendor')),
+                      for (final (id, name) in widget.vendorOptions)
+                        DropdownMenuItem(value: id, child: Text(name)),
+                    ],
+                    onChanged: (v) => setState(() => _vendorId = v),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _priceFrom,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'Price paid from'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _priceTo,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'Price paid to'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, (
+                  status: 'All',
+                  dateFrom: '',
+                  dateTo: '',
+                  location: '',
+                  batch: '',
+                  vendorId: null,
+                  priceFrom: '',
+                  priceTo: '',
+                )),
+                child: const Text('Clear all'),
+              ),
+              const Spacer(),
+              FilledButton(onPressed: _apply, child: const Text('Apply')),
+            ],
           ),
         ],
       ),
