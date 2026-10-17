@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ultrasound_inventory/core/theme.dart';
 import 'package:ultrasound_inventory/features/inventory/inventory_screen.dart';
 import 'package:ultrasound_inventory/features/movements/movements_screen.dart';
+
+final _darkTheme = buildAppTheme(Brightness.dark);
 
 Future<void> _pumpFrames(WidgetTester tester, [int frames = 30]) async {
   for (var i = 0; i < frames; i++) {
@@ -21,8 +24,9 @@ Future<void> _checkApply({
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  await tester
-      .pumpWidget(ProviderScope(child: MaterialApp(home: Scaffold(body: screen))));
+  await tester.pumpWidget(ProviderScope(
+      child:
+          MaterialApp(theme: _darkTheme, home: Scaffold(body: screen))));
   await _pumpFrames(tester);
 
   final filtersButton = find.widgetWithText(OutlinedButton, 'Filters');
@@ -116,8 +120,10 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: keyboardHeight);
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: Scaffold(body: InventoryScreen()))));
+    await tester.pumpWidget(ProviderScope(
+        child: MaterialApp(
+            theme: _darkTheme,
+            home: const Scaffold(body: InventoryScreen()))));
     await _pumpFrames(tester);
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Filters'));

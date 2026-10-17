@@ -255,7 +255,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           !_matchesQuery(item)) {
         continue;
       }
-      counts[item.kind] = (counts[item.kind] ?? 0) + 1;
+      counts[item.kindLabel] = (counts[item.kindLabel] ?? 0) + 1;
       if (item.kind != 'part') {
         counts['Equipment'] = counts['Equipment']! + 1;
       }

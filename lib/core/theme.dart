@@ -172,7 +172,9 @@ ThemeData buildAppTheme([Brightness brightness = Brightness.light]) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
+        // Width must stay finite: an infinite minimum width propagates into
+        // Dialog's IntrinsicWidth and breaks layout of any dialog content.
+        minimumSize: const Size(0, 48),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
