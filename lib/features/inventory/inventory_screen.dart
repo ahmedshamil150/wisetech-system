@@ -379,6 +379,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final boxes = ref.watch(probeBoxesProvider).maybeWhen(
         data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[]);
     final typeCounts = _typeCounts(allRows, boxes);
+    // Everything that survives the filters — the same predicates the list
+    // uses, so the count always matches what is shown.
+    final filtered = allRows.where((item) {
+      // A sold machine already belongs to the dealer or customer,
+      // so it must not show up in the inventory any more. Moved
+      // parts stay visible so their stock history is reachable.
+      if (item.isSold && item.kind != 'part') return false;
+      if (!_matchesFilter(item)) return false;
+      if (!_matchesStatus(item)) return false;
+      if (!_matchesAux(item)) return false;
+      if (!_matchesQuery(item)) return false;
+      return true;
+    }).toList();
+    final boxCount = typeCounts['Boxes'] ?? 0;
+    final shownCount = _type == 'Boxes' ? boxCount : filtered.length;
 
     return Column(
       children: [
@@ -435,6 +450,53 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             },
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                  _type == 'Boxes'
+                      ? '$shownCount box${shownCount == 1 ? '' : 'es'}'
+                      : '$shownCount item${shownCount == 1 ? '' : 's'}',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              if (_status != 'All') ...[
+                const SizedBox(width: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    setState(() => _status = 'All');
+                    ref.read(inventoryStatusFilterProvider.notifier).set('All');
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: context.colors.errorContainer,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: context.colors.errorBorder),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_status,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).colorScheme.error)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.close,
+                            size: 13,
+                            color: Theme.of(context).colorScheme.error),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
         const SizedBox(height: 4),
         Expanded(
           child: _type == 'Boxes'
@@ -444,17 +506,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             error: (error, _) => EmptyState(
                 icon: Icons.error_outline, message: errorMessage(error)),
             data: (rows) {
-              final filtered = rows.where((item) {
-                // A sold machine already belongs to the dealer or customer,
-                // so it must not show up in the inventory any more. Moved
-                // parts stay visible so their stock history is reachable.
-                if (item.isSold && item.kind != 'part') return false;
-                if (!_matchesFilter(item)) return false;
-                if (!_matchesStatus(item)) return false;
-                if (!_matchesAux(item)) return false;
-                if (!_matchesQuery(item)) return false;
-                return true;
-              }).toList();
               final entries = arrangeAsKits(filtered);
               if (entries.isEmpty) {
                 return const EmptyState(
@@ -2623,8 +2674,11 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // the sheet does not lift for the keyboard — pad it so the Apply row
+    // stays above it while a field is being typed in
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + keyboard),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

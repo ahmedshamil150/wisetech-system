@@ -1780,8 +1780,11 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // the sheet does not lift for the keyboard — pad it so the Apply row
+    // stays above it while a field is being typed in
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + keyboard),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
