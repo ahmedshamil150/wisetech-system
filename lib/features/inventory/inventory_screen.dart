@@ -664,6 +664,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     const SizedBox(width: 6),
                     _movedBadge(context),
                   ],
+                  if (item.needsReview) ...[
+                    const SizedBox(width: 6),
+                    _reviewDot(context),
+                  ],
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1560,7 +1564,15 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                     title: Text('${item.code}  ${item.title}',
                         style: const TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 13.5)),
-                    subtitle: Text('${item.status} · ${item.location}'),
+                    subtitle: Row(
+                      children: [
+                        if (item.needsReview) ...[
+                          _reviewDot(context),
+                          const SizedBox(width: 6),
+                        ],
+                        Text('${item.status} · ${item.location}'),
+                      ],
+                    ),
                     trailing: isAdmin
                         ? IconButton(
                             tooltip: 'Take out of the box',
@@ -1780,6 +1792,11 @@ class _ItemDetails extends ConsumerWidget {
               KeyValue(label: 'Location', value: item.location),
               if (item.boxId != null && boxName.isNotEmpty)
                 KeyValue(label: 'Box', value: boxName),
+              if (item.needsReview)
+                KeyValue(
+                    label: 'Review',
+                    value:
+                        'Flagged — this serial also appears in the old sales records'),
               KeyValue(label: 'Acquired', value: item.date ?? '—'),
               KeyValue(label: 'Batch', value: item.batch ?? '—'),
               if (item.batch == 'BATCH-LOCAL' && vendorName.isNotEmpty)
@@ -2224,6 +2241,20 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
       ),
     );
   }
+}
+
+/// Small green dot marking an item flagged for review — e.g. a boxed
+/// probe whose serial also turns up in the old sales records.
+Widget _reviewDot(BuildContext context) {
+  final color = context.colors.success;
+  return Tooltip(
+    message: 'Needs review — check against the old sales records',
+    child: Container(
+      width: 9,
+      height: 9,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    ),
+  );
 }
 
 IconData _historyIcon(String type) => switch (type) {

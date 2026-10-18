@@ -143,6 +143,7 @@ class InventoryItem {
     this.boxId,
     this.probeType,
     this.purchasePrice,
+    this.needsReview = false,
   });
 
   final String kind; // machine | probe | printer | part
@@ -170,6 +171,10 @@ class InventoryItem {
 
   /// For probes: Convex, Linear, Phased Array... from the product record.
   final String? probeType;
+
+  /// Flagged for a human look — e.g. a boxed probe whose serial also
+  /// turns up in the old sales records.
+  final bool needsReview;
 
   String get key => '$kind:$id';
 
@@ -258,6 +263,7 @@ InventoryItem _item(String kind, Map<String, dynamic> row,
     boxId: row['box_id'] as int?,
     probeType: ((row['catalog_products'] as Map?)?['probe_type'])?.toString(),
     purchasePrice: (row['purchase_price'] as num?)?.toDouble(),
+    needsReview: row['needs_review'] == 1,
   );
 }
 
@@ -311,7 +317,7 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
   final probes = await _db
       .from('probes')
       .select(
-          '$fields, $linked box_id, catalog_products(probe_type), internal_id, model')
+          '$fields, $linked box_id, needs_review, catalog_products(probe_type), internal_id, model')
       .or(batchFilter)
       .order('id', ascending: false);
   final printers = await _db
