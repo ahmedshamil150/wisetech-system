@@ -211,6 +211,33 @@ bool isOldSideMovement(Map<String, dynamic> row) {
   return date != null && date.isBefore(kOldSideCutoff);
 }
 
+/// Box placements and removals belong to an item's own history only —
+/// the Movements screen list hides them (they are not sends).
+bool isBoxMovement(Map<String, dynamic> row) {
+  final type = (row['movement_type'] ?? '').toString();
+  return type == 'Box' || type == 'Unbox';
+}
+
+/// "Placed in box X" / "Took out of box X" / "Sent to X" — the title a
+/// movement row gets in an item's history list.
+String movementTitle(Map<String, dynamic> row) {
+  final to = (row['to_location'] ?? '').toString();
+  final from = (row['from_location'] ?? '').toString();
+  final type = (row['movement_type'] ?? '').toString();
+  if (type == 'Return') return 'Returned to $to';
+  if (type == 'Box') return 'Placed in box $to';
+  if (type == 'Unbox') return 'Took out of box ${from.isEmpty ? '' : from}';
+  if ('${row['reason'] ?? ''}'.contains('Sold')) return 'Sold to $to';
+  return 'Sent to $to';
+}
+
+/// Today as dd-MM-yyyy, the date format movements are stored in.
+String movementToday() {
+  final now = DateTime.now();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(now.day)}-${two(now.month)}-${now.year}';
+}
+
 InventoryItem _item(String kind, Map<String, dynamic> row,
     {required String codeField, required String nameField}) {
   final batch = row['batches'];
@@ -361,7 +388,10 @@ final allMovementsProvider =
 /// old-data side of the app.
 final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final rows = await ref.watch(allMovementsProvider.future);
-  return [for (final row in rows) if (!isOldSideMovement(row)) row];
+  return [
+    for (final row in rows)
+      if (!isOldSideMovement(row) && !isBoxMovement(row)) row
+  ];
 });
 
 /// Puts an item back into stock from wherever it is: status and location
@@ -597,22 +627,63 @@ Future<void> repairSentBack({
 }
 
 /// Puts a leftover probe into a box: it comes off its machine, becomes
-/// Available and the box becomes its location.
+/// Available, the box becomes its location, and a 'Box' movement is
+/// written so the probe's history shows when it went in.
 Future<void> putProbeInBox(InventoryItem probe, Map<String, dynamic> box) async {
+  final boxName = (box['name'] ?? '').toString();
+  final from = probe.location;
   await _db.from('probes').update({
     'box_id': box['id'],
     'assigned_machine_id': null,
     'status': 'Available',
-    'current_location': box['name'],
+    'current_location': boxName,
   }).eq('id', probe.id);
+  await _db.from('movements').insert({
+    'movement_type': 'Box',
+    'movement_date': movementToday(),
+    'probe_id': probe.id,
+    'from_location': from,
+    'to_location': boxName,
+    'actor_id': _db.auth.currentUser?.id,
+  });
 }
 
-/// Takes the probe back out of the box; it stays in stock at the company.
+/// Takes the probe back out of the box; it stays in stock at the company
+/// and an 'Unbox' movement records the removal.
 Future<void> takeProbeOutOfBox(InventoryItem probe) async {
+  final from = probe.location;
+  final to = defaultLocationFor('Available');
   await _db.from('probes').update({
     'box_id': null,
-    'current_location': defaultLocationFor('Available'),
+    'current_location': to,
   }).eq('id', probe.id);
+  await _db.from('movements').insert({
+    'movement_type': 'Unbox',
+    'movement_date': movementToday(),
+    'probe_id': probe.id,
+    'from_location': from,
+    'to_location': to,
+    'actor_id': _db.auth.currentUser?.id,
+  });
+}
+
+/// Probes that may be added to [box]. Any probe type fits any box — the
+/// box's probe_type is just a label — and a probe that currently sits
+/// With Machine is included so it can be taken off its machine and boxed
+/// by searching its serial. Sold / Archived / With Customer probes and
+/// probes already in a box are excluded.
+List<InventoryItem> boxAddCandidates(
+    List<InventoryItem> items, Map<String, dynamic> box) {
+  return items.where((item) {
+    if (item.kind != 'probe') return false;
+    if (item.status == 'Sold' ||
+        item.status == 'Archived' ||
+        item.status == 'With Customer') {
+      return false;
+    }
+    if (item.boxId != null) return false;
+    return true;
+  }).toList();
 }
 
 /// Deletes an empty box; probes still in it go back to company stock.

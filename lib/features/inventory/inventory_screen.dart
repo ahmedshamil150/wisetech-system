@@ -1359,7 +1359,9 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
   }
 
   /// Creates a brand-new probe straight into this box — for stock that
-  /// is not in the inventory yet.
+  /// is not in the inventory yet. If the serial already belongs to a
+  /// probe that is not boxed, that probe is offered instead of creating
+  /// a duplicate row.
   Future<void> _createProbe() async {
     final model = _model.text.trim();
     if (model.isEmpty) {
@@ -1370,6 +1372,82 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
       showSnack(context, 'The ID could not be generated.', error: true);
       return;
     }
+    final serial = _serial.text.trim();
+
+    // A serial that already exists on an un-boxed probe means the probe
+    // is already in the inventory (often With Machine) — boxing it is a
+    // move, not a new record. Offer that instead of a duplicate.
+    if (serial.isNotEmpty) {
+      final existing = await db
+          .from('probes')
+          .select('id, internal_id, model, serial_number, status, '
+              'current_location, box_id')
+          .ilike('serial_number', serial)
+          .order('id')
+          .limit(5);
+      Map<String, dynamic>? match;
+      for (final row in existing.cast<Map<String, dynamic>>()) {
+        if (row['box_id'] == null) {
+          match = row;
+          break;
+        }
+      }
+      final found = match;
+      if (found != null && mounted) {
+        final useExisting = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Probe already in inventory'),
+            content: Text(
+                'Serial $serial is already ${found['status'] == 'With Machine' ? 'on a machine' : 'in stock'} '
+                '(${found['internal_id'] ?? found['model']}). '
+                'Add that probe to this box instead of creating a new one?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Add existing probe'),
+              ),
+            ],
+          ),
+        );
+        if (useExisting == true) {
+          final item = InventoryItem(
+            kind: 'probe',
+            id: found['id'] as int,
+            code: (found['internal_id'] ?? '') as String,
+            name: (found['model'] ?? '') as String,
+            serial: found['serial_number'] as String?,
+            status: (found['status'] ?? '') as String,
+            location: (found['current_location'] ?? '') as String,
+            boxId: found['box_id'] as int?,
+          );
+          try {
+            await putProbeInBox(item, widget.box);
+            ref.invalidate(inventoryProvider);
+            if (!mounted) return;
+            setState(() {
+              _adding = false;
+              _model.clear();
+              _serial.clear();
+            });
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(
+                    '${item.code.isEmpty ? item.name : item.code} added to ${widget.box['name']}.')));
+          } catch (error) {
+            if (!mounted) return;
+            showSnack(context, errorMessage(error), error: true);
+          }
+          return;
+        }
+        // user chose to create a new row anyway — fall through
+      }
+    }
+
+    if (!mounted) return;
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -1382,7 +1460,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
           if (type.isNotEmpty) 'probe_type': type,
         },
       );
-      final wantSerial = _serial.text.trim().isEmpty;
+      final wantSerial = serial.isEmpty;
       final row = await db.from('probes').insert({
         'internal_id': _id,
         'model': model,
@@ -1390,7 +1468,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
         'status': 'Available',
         'current_location': (widget.box['name'] ?? '').toString(),
         'box_id': widget.box['id'],
-        if (!wantSerial) 'serial_number': _serial.text.trim(),
+        if (!wantSerial) 'serial_number': serial,
       }).select('serial_number').single();
       ref.invalidate(inventoryProvider);
       if (!mounted) return;
@@ -1429,17 +1507,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
     final inBox = items
         .where((item) => item.kind == 'probe' && item.boxId == box['id'])
         .toList();
-    final candidates = items.where((item) {
-      if (item.kind != 'probe') return false;
-      if (item.status == 'Sold' ||
-          item.status == 'Archived' ||
-          item.status == 'With Customer') {
-        return false;
-      }
-      if (item.boxId != null) return false;
-      final probeType = item.probeType;
-      return probeType == null || probeType.isEmpty || probeType == type;
-    }).toList();
+    final candidates = boxAddCandidates(items, box);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -1539,7 +1607,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                  'No $type probe is free to box right now.',
+                  'No probe is free to box right now — add a new one below.',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5)),
             ),
           const SizedBox(height: 8),
@@ -2163,17 +2231,14 @@ IconData _historyIcon(String type) => switch (type) {
       'Workshop' => Icons.build_outlined,
       'Branch' => Icons.storefront_outlined,
       'Dealer' => Icons.handshake_outlined,
+      'Box' => Icons.inventory_2_outlined,
+      'Unbox' => Icons.archive_outlined,
       _ => Icons.person_outline,
     };
 
-/// "Sent to X" / "Sold to X" / "Returned to X".
-String _historyTitle(Map<String, dynamic> row) {
-  final to = (row['to_location'] ?? '').toString();
-  final type = (row['movement_type'] ?? '').toString();
-  if (type == 'Return') return 'Returned to $to';
-  if ('${row['reason'] ?? ''}'.contains('Sold')) return 'Sold to $to';
-  return 'Sent to $to';
-}
+/// "Sent to X" / "Sold to X" / "Returned to X" / "Placed in box X" —
+/// shared with the data layer so both sides stay in step.
+String _historyTitle(Map<String, dynamic> row) => movementTitle(row);
 
 /// Small amber pill marking a movement that belongs to the old-data side.
 Widget _oldChip(BuildContext context) {
