@@ -1,0 +1,84 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:ultrasound_inventory/core/theme.dart';
+import 'package:ultrasound_inventory/features/common/widgets.dart';
+import 'package:ultrasound_inventory/features/inventory/local_purchase_form.dart';
+
+Future<void> _pumpFrames(WidgetTester tester, [int frames = 30]) async {
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+Future<void> _openForm(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(1200, 800);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  await tester.pumpWidget(ProviderScope(
+    child: MaterialApp(
+      theme: buildAppTheme(Brightness.dark),
+      home: const Scaffold(body: LocalPurchaseForm()),
+    ),
+  ));
+  await _pumpFrames(tester);
+}
+
+void main() {
+  testWidgets('chips control which item sections show', (tester) async {
+    await _openForm(tester);
+
+    // Machine is on by default: one model field and the generated ID row.
+    expect(find.byType(PickyField), findsOneWidget);
+    expect(find.text('ID (generated)'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Probe'));
+    await _pumpFrames(tester);
+    expect(find.byType(PickyField), findsNWidgets(2));
+    expect(find.textContaining('shares the machine'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Printer'));
+    await _pumpFrames(tester);
+    expect(find.byType(PickyField), findsNWidgets(3));
+    expect(find.textContaining('shares the machine'), findsNWidgets(2));
+
+    // Machine off: the two standalone items stay, so the machine-only ID
+    // row and the linking hints go away.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Machine'));
+    await _pumpFrames(tester);
+    expect(find.byType(PickyField), findsNWidgets(2));
+    expect(find.text('ID (generated)'), findsNothing);
+    expect(find.textContaining('shares the machine'), findsNothing);
+  });
+
+  testWidgets('save validates the seller and at least one item',
+      (tester) async {
+    await _openForm(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await _pumpFrames(tester);
+    expect(find.text('Seller name is required.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'Ali');
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Machine'));
+    await _pumpFrames(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await _pumpFrames(tester);
+    expect(
+        find.text('Pick at least one item — machine, probe or printer.'),
+        findsOneWidget);
+  });
+
+  testWidgets('save asks for a model per selected item', (tester) async {
+    await _openForm(tester);
+    await tester.enterText(find.byType(TextField).first, 'Ali');
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Probe'));
+    await _pumpFrames(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await _pumpFrames(tester);
+    expect(find.text('Machine model is required.'), findsOneWidget);
+  });
+}
