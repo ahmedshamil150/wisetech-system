@@ -437,6 +437,15 @@ Future<void> deleteMovementRow(int movementId) async {
   await _db.rpc('delete_movement_row', params: {'p_movement_id': movementId});
 }
 
+/// Rewrites the date of a whole send — every row passed in takes the
+/// same [date] (dd-MM-yyyy). Only admins may (enforced by RLS).
+Future<void> setMovementDate(Iterable<int> movementIds, String date) async {
+  await _db
+      .from('movements')
+      .update({'movement_date': date})
+      .inFilter('id', movementIds.toList());
+}
+
 /// Deletes a customer/dealer together with the sends that point at it —
 /// admin only, blocked while sales or repairs still use the record.
 Future<void> deleteParty(String table, int id) async {

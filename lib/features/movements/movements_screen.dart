@@ -590,6 +590,14 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                         icon: const Icon(Icons.login_outlined, size: 18),
                         label: const Text('Back to inventory'),
                       ),
+                    if (isAdmin)
+                      IconButton(
+                        tooltip: 'Edit the date',
+                        icon: const Icon(Icons.edit_calendar_outlined,
+                            size: 20),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _editGroupDate(rows),
+                      ),
                     const Spacer(),
                     TextButton.icon(
                       onPressed: () => _deleteGroup(rows),
@@ -724,6 +732,58 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         child: _ReturnFromSendSheet(rows: rows),
       ),
     );
+  }
+
+  /// Lets an admin move a whole send to another day — every row of the
+  /// group takes the new date, so the send still reads as one event.
+  Future<void> _editGroupDate(List<Map<String, dynamic>> rows) async {
+    var initial = (rows.first['movement_date'] ?? '').toString();
+    // a few legacy rows are stored as yyyy-MM-dd — show them the app way
+    final iso = DateTime.tryParse(initial);
+    if (iso != null) initial = DateField.format(iso);
+    final controller = TextEditingController(text: initial);
+    final messenger = ScaffoldMessenger.of(context);
+    final date = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit the date'),
+        content: DateField(controller: controller, label: 'Movement date'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (date == null || !mounted) return;
+    final parts = date.split('-');
+    final usable = parts.length == 3 &&
+        int.tryParse(parts[0]) != null &&
+        int.tryParse(parts[1]) != null &&
+        int.tryParse(parts[2]) != null;
+    if (!usable) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Type the date as DD-MM-YYYY.')));
+      return;
+    }
+    try {
+      await setMovementDate(
+          [for (final row in rows) row['id'] as int], date);
+      ref.invalidate(allMovementsProvider);
+      ref.invalidate(inventoryProvider);
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Date updated.')));
+    } catch (error) {
+      messenger
+          .showSnackBar(SnackBar(content: Text(errorMessage(error))));
+    }
   }
 
   /// Erases this send completely: the movement history is gone, the
