@@ -142,6 +142,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   int? _vendorId;
   String _priceFrom = '';
   String _priceTo = '';
+  // '' = any, 'Green' = flagged probes (green dot), 'Red' = serial not
+  // found in the old stock (red dot).
+  String _review = '';
 
   @override
   void initState() {
@@ -162,12 +165,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     if (_vendorId != null) n++;
     if (_priceFrom.isNotEmpty) n++;
     if (_priceTo.isNotEmpty) n++;
+    if (_review.isNotEmpty) n++;
     return n;
   }
 
   /// Everything the Filters sheet decides, checked straight against the
   /// item. Only ever narrows the in-memory list — nothing is fetched.
-  bool _matchesAux(InventoryItem item) {
+  bool _matchesAux(InventoryItem item, {bool skipReview = false}) {
     if (_location.isNotEmpty &&
         !item.location
             .toLowerCase()
@@ -197,7 +201,39 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       final to = _dateOnly(_dateTo);
       if (to != null && date.isAfter(to)) return false;
     }
+    if (!skipReview && !_matchesReview(item)) return false;
     return true;
+  }
+
+  /// The review-dot filter: the green dot is every review flag that is
+  /// not the serial audit, the red dot is review_kind 'serial'.
+  bool _matchesReview(InventoryItem item) => switch (_review) {
+        'Red' => item.needsReview && item.reviewKind == 'serial',
+        'Green' => item.needsReview && item.reviewKind != 'serial',
+        _ => true,
+      };
+
+  /// Counts for the review chips — everything the list would show if the
+  /// review filter itself were off, so an active choice cannot zero the
+  /// other chips.
+  Map<String, int> _reviewCounts(List<InventoryItem> rows) {
+    final tallied = {'Green': 0, 'Red': 0};
+    for (final item in rows) {
+      if ((item.isSold && item.kind != 'part') ||
+          !_matchesFilter(item) ||
+          !_matchesStatus(item) ||
+          !_matchesAux(item, skipReview: true) ||
+          !_matchesQuery(item)) {
+        continue;
+      }
+      if (!item.needsReview) continue;
+      if (item.reviewKind == 'serial') {
+        tallied['Red'] = tallied['Red']! + 1;
+      } else {
+        tallied['Green'] = tallied['Green']! + 1;
+      }
+    }
+    return tallied;
   }
 
   bool _matchesFilter(InventoryItem item) => switch (_type) {
@@ -344,6 +380,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       builder: (sheetContext) => _InventoryFilterSheet(
         status: _status,
         statusCounts: statusCounts,
+        review: _review,
+        reviewCounts: _reviewCounts(rows),
         dateFrom: _dateFrom,
         dateTo: _dateTo,
         location: _location,
@@ -365,6 +403,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       _vendorId = result.vendorId;
       _priceFrom = result.priceFrom;
       _priceTo = result.priceTo;
+      _review = result.review;
     });
     // the dashboard jumps here with a status — keep that link alive
     ref.read(inventoryStatusFilterProvider.notifier).set(result.status);
@@ -2687,6 +2726,7 @@ typedef _InventoryFilterValues = ({
   int? vendorId,
   String priceFrom,
   String priceTo,
+  String review,
 });
 
 /// Every inventory filter in one sheet: status with its counts, the
@@ -2695,6 +2735,8 @@ class _InventoryFilterSheet extends StatefulWidget {
   const _InventoryFilterSheet({
     required this.status,
     required this.statusCounts,
+    required this.review,
+    required this.reviewCounts,
     required this.dateFrom,
     required this.dateTo,
     required this.location,
@@ -2708,6 +2750,8 @@ class _InventoryFilterSheet extends StatefulWidget {
 
   final String status;
   final Map<String, int> statusCounts;
+  final String review;
+  final Map<String, int> reviewCounts;
   final String dateFrom;
   final String dateTo;
   final String location;
@@ -2731,6 +2775,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
   late String _status;
   late String _batch;
   late int? _vendorId;
+  late String _review;
 
   @override
   void initState() {
@@ -2743,6 +2788,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
     _status = widget.status;
     _batch = widget.batch;
     _vendorId = widget.vendorId;
+    _review = widget.review;
   }
 
   @override
@@ -2763,6 +2809,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
       vendorId: _vendorId,
       priceFrom: _priceFrom.text.trim(),
       priceTo: _priceTo.text.trim(),
+      review: _review,
     ));
   }
 
@@ -2773,6 +2820,38 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                 fontSize: 13,
                 color: Theme.of(context).colorScheme.onSurfaceVariant)),
       );
+
+  /// The little colour dot shown inside the review chips.
+  Widget _dot(Color color) => Container(
+        width: 9,
+        height: 9,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
+
+  Widget _reviewChip({
+    required String value,
+    required Widget label,
+    required Color dotColor,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _review == value;
+    return ChoiceChip(
+      label: label,
+      selected: selected,
+      onSelected: (_) => setState(() => _review = value),
+      selectedColor: scheme.primary,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : scheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+      backgroundColor: context.colors.isDark
+          ? context.colors.quietFill
+          : scheme.surface,
+      side: BorderSide(color: scheme.outlineVariant),
+      avatar: value.isEmpty ? null : _dot(dotColor),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2828,6 +2907,31 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                               : scheme.surface,
                           side: BorderSide(color: scheme.outlineVariant),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Review'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _reviewChip(
+                        value: '',
+                        dotColor: scheme.primary,
+                        label: const Text('Any'),
+                      ),
+                      _reviewChip(
+                        value: 'Green',
+                        dotColor: context.colors.success,
+                        label: Text(
+                            'Green dot (${widget.reviewCounts['Green'] ?? 0})'),
+                      ),
+                      _reviewChip(
+                        value: 'Red',
+                        dotColor: scheme.error,
+                        label: Text(
+                            'Red dot (${widget.reviewCounts['Red'] ?? 0})'),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -2918,6 +3022,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                   vendorId: null,
                   priceFrom: '',
                   priceTo: '',
+                  review: '',
                 )),
                 child: const Text('Clear all'),
               ),
