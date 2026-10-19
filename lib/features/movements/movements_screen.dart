@@ -511,14 +511,6 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final reference = (row['reference'] ?? '').toString();
     final isDemo = row['is_demo'] == true;
 
-    // dealer/customer sends recorded without their name can get it later
-    final myId = ref.read(authControllerProvider).currentUser?.id;
-    final isAdmin = ref.read(isAdminProvider);
-    final missing = rows.where(movementPartyMissing).toList();
-    final canFixParty = missing.isNotEmpty &&
-        (isAdmin || missing.any((r) => r['actor_id'] == myId));
-    final canManage = isAdmin || rows.any((r) => r['actor_id'] == myId);
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
@@ -546,21 +538,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 ],
               ),
               trailing: Icon(Icons.chevron_right, size: 20, color: Theme.of(context).colorScheme.outline),
-              onTap: () => _openItem(rows.first),
+              onTap: () => _openMovement(rows),
             ),
-            if (canFixParty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => showAddPartySheet(context, ref, rows),
-                    icon: const Icon(Icons.edit_note, size: 18),
-                    label: Text(
-                        'Add the ${kind.toLowerCase()} name'),
-                  ),
-                ),
-              ),
             if (back)
               Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -577,42 +556,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   ],
                 ),
               ),
-            if (canManage)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-                child: Row(
-                  children: [
-                    if (!back)
-                      TextButton.icon(
-                        onPressed: rows.length > 1
-                            ? () => _showReturnSheet(rows)
-                            : () => _returnGroup(rows),
-                        icon: const Icon(Icons.login_outlined, size: 18),
-                        label: const Text('Back to inventory'),
-                      ),
-                    if (isAdmin)
-                      IconButton(
-                        tooltip: 'Edit the date',
-                        icon: const Icon(Icons.edit_calendar_outlined,
-                            size: 20),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => _editGroupDate(rows),
-                      ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: () => _deleteGroup(rows),
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('Delete'),
-                      style: TextButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.error),
-                    ),
-                  ],
-                ),
-              ),
             for (final other in rows.skip(1))
               InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => _openItem(other),
+                onTap: () => _openMovement(rows),
                 child: Padding(
                   padding:
                       const EdgeInsets.only(left: 16, right: 16, bottom: 8),
@@ -663,6 +610,57 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     }
     showSnack(context, 'This item is no longer in the inventory.',
         error: true);
+  }
+
+  /// The whole send in one sheet: the group's actions on top (return,
+  /// edit date, add the name, delete) and every item below with its own
+  /// actions. The card itself only ever opens this.
+  void _openMovement(List<Map<String, dynamic>> rows) {
+    showAppSheet<void>(
+      context: context,
+      title: 'Movement details',
+      heightFraction: 0.85,
+      builder: (sheetContext) => _MovementDetails(
+        state: this,
+        rowIds: {for (final row in rows) row['id'] as int},
+      ),
+    );
+  }
+
+  /// Erases one row of a send — the rest of the group stays and the item
+  /// takes its status from the history that is left (0014).
+  Future<void> _deleteRow(Map<String, dynamic> row) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this movement?'),
+        content: const Text(
+            'The item returns to inventory. The other movements of this '
+            'send are not touched.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await deleteMovementRow(row['id'] as int);
+      ref.invalidate(allMovementsProvider);
+      ref.invalidate(inventoryProvider);
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Movement deleted.')));
+    } catch (error) {
+      messenger
+          .showSnackBar(SnackBar(content: Text(errorMessage(error))));
+    }
   }
 
   /// Puts every item of this send back into stock. An item that moved on
@@ -789,7 +787,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// Erases this send completely: the movement history is gone, the
   /// items simply live in the inventory again, and a customer/dealer
   /// added with this send is deleted too when nothing else uses it.
-  Future<void> _deleteGroup(List<Map<String, dynamic>> rows) async {
+  /// Returns whether the send was actually deleted.
+  Future<bool> _deleteGroup(List<Map<String, dynamic>> rows) async {
     final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -811,7 +810,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true) return false;
     try {
       await deleteMovement(rows.first['id'] as int);
       ref.invalidate(allMovementsProvider);
@@ -820,9 +819,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       ref.invalidate(dealersProvider);
       ref.invalidate(recentPartiesProvider);
       messenger.showSnackBar(const SnackBar(content: Text('Send deleted.')));
+      return true;
     } catch (error) {
       messenger
           .showSnackBar(SnackBar(content: Text(errorMessage(error))));
+      return false;
     }
   }
 
@@ -857,6 +858,215 @@ int _rankOf(Map<String, dynamic> row) {
 /// Where a send's member stands right now: still out with this send,
 /// already back, or moved on to a later movement.
 enum _SendRowState { out, back, movedOn }
+
+/// One send, opened from its card. All the buttons live here, not on the
+/// card: the group's actions on top (back to inventory, edit the date,
+/// add the missing name, delete) and every item of the send below with
+/// its own open/return/delete. The rows are re-read from the provider on
+/// every change, so the sheet always shows what the last action did.
+class _MovementDetails extends ConsumerWidget {
+  const _MovementDetails({required this.state, required this.rowIds});
+
+  final _MovementsScreenState state;
+  final Set<int> rowIds;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final labels = ref.watch(itemLabelsProvider);
+    final isAdmin = ref.watch(isAdminProvider);
+    final myId = ref.read(authControllerProvider).currentUser?.id;
+    final all = ref.watch(allMovementsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final rows = [
+      for (final row in all)
+        if (rowIds.contains(row['id'] as int)) row
+    ]..sort(_mainItemFirst);
+    if (rows.isEmpty) {
+      return Center(
+        child: Text('This send was deleted.',
+            style: TextStyle(color: scheme.onSurfaceVariant)),
+      );
+    }
+
+    // the latest movement of an item decides where it stands right now
+    final latest = <String, Map<String, dynamic>>{};
+    for (final row in all) {
+      final key = _MovementsScreenState._itemKey(row);
+      if (key == null) continue;
+      final mapKey = '${key.key}:${key.value}';
+      final id = row['id'] as int;
+      final seen = latest[mapKey];
+      if (seen == null || id > (seen['id'] as int)) latest[mapKey] = row;
+    }
+
+    _SendRowState stateOf(Map<String, dynamic> row) {
+      final key = _MovementsScreenState._itemKey(row);
+      if (key == null) return _SendRowState.movedOn;
+      final last = latest['${key.key}:${key.value}'];
+      if (last == null) return _SendRowState.out;
+      if (last['movement_type'] == 'Return') return _SendRowState.back;
+      if (last['id'] == row['id']) return _SendRowState.out;
+      return _SendRowState.movedOn;
+    }
+
+    String labelOf(Map<String, dynamic> row) {
+      final key = _MovementsScreenState._itemKey(row);
+      if (key == null) return 'Unknown item';
+      return labels['${key.key}:${key.value}'] ?? 'Unknown item';
+    }
+
+    final back = rows.every((row) => stateOf(row) == _SendRowState.back);
+    final canManage = isAdmin || rows.any((r) => r['actor_id'] == myId);
+    final missing = rows.where(movementPartyMissing).toList();
+    final canFixParty = missing.isNotEmpty &&
+        (isAdmin || missing.any((r) => r['actor_id'] == myId));
+    final first = rows.first;
+    final kind = (first['movement_type'] ?? '').toString();
+    final icon = switch (kind) {
+      'Workshop' => Icons.build_outlined,
+      'Branch' => Icons.storefront_outlined,
+      'Dealer' => Icons.handshake_outlined,
+      _ => Icons.person_outline,
+    };
+    final actor = first['profiles'];
+    final actorName = actor is Map
+        ? ((actor['display_name'] ?? actor['username'] ?? '').toString())
+        : '';
+    final reference = (first['reference'] ?? '').toString();
+
+    Widget itemTile(Map<String, dynamic> row) {
+      final rowState = stateOf(row);
+      final canReturn = canManage && rowState == _SendRowState.out;
+      final canDelete = isAdmin || row['actor_id'] == myId;
+      final meta = [
+        row['movement_date'] ?? '',
+        if (rowState == _SendRowState.back) 'Back in inventory',
+        if (rowState == _SendRowState.movedOn) 'Moved on',
+        if (row['is_demo'] == true) 'Demo',
+      ].join(' · ');
+      return ListTile(
+        dense: true,
+        leading: Icon(icon, size: 20, color: scheme.primary),
+        title: Text(labelOf(row),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+        subtitle: Text(meta,
+            style: TextStyle(
+                fontSize: 12, color: scheme.onSurfaceVariant)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isAdmin)
+              IconButton(
+                tooltip: 'Open the item',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                onPressed: () => state._openItem(row),
+              ),
+            if (canReturn)
+              IconButton(
+                tooltip: 'Back to inventory',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.login_outlined, size: 20, color: scheme.primary),
+                onPressed: () => state._returnGroup([row]),
+              ),
+            if (canDelete)
+              IconButton(
+                tooltip: 'Delete this movement',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.delete_outline, size: 20, color: scheme.error),
+                onPressed: () => state._deleteRow(row),
+              ),
+            if (!isAdmin && !canReturn && !canDelete)
+              Icon(Icons.chevron_right, size: 18, color: scheme.outline),
+          ],
+        ),
+        onTap: () => state._openItem(row),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      children: [
+        Text(_sendTitle(rows, labels),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        Text(
+            [
+              first['movement_date'] ?? '',
+              kind,
+              if (first['is_demo'] == true) 'Demo',
+              if (actorName.isNotEmpty) 'by $actorName',
+              if (reference.isNotEmpty) reference,
+            ].join(' · '),
+            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+        if (back) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.check_circle_outline,
+                  size: 15, color: context.colors.success),
+              const SizedBox(width: 6),
+              Text('Back in inventory',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: context.colors.success)),
+            ],
+          ),
+        ],
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 4,
+          runSpacing: 0,
+          children: [
+            if (canManage && !back)
+              TextButton.icon(
+                onPressed: rows.length > 1
+                    ? () => state._showReturnSheet(rows)
+                    : () => state._returnGroup(rows),
+                icon: const Icon(Icons.login_outlined, size: 18),
+                label: const Text('Back to inventory'),
+              ),
+            if (isAdmin)
+              TextButton.icon(
+                onPressed: () => state._editGroupDate(rows),
+                icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+                label: const Text('Edit date'),
+              ),
+            if (canFixParty)
+              TextButton.icon(
+                onPressed: () => showAddPartySheet(context, ref, rows),
+                icon: const Icon(Icons.edit_note, size: 18),
+                label: Text('Add the ${kind.toLowerCase()} name'),
+              ),
+            if (canManage)
+              TextButton.icon(
+                onPressed: () async {
+                  final gone = await state._deleteGroup(rows);
+                  if (gone && context.mounted) Navigator.pop(context);
+                },
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('Delete'),
+                style: TextButton.styleFrom(foregroundColor: scheme.error),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text('Items (${rows.length})',
+            style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        AppCard(
+          padding: const EdgeInsets.all(4),
+          child: Column(
+            children: [for (final row in rows) itemTile(row)],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// Partial (or full) return from a send — a customer sends one or two
 /// machines back while the others stay with them. Everything still out
