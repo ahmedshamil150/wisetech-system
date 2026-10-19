@@ -19,8 +19,22 @@ Future<void> showLocalPurchaseSheet(BuildContext context) {
   );
 }
 
+/// One probe inside a local purchase — a seller can hand over several
+/// probes with a single machine, so each one keeps its own model, serial
+/// and condition.
+class _ProbeLine {
+  final model = TextEditingController();
+  final serial = TextEditingController();
+  String condition = 'Used';
+
+  void dispose() {
+    model.dispose();
+    serial.dispose();
+  }
+}
+
 /// Intake for used equipment bought from a local person. A purchase can
-/// hold any combination of items — a machine with its probe and printer,
+/// hold any combination of items — a machine with its probes and printer,
 /// a machine alone, or just a probe or a printer. Everything enters the
 /// standing BATCH-LOCAL batch, linked to the seller as its vendor, and a
 /// probe or printer bought with the machine is attached to it so it
@@ -39,8 +53,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
 
   final _machineModel = TextEditingController();
   final _machineSerial = TextEditingController();
-  final _probeModel = TextEditingController();
-  final _probeSerial = TextEditingController();
   final _printerModel = TextEditingController();
   final _printerSerial = TextEditingController();
   final _seller = TextEditingController();
@@ -50,8 +62,10 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
   final _date = TextEditingController();
   final _code = TextEditingController();
   String _machineCondition = 'Used';
-  String _probeCondition = 'Used';
   String _printerCondition = 'Used';
+  // A seller can hand over several probes with one machine, so the probe
+  // section holds a line per probe.
+  final List<_ProbeLine> _probeLines = [];
   int? _batchId;
   bool _loadingId = true;
   bool _saving = false;
@@ -78,8 +92,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     for (final c in [
       _machineModel,
       _machineSerial,
-      _probeModel,
-      _probeSerial,
       _printerModel,
       _printerSerial,
       _seller,
@@ -90,6 +102,9 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       _code,
     ]) {
       c.dispose();
+    }
+    for (final line in _probeLines) {
+      line.dispose();
     }
     super.dispose();
   }
@@ -155,9 +170,23 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       showSnack(context, 'Machine model is required.', error: true);
       return;
     }
-    if (_withProbe && _probeModel.text.trim().isEmpty) {
-      showSnack(context, 'Probe model is required.', error: true);
-      return;
+    if (_withProbe) {
+      if (_probeLines.isEmpty) {
+        showSnack(context, 'Add a probe model or turn the probe switch off.',
+            error: true);
+        return;
+      }
+      for (var i = 0; i < _probeLines.length; i++) {
+        if (_probeLines[i].model.text.trim().isEmpty) {
+          showSnack(
+              context,
+              _probeLines.length == 1
+                  ? 'Probe model is required.'
+                  : 'Probe ${i + 1} model is required.',
+              error: true);
+          return;
+        }
+      }
     }
     if (_withPrinter && _printerModel.text.trim().isEmpty) {
       showSnack(context, 'Printer model is required.', error: true);
@@ -215,30 +244,35 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       }
 
       if (_withProbe) {
-        final model = _probeModel.text.trim();
         final linked = machineId != null;
-        final (productId, brandId) = await _productFor(model, 'Probe');
-        final code = linked ? machineCode! : await suggestedId('probe');
-        await db.from('probes').insert({
-          'internal_id': code,
-          'model': model,
-          'catalog_product_id': productId,
-          'batch_id': _batchId,
-          'vendor_id': sellerId,
-          'acquisition_date': date,
-          'status': linked ? 'With Machine' : 'Available',
-          'current_location': 'Company',
-          'condition': _probeCondition,
-          if (linked) 'assigned_machine_id': machineId,
-          'brand_id': ?brandId,
-          if (_probeSerial.text.trim().isNotEmpty)
-            'serial_number': _probeSerial.text.trim(),
-          // The price lands on the machine when there is one, otherwise on
-          // the first standalone item.
-          if (price != null && !linked) 'purchase_price': price,
-          if (notes.isNotEmpty) 'notes': notes,
-        });
-        created.add(code);
+        for (var i = 0; i < _probeLines.length; i++) {
+          final line = _probeLines[i];
+          final model = line.model.text.trim();
+          final (productId, brandId) = await _productFor(model, 'Probe');
+          // A probe bought with the machine shares the machine's ID, the
+          // same way a machine's kit has always been numbered.
+          final code = linked ? machineCode! : await suggestedId('probe');
+          await db.from('probes').insert({
+            'internal_id': code,
+            'model': model,
+            'catalog_product_id': productId,
+            'batch_id': _batchId,
+            'vendor_id': sellerId,
+            'acquisition_date': date,
+            'status': linked ? 'With Machine' : 'Available',
+            'current_location': 'Company',
+            'condition': line.condition,
+            if (linked) 'assigned_machine_id': machineId,
+            'brand_id': ?brandId,
+            if (line.serial.text.trim().isNotEmpty)
+              'serial_number': line.serial.text.trim(),
+            // The price lands on the machine when there is one, otherwise
+            // on the first standalone item.
+            if (price != null && !linked && i == 0) 'purchase_price': price,
+            if (notes.isNotEmpty) 'notes': notes,
+          });
+          if (!created.contains(code)) created.add(code);
+        }
       }
 
       if (_withPrinter) {
@@ -264,7 +298,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
             'purchase_price': price,
           if (notes.isNotEmpty) 'notes': notes,
         });
-        created.add(code);
+        if (!created.contains(code)) created.add(code);
       }
 
       ref.invalidate(inventoryProvider);
@@ -321,6 +355,66 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     );
   }
 
+  /// One probe's fields inside the probe section. When the purchase holds
+  /// several probes every block gets a "Probe N" header and a remove
+  /// button; a single probe keeps the original plain layout.
+  Widget _probeLine(BuildContext context, int i, List<String> productNames) {
+    final line = _probeLines[i];
+    final many = _probeLines.length > 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (many && i > 0) ...[
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+        ],
+        if (many)
+          Row(
+            children: [
+              Expanded(
+                child: Text('Probe ${i + 1}',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+              IconButton(
+                tooltip: 'Remove this probe',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () {
+                  line.dispose();
+                  setState(() => _probeLines.removeAt(i));
+                },
+              ),
+            ],
+          ),
+        PickyField(
+          controller: line.model,
+          label: 'Model *',
+          hint: 'Start typing — suggestions appear',
+          options: productNames,
+          pickTitle: 'models',
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: line.serial,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Serial number',
+            hintText: 'Empty → system number (WT-…)',
+          ),
+        ),
+        const SizedBox(height: 12),
+        _conditionField(
+          value: line.condition,
+          options: _kitItemConditions,
+          label: 'Condition',
+          onChanged: (v) => line.condition = v,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final productNames = ref.watch(productsProvider).maybeWhen(
@@ -370,8 +464,12 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                     children: [
                       _itemChip(context, 'Machine', _withMachine,
                           () => setState(() => _withMachine = !_withMachine)),
-                      _itemChip(context, 'Probe', _withProbe,
-                          () => setState(() => _withProbe = !_withProbe)),
+                      _itemChip(context, 'Probe', _withProbe, () => setState(() {
+                            _withProbe = !_withProbe;
+                            if (_withProbe && _probeLines.isEmpty) {
+                              _probeLines.add(_ProbeLine());
+                            }
+                          })),
                       _itemChip(context, 'Printer', _withPrinter,
                           () => setState(() => _withPrinter = !_withPrinter)),
                     ],
@@ -442,12 +540,15 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                   ],
                   if (_withProbe) ...[
                     const SizedBox(height: 16),
-                    _sectionTitle('Probe'),
+                    _sectionTitle(
+                        _probeLines.length > 1 ? 'Probes' : 'Probe'),
                     if (_withMachine)
                       Padding(
                         padding: const EdgeInsets.only(top: 2, bottom: 8),
                         child: Text(
-                          "Comes with the machine — shares the machine's ID and travels with it.",
+                          _probeLines.length > 1
+                              ? "Each comes with the machine — they share the machine's ID and travel with it."
+                              : "Comes with the machine — shares the machine's ID and travels with it.",
                           style: TextStyle(
                               fontSize: 12.5,
                               color: Theme.of(context)
@@ -457,28 +558,14 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                       )
                     else
                       const SizedBox(height: 8),
-                    PickyField(
-                      controller: _probeModel,
-                      label: 'Model *',
-                      hint: 'Start typing — suggestions appear',
-                      options: productNames,
-                      pickTitle: 'models',
-                    ),
+                    for (var i = 0; i < _probeLines.length; i++)
+                      _probeLine(context, i, productNames),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _probeSerial,
-                      autocorrect: false,
-                      decoration: const InputDecoration(
-                        labelText: 'Serial number',
-                        hintText: 'Empty → system number (WT-…)',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _conditionField(
-                      value: _probeCondition,
-                      options: _kitItemConditions,
-                      label: 'Condition',
-                      onChanged: (v) => _probeCondition = v,
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          setState(() => _probeLines.add(_ProbeLine())),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add another probe'),
                     ),
                   ],
                   if (_withPrinter) ...[

@@ -81,4 +81,55 @@ void main() {
     await _pumpFrames(tester);
     expect(find.text('Machine model is required.'), findsOneWidget);
   });
+
+  testWidgets('the probe section can hold several probes', (tester) async {
+    await _openForm(tester);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Probe'));
+    await _pumpFrames(tester);
+    expect(find.byType(PickyField), findsNWidgets(2));
+
+    final add = find.widgetWithText(OutlinedButton, 'Add another probe');
+    await tester.ensureVisible(add);
+    await _pumpFrames(tester);
+    await tester.tap(add);
+    await _pumpFrames(tester);
+
+    expect(find.byType(PickyField), findsNWidgets(3));
+    expect(find.text('Probes'), findsOneWidget);
+    expect(find.text('Probe 2'), findsOneWidget);
+
+    // Removing the extra probe drops back to the plain single layout.
+    final remove = find.byIcon(Icons.close);
+    await tester.ensureVisible(remove.last);
+    await _pumpFrames(tester);
+    await tester.tap(remove.last);
+    await _pumpFrames(tester);
+
+    expect(find.byType(PickyField), findsNWidgets(2));
+    expect(find.text('Probes'), findsNothing);
+    expect(find.text('Probe 2'), findsNothing);
+  });
+
+  testWidgets('save names the probe that is missing a model',
+      (tester) async {
+    await _openForm(tester);
+    await tester.enterText(find.byType(TextField).first, 'Ali');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Probe'));
+    await _pumpFrames(tester);
+    final add = find.widgetWithText(OutlinedButton, 'Add another probe');
+    await tester.ensureVisible(add);
+    await _pumpFrames(tester);
+    await tester.tap(add);
+    await _pumpFrames(tester);
+
+    final models = find.byType(PickyField);
+    await tester.enterText(models.at(0), 'GE Logiq e10');
+    await tester.enterText(models.at(1), 'GE 12L');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await _pumpFrames(tester);
+    expect(find.text('Probe 2 model is required.'), findsOneWidget);
+  });
 }
