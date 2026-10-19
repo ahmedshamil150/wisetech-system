@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../common/flag_sheet.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
@@ -145,6 +146,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   // '' = any, 'Green' = flagged probes (green dot), 'Red' = serial not
   // found in the old stock (red dot).
   String _review = '';
+  // '' = any, 'any' = any flag color, otherwise the exact hex of one.
+  String _flagFilter = '';
 
   @override
   void initState() {
@@ -166,12 +169,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     if (_priceFrom.isNotEmpty) n++;
     if (_priceTo.isNotEmpty) n++;
     if (_review.isNotEmpty) n++;
+    if (_flagFilter.isNotEmpty) n++;
     return n;
   }
 
   /// Everything the Filters sheet decides, checked straight against the
   /// item. Only ever narrows the in-memory list — nothing is fetched.
-  bool _matchesAux(InventoryItem item, {bool skipReview = false}) {
+  bool _matchesAux(InventoryItem item,
+      {bool skipReview = false, bool skipFlag = false}) {
     if (_location.isNotEmpty &&
         !item.location
             .toLowerCase()
@@ -202,6 +207,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       if (to != null && date.isAfter(to)) return false;
     }
     if (!skipReview && !_matchesReview(item)) return false;
+    if (!skipFlag && !_matchesFlag(item)) return false;
     return true;
   }
 
@@ -232,6 +238,42 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       } else {
         tallied['Green'] = tallied['Green']! + 1;
       }
+    }
+    return tallied;
+  }
+
+  Map<String, Map<String, dynamic>> _flagIndex() {
+    final flags = ref.read(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    return flagIndex(flags);
+  }
+
+  /// The admin-flag filter: any flag, or one exact color.
+  bool _matchesFlag(InventoryItem item) {
+    if (_flagFilter.isEmpty) return true;
+    final flag = _flagIndex()[flagItemKey(item.kind, item.id)];
+    if (_flagFilter == 'any') return flag != null;
+    return flag != null && '${flag['color']}' == _flagFilter;
+  }
+
+  /// Counts for the flag chips — 'any' plus one entry per color that is
+  /// actually in use, ignoring the flag filter itself.
+  Map<String, int> _flagCounts(List<InventoryItem> rows) {
+    final tallied = <String, int>{'any': 0};
+    final index = _flagIndex();
+    for (final item in rows) {
+      if ((item.isSold && item.kind != 'part') ||
+          !_matchesFilter(item) ||
+          !_matchesStatus(item) ||
+          !_matchesAux(item, skipReview: true, skipFlag: true) ||
+          !_matchesQuery(item)) {
+        continue;
+      }
+      final flag = index[flagItemKey(item.kind, item.id)];
+      if (flag == null) continue;
+      tallied['any'] = tallied['any']! + 1;
+      final color = '${flag['color']}';
+      tallied[color] = (tallied[color] ?? 0) + 1;
     }
     return tallied;
   }
@@ -382,6 +424,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         statusCounts: statusCounts,
         review: _review,
         reviewCounts: _reviewCounts(rows),
+        flagFilter: _flagFilter,
+        flagCounts: _flagCounts(rows),
         dateFrom: _dateFrom,
         dateTo: _dateTo,
         location: _location,
@@ -404,6 +448,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       _priceFrom = result.priceFrom;
       _priceTo = result.priceTo;
       _review = result.review;
+      _flagFilter = result.flagFilter;
     });
     // the dashboard jumps here with a status — keep that link alive
     ref.read(inventoryStatusFilterProvider.notifier).set(result.status);
@@ -707,6 +752,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     const SizedBox(width: 6),
                     _reviewDot(context, item),
                   ],
+                  const SizedBox(width: 6),
+                  FlagDot(targetKey: flagItemKey(item.kind, item.id)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1609,6 +1656,8 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                           _reviewDot(context, item),
                           const SizedBox(width: 6),
                         ],
+                        FlagDot(targetKey: flagItemKey(item.kind, item.id)),
+                        const SizedBox(width: 6),
                         Text('${item.status} · ${item.location}'),
                       ],
                     ),
@@ -1801,6 +1850,9 @@ class _ItemDetails extends ConsumerWidget {
               .join(),
           orElse: () => '',
         );
+    final flags = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final itemFlag = flagIndex(flags)[flagItemKey(item.kind, item.id)];
     // A moved part belongs to whichever side its latest movement sits on.
     String? partSide;
     if (item.kind == 'part' && history.isNotEmpty) {
@@ -1837,6 +1889,29 @@ class _ItemDetails extends ConsumerWidget {
                     value: item.reviewKind == 'serial'
                         ? 'Flagged — serial not found in the old stock; verify by hand'
                         : 'Flagged — this serial also appears in the old sales records'),
+              if (itemFlag != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 110,
+                        child: Text('Flag',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.outline,
+                                fontSize: 13)),
+                      ),
+                      Expanded(
+                        child: Text(
+                            '${'${itemFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : itemFlag['note']}',
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                color: colorFromHex('${itemFlag['color']}'))),
+                      ),
+                    ],
+                  ),
+                ),
               KeyValue(label: 'Acquired', value: item.date ?? '—'),
               KeyValue(label: 'Batch', value: item.batch ?? '—'),
               if (item.batch == 'BATCH-LOCAL' && vendorName.isNotEmpty)
@@ -1881,6 +1956,21 @@ class _ItemDetails extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => showFlagSheet(
+              context,
+              ref,
+              target: {'item_kind': item.kind, 'item_id': item.id},
+              current: itemFlag,
+            ),
+            icon: Icon(Icons.flag_outlined,
+                size: 18,
+                color: itemFlag == null
+                    ? null
+                    : colorFromHex('${itemFlag['color']}')),
+            label: Text(itemFlag == null ? 'Flag' : 'Edit flag'),
           ),
         ],
         if (canReturn) ...[
@@ -2199,6 +2289,9 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final flags = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final editFlag = flagIndex(flags)[flagItemKey(item.kind, item.id)];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
@@ -2266,6 +2359,22 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => showFlagSheet(
+              context,
+              ref,
+              target: {'item_kind': item.kind, 'item_id': item.id},
+              current: editFlag,
+            ),
+            icon: Icon(Icons.flag_outlined,
+                size: 18,
+                color: editFlag == null
+                    ? null
+                    : colorFromHex('${editFlag['color']}')),
+            label:
+                Text(editFlag == null ? 'Flag this item' : 'Edit flag'),
           ),
           const SizedBox(height: 16),
           FilledButton(
@@ -2727,6 +2836,7 @@ typedef _InventoryFilterValues = ({
   String priceFrom,
   String priceTo,
   String review,
+  String flagFilter,
 });
 
 /// Every inventory filter in one sheet: status with its counts, the
@@ -2737,6 +2847,8 @@ class _InventoryFilterSheet extends StatefulWidget {
     required this.statusCounts,
     required this.review,
     required this.reviewCounts,
+    required this.flagFilter,
+    required this.flagCounts,
     required this.dateFrom,
     required this.dateTo,
     required this.location,
@@ -2752,6 +2864,8 @@ class _InventoryFilterSheet extends StatefulWidget {
   final Map<String, int> statusCounts;
   final String review;
   final Map<String, int> reviewCounts;
+  final String flagFilter;
+  final Map<String, int> flagCounts;
   final String dateFrom;
   final String dateTo;
   final String location;
@@ -2776,6 +2890,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
   late String _batch;
   late int? _vendorId;
   late String _review;
+  late String _flag;
 
   @override
   void initState() {
@@ -2789,6 +2904,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
     _batch = widget.batch;
     _vendorId = widget.vendorId;
     _review = widget.review;
+    _flag = widget.flagFilter;
   }
 
   @override
@@ -2810,6 +2926,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
       priceFrom: _priceFrom.text.trim(),
       priceTo: _priceTo.text.trim(),
       review: _review,
+      flagFilter: _flag,
     ));
   }
 
@@ -2850,6 +2967,31 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
           : scheme.surface,
       side: BorderSide(color: scheme.outlineVariant),
       avatar: value.isEmpty ? null : _dot(dotColor),
+    );
+  }
+
+  Widget _flagChip({
+    required String value,
+    required Widget label,
+    Color? dotColor,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _flag == value;
+    return ChoiceChip(
+      label: label,
+      selected: selected,
+      onSelected: (_) => setState(() => _flag = value),
+      selectedColor: scheme.primary,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : scheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+      backgroundColor: context.colors.isDark
+          ? context.colors.quietFill
+          : scheme.surface,
+      side: BorderSide(color: scheme.outlineVariant),
+      avatar: dotColor == null ? null : _dot(dotColor),
     );
   }
 
@@ -2932,6 +3074,30 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                         label: Text(
                             'Red dot (${widget.reviewCounts['Red'] ?? 0})'),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Flag'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _flagChip(value: '', label: const Text('Any')),
+                      _flagChip(
+                        value: 'any',
+                        dotColor: scheme.primary,
+                        label: Text(
+                            'Flagged (${widget.flagCounts['any'] ?? 0})'),
+                      ),
+                      for (final color in (widget.flagCounts.keys
+                          .where((key) => key != 'any')
+                          .toList()
+                        ..sort()))
+                        _flagChip(
+                          value: color,
+                          dotColor: colorFromHex(color),
+                          label: Text('${widget.flagCounts[color] ?? 0}'),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -3023,6 +3189,7 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                   priceFrom: '',
                   priceTo: '',
                   review: '',
+                  flagFilter: '',
                 )),
                 child: const Text('Clear all'),
               ),

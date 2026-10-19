@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../common/flag_sheet.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
@@ -511,6 +512,18 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final reference = (row['reference'] ?? '').toString();
     final isDemo = row['is_demo'] == true;
 
+    // any item of the send may carry a flag, and the send itself too —
+    // the card shows the first one found
+    final flagRows = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final flagBy = flagIndex(flagRows);
+    Map<String, dynamic>? cardFlag;
+    for (final r in rows) {
+      cardFlag = flagBy[flagRowKey(r['id'] as int)];
+      if (cardFlag != null) break;
+    }
+    cardFlag ??= flagBy[flagSendKey(row)];
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
@@ -521,9 +534,29 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 backgroundColor: context.colors.tintBlue,
                 child: Icon(icon, color: Theme.of(context).colorScheme.primary),
               ),
-              title: Text('$label → ${row['to_location'] ?? ''}',
-                  style:
-                      const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              title: Row(
+                children: [
+                  if (cardFlag != null) ...[
+                    Tooltip(
+                      message: '${'${cardFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : cardFlag['note']}',
+                      child: Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: colorFromHex('${cardFlag['color']}'),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Text('$label → ${row['to_location'] ?? ''}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
+                  ),
+                ],
+              ),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -878,6 +911,9 @@ class _MovementDetails extends ConsumerWidget {
     final myId = ref.read(authControllerProvider).currentUser?.id;
     final all = ref.watch(allMovementsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final flagRows = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final flagBy = flagIndex(flagRows);
     final rows = [
       for (final row in all)
         if (rowIds.contains(row['id'] as int)) row
@@ -934,11 +970,18 @@ class _MovementDetails extends ConsumerWidget {
         ? ((actor['display_name'] ?? actor['username'] ?? '').toString())
         : '';
     final reference = (first['reference'] ?? '').toString();
+    final sendFlag = flagBy[flagSendKey(first)];
+    final sendTarget = {
+      'movement_id': first['id'],
+      'group_ref': sendGroupValue(first),
+    };
 
     Widget itemTile(Map<String, dynamic> row) {
       final rowState = stateOf(row);
       final canReturn = canManage && rowState == _SendRowState.out;
       final canDelete = isAdmin || row['actor_id'] == myId;
+      final rowFlag = flagBy[flagRowKey(row['id'] as int)];
+      final dotFlag = rowFlag ?? flagBy[flagSendKey(row)];
       final meta = [
         row['movement_date'] ?? '',
         if (rowState == _SendRowState.back) 'Back in inventory',
@@ -948,14 +991,53 @@ class _MovementDetails extends ConsumerWidget {
       return ListTile(
         dense: true,
         leading: Icon(icon, size: 20, color: scheme.primary),
-        title: Text(labelOf(row),
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+        title: Row(
+          children: [
+            if (dotFlag != null) ...[
+              Tooltip(
+                message: '${'${dotFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : dotFlag['note']}',
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: colorFromHex('${dotFlag['color']}'),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(labelOf(row),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 13.5)),
+            ),
+          ],
+        ),
         subtitle: Text(meta,
             style: TextStyle(
                 fontSize: 12, color: scheme.onSurfaceVariant)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (isAdmin)
+              IconButton(
+                tooltip: rowFlag == null
+                    ? 'Flag this item'
+                    : 'Edit flag',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.flag_outlined,
+                    size: 19,
+                    color: rowFlag == null
+                        ? scheme.outline
+                        : colorFromHex('${rowFlag['color']}')),
+                onPressed: () => showFlagSheet(
+                  context,
+                  ref,
+                  target: {'movement_id': row['id']},
+                  current: rowFlag,
+                ),
+              ),
             if (isAdmin)
               IconButton(
                 tooltip: 'Open the item',
@@ -1033,6 +1115,21 @@ class _MovementDetails extends ConsumerWidget {
                 onPressed: () => state._editGroupDate(rows),
                 icon: const Icon(Icons.edit_calendar_outlined, size: 18),
                 label: const Text('Edit date'),
+              ),
+            if (isAdmin)
+              TextButton.icon(
+                onPressed: () => showFlagSheet(
+                  context,
+                  ref,
+                  target: sendTarget,
+                  current: sendFlag,
+                ),
+                icon: Icon(Icons.flag_outlined,
+                    size: 18,
+                    color: sendFlag == null
+                        ? null
+                        : colorFromHex('${sendFlag['color']}')),
+                label: Text(sendFlag == null ? 'Flag' : 'Edit flag'),
               ),
             if (canFixParty)
               TextButton.icon(

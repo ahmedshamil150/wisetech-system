@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../auth/auth_controller.dart';
+import '../common/flag_sheet.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
@@ -163,9 +165,17 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
             backgroundColor: color.withValues(alpha: 0.12),
             child: Icon(Icons.build_outlined, color: color),
           ),
-          title: Text(
-              '${row['job_number']}  ·  $customer',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          title: Row(
+            children: [
+              FlagDot(targetKey: flagRepairKey(row['id'] as int)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('${row['job_number']}  ·  $customer',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14)),
+              ),
+            ],
+          ),
           subtitle: Text([
             'In: ${row['received_at']}',
             open
@@ -222,6 +232,10 @@ class _RepairDetails extends ConsumerWidget {
         : '';
     final items = (job['repair_items'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
+    final isAdmin = ref.watch(isAdminProvider);
+    final flags = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final jobFlag = flagIndex(flags)[flagRepairKey(job['id'] as int)];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -253,6 +267,29 @@ class _RepairDetails extends ConsumerWidget {
                 KeyValue(
                     label: 'Problem',
                     value: '${job['problem_description']}'),
+              if (jobFlag != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 110,
+                        child: Text('Flag',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.outline,
+                                fontSize: 13)),
+                      ),
+                      Expanded(
+                        child: Text(
+                            '${'${jobFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : jobFlag['note']}',
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                color: colorFromHex('${jobFlag['color']}'))),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -299,6 +336,23 @@ class _RepairDetails extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 20),
+        if (isAdmin) ...[
+          OutlinedButton.icon(
+            onPressed: () => showFlagSheet(
+              context,
+              ref,
+              target: {'repair_id': job['id']},
+              current: jobFlag,
+            ),
+            icon: Icon(Icons.flag_outlined,
+                size: 18,
+                color: jobFlag == null
+                    ? null
+                    : colorFromHex('${jobFlag['color']}')),
+            label: Text(jobFlag == null ? 'Flag this repair' : 'Edit flag'),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (open)
           FilledButton.icon(
             onPressed: () => showAppSheet<void>(

@@ -446,6 +446,104 @@ Future<void> setMovementDate(Iterable<int> movementIds, String date) async {
       .inFilter('id', movementIds.toList());
 }
 
+// ---------------------------------------------------------------------------
+// Flags: one colored dot (with an optional note) per flagged thing — an
+// inventory item, a single movement row, a whole send or a repair job.
+// Only admins write them (RLS); everybody sees them.
+// ---------------------------------------------------------------------------
+
+final flagsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final rows = await _db
+      .from('flags')
+      .select(
+          'id, item_kind, item_id, movement_id, repair_id, group_ref, '
+          'color, note, created_by, created_at')
+      .order('id', ascending: false);
+  return rows;
+});
+
+String flagItemKey(String kind, int id) => 'item:$kind:$id';
+
+String flagRowKey(int movementId) => 'row:$movementId';
+
+String flagRepairKey(int repairId) => 'repair:$repairId';
+
+/// The value a whole send's flag stores in flags.group_ref — the send's
+/// own group_ref, or `row:` plus the row's id when it travelled without
+/// one.
+String sendGroupValue(Map<String, dynamic> movementRow) {
+  final group = (movementRow['group_ref'] ?? '').toString();
+  return group.isEmpty ? 'row:${movementRow['id']}' : group;
+}
+
+/// Lookup key of a whole send's flag.
+String flagSendKey(Map<String, dynamic> movementRow) =>
+    'send:${sendGroupValue(movementRow)}';
+
+String? flagKeyOf(Map<String, dynamic> flag) {
+  if (flag['item_id'] != null) {
+    return flagItemKey('${flag['item_kind']}', flag['item_id'] as int);
+  }
+  if (flag['movement_id'] != null) {
+    final group = (flag['group_ref'] ?? '').toString();
+    return group.isEmpty
+        ? flagRowKey(flag['movement_id'] as int)
+        : 'send:$group';
+  }
+  if (flag['repair_id'] != null) {
+    return flagRepairKey(flag['repair_id'] as int);
+  }
+  return null;
+}
+
+/// The newest flag per target — rows arrive newest first, so the first
+/// one seen for a key wins.
+Map<String, Map<String, dynamic>> flagIndex(
+    List<Map<String, dynamic>> flags) {
+  final byKey = <String, Map<String, dynamic>>{};
+  for (final flag in flags) {
+    final key = flagKeyOf(flag);
+    if (key != null) byKey.putIfAbsent(key, () => flag);
+  }
+  return byKey;
+}
+
+/// Saves the flag for [target] — any flag already on that exact target
+/// is replaced. [target] holds item_kind+item_id, or movement_id (plus
+/// group_ref when the whole send is flagged), or repair_id.
+Future<void> setFlag(Map<String, dynamic> target,
+    {required String color, String? note}) async {
+  await _clearFlagRows(target);
+  await _db.from('flags').insert({
+    ...target,
+    'color': color,
+    if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+  });
+}
+
+/// Takes the flag off [target] — same shape as [setFlag].
+Future<void> clearFlag(Map<String, dynamic> target) async {
+  await _clearFlagRows(target);
+}
+
+Future<void> _clearFlagRows(Map<String, dynamic> target) async {
+  var query = _db.from('flags').delete();
+  if (target['item_id'] != null) {
+    query = query
+        .eq('item_kind', '${target['item_kind']}')
+        .eq('item_id', target['item_id'] as int);
+  } else if (target['repair_id'] != null) {
+    query = query.eq('repair_id', target['repair_id'] as int);
+  } else if (target['group_ref'] != null) {
+    query = query.eq('group_ref', '${target['group_ref']}');
+  } else {
+    query = query
+        .eq('movement_id', target['movement_id'] as int)
+        .isFilter('group_ref', null);
+  }
+  await query;
+}
+
 /// Deletes a customer/dealer together with the sends that point at it —
 /// admin only, blocked while sales or repairs still use the record.
 Future<void> deleteParty(String table, int id) async {
