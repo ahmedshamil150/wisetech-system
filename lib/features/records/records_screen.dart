@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../common/flag_sheet.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../inventory/inventory_screen.dart';
@@ -823,8 +824,18 @@ class _BoxesPane extends ConsumerWidget {
                     backgroundColor: context.colors.tintBlue,
                     child: Icon(Icons.inbox_outlined),
                   ),
-                  title: Text((row['name'] ?? '').toString(),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  title: Row(
+                    children: [
+                      BoxFlagDot(boxId: row['id'] as int),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text((row['name'] ?? '').toString(),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ),
                   subtitle: Text('${row['probe_type']} · $count probes'),
                   trailing: isAdmin
                       ? Row(

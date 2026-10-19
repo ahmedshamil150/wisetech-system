@@ -462,6 +462,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         data: (rows) => rows, orElse: () => const <InventoryItem>[]);
     final boxes = ref.watch(probeBoxesProvider).maybeWhen(
         data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[]);
+    // the flag filter reads the flags — watch so the list refines the
+    // moment they arrive
+    ref.watch(flagsProvider);
     final typeCounts = _typeCounts(allRows, boxes);
     // Everything that survives the filters — the same predicates the list
     // uses, so the count always matches what is shown.
@@ -697,9 +700,18 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         backgroundColor: context.colors.tintBlue,
                         child: Icon(Icons.inbox_outlined),
                       ),
-                      title: Text((box['name'] ?? '').toString(),
-                          style:
-                              const TextStyle(fontWeight: FontWeight.w700)),
+                      title: Row(
+                        children: [
+                          BoxFlagDot(boxId: box['id'] as int),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text((box['name'] ?? '').toString(),
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ],
+                      ),
                       subtitle:
                           Text('${box['probe_type']} · ${items.where((item) =>
                               item.kind == 'probe' &&

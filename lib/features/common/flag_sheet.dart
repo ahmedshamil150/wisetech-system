@@ -60,6 +60,43 @@ class FlagDot extends ConsumerWidget {
   }
 }
 
+/// Shows a dot when anything inside the box carries a flag — so a box
+/// with special cases is visible straight from the list, without
+/// opening it.
+class BoxFlagDot extends ConsumerWidget {
+  const BoxFlagDot({super.key, required this.boxId, this.size = 9});
+
+  final int boxId;
+  final double size;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final items = ref.watch(inventoryProvider).maybeWhen(
+        data: (rows) => rows, orElse: () => const <InventoryItem>[]);
+    final flags = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final index = flagIndex(flags);
+    for (final item in items) {
+      if (item.kind != 'probe' || item.boxId != boxId) continue;
+      final flag = index[flagItemKey(item.kind, item.id)];
+      if (flag == null) continue;
+      final note = '${flag['note'] ?? ''}'.trim();
+      return Tooltip(
+        message: note.isEmpty ? 'Flagged' : note,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: colorFromHex('${flag['color']}'),
+            shape: BoxShape.circle,
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
 /// Opens the flag sheet for one target — an inventory item, a movement
 /// row (or its whole send when the target also carries a group_ref), or
 /// a repair job. Pick a color, write what the case is, save; unflag
