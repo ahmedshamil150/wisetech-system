@@ -666,7 +666,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ],
                   if (item.needsReview) ...[
                     const SizedBox(width: 6),
-                    _reviewDot(context),
+                    _reviewDot(context, item),
                   ],
                   const SizedBox(width: 8),
                   Expanded(
@@ -1567,7 +1567,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                     subtitle: Row(
                       children: [
                         if (item.needsReview) ...[
-                          _reviewDot(context),
+                          _reviewDot(context, item),
                           const SizedBox(width: 6),
                         ],
                         Text('${item.status} · ${item.location}'),
@@ -1795,8 +1795,9 @@ class _ItemDetails extends ConsumerWidget {
               if (item.needsReview)
                 KeyValue(
                     label: 'Review',
-                    value:
-                        'Flagged — this serial also appears in the old sales records'),
+                    value: item.reviewKind == 'serial'
+                        ? 'Flagged — serial not found in the old stock; verify by hand'
+                        : 'Flagged — this serial also appears in the old sales records'),
               KeyValue(label: 'Acquired', value: item.date ?? '—'),
               KeyValue(label: 'Batch', value: item.batch ?? '—'),
               if (item.batch == 'BATCH-LOCAL' && vendorName.isNotEmpty)
@@ -2243,12 +2244,18 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
   }
 }
 
-/// Small green dot marking an item flagged for review — e.g. a boxed
-/// probe whose serial also turns up in the old sales records.
-Widget _reviewDot(BuildContext context) {
-  final color = context.colors.success;
+/// Small dot marking an item flagged for review: red when the serial
+/// could not be found in the old stock, green for every other flag (e.g.
+/// a boxed probe whose serial also turns up in the old sales records).
+Widget _reviewDot(BuildContext context, InventoryItem item) {
+  final isSerial = item.reviewKind == 'serial';
+  final color = isSerial
+      ? Theme.of(context).colorScheme.error
+      : context.colors.success;
   return Tooltip(
-    message: 'Needs review — check against the old sales records',
+    message: isSerial
+        ? 'Serial not found in the old stock — verify by hand'
+        : 'Needs review — check against the old sales records',
     child: Container(
       width: 9,
       height: 9,

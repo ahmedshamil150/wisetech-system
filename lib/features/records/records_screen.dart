@@ -1161,7 +1161,13 @@ class _BoxFormState extends ConsumerState<_BoxForm> {
           'probe_type': type,
           'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         }).eq('id', editId as int);
+        // The box name is copied into every probe's location when it is
+        // boxed, so a rename has to reach the probes as well.
+        await db.from('probes').update({
+          'current_location': name,
+        }).eq('box_id', editId);
         ref.invalidate(probeBoxesProvider);
+        ref.invalidate(inventoryProvider);
         if (!mounted) return;
         Navigator.pop(context);
         messenger.showSnackBar(SnackBar(content: Text('$name saved.')));
