@@ -43,16 +43,15 @@ class FlagDot extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final flags = ref.watch(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final flag = flagIndex(flags)[targetKey];
-    if (flag == null) return const SizedBox.shrink();
-    final note = '${flag['note'] ?? ''}'.trim();
+    final onTarget = flagIndex(flags)[targetKey] ?? const [];
+    if (onTarget.isEmpty) return const SizedBox.shrink();
     return Tooltip(
-      message: note.isEmpty ? 'Flagged' : note,
+      message: flagLabel(onTarget),
       child: Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: colorFromHex('${flag['color']}'),
+          color: colorFromHex('${onTarget.first['color']}'),
           shape: BoxShape.circle,
         ),
       ),
@@ -135,16 +134,15 @@ class BoxFlagDot extends ConsumerWidget {
     final index = flagIndex(flags);
     for (final item in items) {
       if (item.kind != 'probe' || item.boxId != boxId) continue;
-      final flag = index[flagItemKey(item.kind, item.id)];
-      if (flag == null) continue;
-      final note = '${flag['note'] ?? ''}'.trim();
+      final onItem = index[flagItemKey(item.kind, item.id)] ?? const [];
+      if (onItem.isEmpty) continue;
       return Tooltip(
-        message: note.isEmpty ? 'Flagged' : note,
+        message: flagLabel(onItem),
         child: Container(
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: colorFromHex('${flag['color']}'),
+            color: colorFromHex('${onItem.first['color']}'),
             shape: BoxShape.circle,
           ),
         ),
@@ -156,49 +154,40 @@ class BoxFlagDot extends ConsumerWidget {
 
 /// Opens the flag sheet for one target — an inventory item, a movement
 /// row (or its whole send when the target also carries a group_ref), or
-/// a repair job. Pick a color, write what the case is, save; unflag
-/// from the same sheet. Admins only (hidden here, enforced by RLS).
+/// a repair job. Lists the flags already on it (each removable), and
+/// adds another from the saved library or a custom color + detail.
+/// Admins only (hidden here, enforced by RLS).
 Future<void> showFlagSheet(
   BuildContext context,
   WidgetRef ref, {
   required Map<String, dynamic> target,
-  required Map<String, dynamic>? current,
 }) {
   return showAppSheet<void>(
     context: context,
-    title: current == null ? 'Flag' : 'Edit flag',
-    heightFraction: 0.6,
+    title: 'Flag',
+    heightFraction: 0.75,
     builder: (sheetContext) => Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-      child: _FlagSheet(target: target, current: current),
+      child: _FlagSheet(target: target),
     ),
   );
 }
 
 class _FlagSheet extends ConsumerStatefulWidget {
-  const _FlagSheet({required this.target, required this.current});
+  const _FlagSheet({required this.target});
 
   final Map<String, dynamic> target;
-  final Map<String, dynamic>? current;
 
   @override
   ConsumerState<_FlagSheet> createState() => _FlagSheetState();
 }
 
 class _FlagSheetState extends ConsumerState<_FlagSheet> {
-  late String _color;
+  String _color = kFlagColors.first;
   final _note = TextEditingController();
   int? _defId; // the saved flag currently picked, if any
   bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _color = '${widget.current?['color'] ?? kFlagColors.first}';
-    if (!kFlagColors.contains(_color)) _color = kFlagColors.first;
-    _note.text = '${widget.current?['note'] ?? ''}';
-  }
 
   @override
   void dispose() {
@@ -206,7 +195,7 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<void> _add() async {
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -214,7 +203,7 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
       ref.invalidate(flagsProvider);
       if (!mounted) return;
       Navigator.pop(context);
-      messenger.showSnackBar(const SnackBar(content: Text('Flag saved.')));
+      messenger.showSnackBar(const SnackBar(content: Text('Flag added.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -222,18 +211,14 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
     }
   }
 
-  Future<void> _remove() async {
-    setState(() => _saving = true);
+  Future<void> _remove(Map<String, dynamic> flag) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await clearFlag(widget.target);
+      await deleteFlag(flag['id'] as int);
       ref.invalidate(flagsProvider);
-      if (!mounted) return;
-      Navigator.pop(context);
-      messenger.showSnackBar(const SnackBar(content: Text('Flag removed.')));
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Flag removed.')));
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _saving = false);
       messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
     }
   }
@@ -278,6 +263,9 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
     final scheme = Theme.of(context).colorScheme;
     final defs = ref.watch(flagDefsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final existing = ref.watch(flagsProvider).maybeWhen(
+            data: (value) => flagIndex(value)[flagKeyOf(widget.target)] ?? const [],
+            orElse: () => const <Map<String, dynamic>>[]);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
@@ -297,8 +285,46 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
               ),
             ],
           ),
-          if (defs.isNotEmpty) ...[
+          if (existing.isNotEmpty) ...[
             const SizedBox(height: 4),
+            Text('Already flagged',
+                style: TextStyle(
+                    fontSize: 13, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 4),
+            for (final flag in existing)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: colorFromHex('${flag['color']}'),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        flagNoteText(flag),
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove this flag',
+                      visualDensity: VisualDensity.compact,
+                      iconSize: 18,
+                      icon: Icon(Icons.close, color: scheme.error),
+                      onPressed: () => _remove(flag),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 10),
+          ],
+          if (defs.isNotEmpty) ...[
             Text('Use a saved flag',
                 style: TextStyle(
                     fontSize: 13, color: scheme.onSurfaceVariant)),
@@ -311,18 +337,6 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
             const SizedBox(height: 16),
           ] else
             const SizedBox(height: 4),
-          Text('Color',
-              style: TextStyle(
-                  fontSize: 13, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 10),
-          FlagColorPicker(
-            initial: _color,
-            onChanged: (color) => setState(() {
-              _color = color;
-              _defId = null;
-            }),
-          ),
-          const SizedBox(height: 16),
           TextField(
             controller: _note,
             textCapitalization: TextCapitalization.sentences,
@@ -336,25 +350,29 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
             ),
           ),
           const SizedBox(height: 16),
+          Text('Color',
+              style: TextStyle(
+                  fontSize: 13, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 10),
+          FlagColorPicker(
+            initial: _color,
+            onChanged: (color) => setState(() {
+              _color = color;
+              _defId = null;
+            }),
+          ),
+          const SizedBox(height: 16),
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              if (widget.current != null)
-                TextButton.icon(
-                  onPressed: _saving ? null : _remove,
-                  icon: const Icon(Icons.flag_circle_outlined, size: 18),
-                  label: const Text('Remove flag'),
-                  style: TextButton.styleFrom(
-                      foregroundColor: scheme.error),
-                ),
-              const Spacer(),
               FilledButton(
-                onPressed: _saving ? null : _save,
+                onPressed: _saving ? null : _add,
                 child: _saving
                     ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Save'),
+                    : const Text('Add flag'),
               ),
             ],
           ),

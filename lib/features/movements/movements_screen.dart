@@ -512,17 +512,17 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final reference = (row['reference'] ?? '').toString();
     final isDemo = row['is_demo'] == true;
 
-    // any item of the send may carry a flag, and the send itself too —
-    // the card shows the first one found
+    // any item of the send may carry flags, and the send itself too —
+    // the card shows the first target that has one
     final flagRows = ref.watch(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
     final flagBy = flagIndex(flagRows);
-    Map<String, dynamic>? cardFlag;
+    List<Map<String, dynamic>> cardFlags = const [];
     for (final r in rows) {
-      cardFlag = flagBy[flagRowKey(r['id'] as int)];
-      if (cardFlag != null) break;
+      cardFlags = flagBy[flagRowKey(r['id'] as int)] ?? const [];
+      if (cardFlags.isNotEmpty) break;
     }
-    cardFlag ??= flagBy[flagSendKey(row)];
+    if (cardFlags.isEmpty) cardFlags = flagBy[flagSendKey(row)] ?? const [];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -536,14 +536,14 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               ),
               title: Row(
                 children: [
-                  if (cardFlag != null) ...[
+                  if (cardFlags.isNotEmpty) ...[
                     Tooltip(
-                      message: '${'${cardFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : cardFlag['note']}',
+                      message: flagLabel(cardFlags),
                       child: Container(
                         width: 9,
                         height: 9,
                         decoration: BoxDecoration(
-                          color: colorFromHex('${cardFlag['color']}'),
+                          color: colorFromHex('${cardFlags.first['color']}'),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -970,7 +970,7 @@ class _MovementDetails extends ConsumerWidget {
         ? ((actor['display_name'] ?? actor['username'] ?? '').toString())
         : '';
     final reference = (first['reference'] ?? '').toString();
-    final sendFlag = flagBy[flagSendKey(first)];
+    final sendFlags = flagBy[flagSendKey(first)] ?? const [];
     final sendTarget = {
       'movement_id': first['id'],
       'group_ref': sendGroupValue(first),
@@ -980,8 +980,10 @@ class _MovementDetails extends ConsumerWidget {
       final rowState = stateOf(row);
       final canReturn = canManage && rowState == _SendRowState.out;
       final canDelete = isAdmin || row['actor_id'] == myId;
-      final rowFlag = flagBy[flagRowKey(row['id'] as int)];
-      final dotFlag = rowFlag ?? flagBy[flagSendKey(row)];
+      final rowFlags = flagBy[flagRowKey(row['id'] as int)] ?? const [];
+      final dotFlags = rowFlags.isNotEmpty
+          ? rowFlags
+          : flagBy[flagSendKey(row)] ?? const [];
       final meta = [
         row['movement_date'] ?? '',
         if (rowState == _SendRowState.back) 'Back in inventory',
@@ -993,14 +995,14 @@ class _MovementDetails extends ConsumerWidget {
         leading: Icon(icon, size: 20, color: scheme.primary),
         title: Row(
           children: [
-            if (dotFlag != null) ...[
+            if (dotFlags.isNotEmpty) ...[
               Tooltip(
-                message: '${'${dotFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : dotFlag['note']}',
+                message: flagLabel(dotFlags),
                 child: Container(
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: colorFromHex('${dotFlag['color']}'),
+                    color: colorFromHex('${dotFlags.first['color']}'),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1022,20 +1024,19 @@ class _MovementDetails extends ConsumerWidget {
           children: [
             if (isAdmin)
               IconButton(
-                tooltip: rowFlag == null
+                tooltip: rowFlags.isEmpty
                     ? 'Flag this item'
-                    : 'Edit flag',
+                    : 'Flags (${rowFlags.length})',
                 visualDensity: VisualDensity.compact,
                 icon: Icon(Icons.flag_outlined,
                     size: 19,
-                    color: rowFlag == null
+                    color: rowFlags.isEmpty
                         ? scheme.outline
-                        : colorFromHex('${rowFlag['color']}')),
+                        : colorFromHex('${rowFlags.first['color']}')),
                 onPressed: () => showFlagSheet(
                   context,
                   ref,
                   target: {'movement_id': row['id']},
-                  current: rowFlag,
                 ),
               ),
             if (isAdmin)
@@ -1122,14 +1123,15 @@ class _MovementDetails extends ConsumerWidget {
                   context,
                   ref,
                   target: sendTarget,
-                  current: sendFlag,
                 ),
                 icon: Icon(Icons.flag_outlined,
                     size: 18,
-                    color: sendFlag == null
+                    color: sendFlags.isEmpty
                         ? null
-                        : colorFromHex('${sendFlag['color']}')),
-                label: Text(sendFlag == null ? 'Flag' : 'Edit flag'),
+                        : colorFromHex('${sendFlags.first['color']}')),
+                label: Text(sendFlags.isEmpty
+                    ? 'Flag'
+                    : 'Flags (${sendFlags.length})'),
               ),
             if (canFixParty)
               TextButton.icon(

@@ -243,32 +243,38 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return tallied;
   }
 
-  Map<String, Map<String, dynamic>> _flagIndex() {
+  Map<String, List<Map<String, dynamic>>> _flagIndex() {
     final flags = ref.read(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
     return flagIndex(flags);
   }
 
   /// The admin-flag filter: any flag, one saved description, or one
-  /// exact color for flags that carry no description.
+  /// exact color for flags that carry no description. One item may
+  /// carry several flags — any of them can match.
   bool _matchesFlag(InventoryItem item) {
     if (_flagFilter.isEmpty) return true;
-    final flag = _flagIndex()[flagItemKey(item.kind, item.id)];
-    if (_flagFilter == 'any') return flag != null;
-    if (flag == null) return false;
-    final note = '${flag['note'] ?? ''}'.trim();
-    if (_flagFilter.startsWith('note:')) {
-      return note == _flagFilter.substring(5);
-    }
-    if (_flagFilter.startsWith('color:')) {
-      return note.isEmpty && '${flag['color']}' == _flagFilter.substring(6);
+    final onItem = _flagIndex()[flagItemKey(item.kind, item.id)] ?? const [];
+    if (_flagFilter == 'any') return onItem.isNotEmpty;
+    for (final flag in onItem) {
+      final note = '${flag['note'] ?? ''}'.trim();
+      if (_flagFilter.startsWith('note:') &&
+          note == _flagFilter.substring(5)) {
+        return true;
+      }
+      if (_flagFilter.startsWith('color:') &&
+          note.isEmpty &&
+          '${flag['color']}' == _flagFilter.substring(6)) {
+        return true;
+      }
     }
     return false;
   }
 
   /// Counts for the flag chips — grouped by the description read on the
   /// flag, plus one color entry per description-less flag, ignoring the
-  /// flag filter itself.
+  /// flag filter itself. An item with two flags lands in both groups,
+  /// but only once per group.
   List<_FlagGroup> _flagGroups(List<InventoryItem> rows) {
     final grouped = <String, ({String label, String color, int count})>{};
     var any = 0;
@@ -281,18 +287,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           !_matchesQuery(item)) {
         continue;
       }
-      final flag = index[flagItemKey(item.kind, item.id)];
-      if (flag == null) continue;
+      final onItem = index[flagItemKey(item.kind, item.id)] ?? const [];
+      if (onItem.isEmpty) continue;
       any++;
-      final note = '${flag['note'] ?? ''}'.trim();
-      final color = '${flag['color']}';
-      final key = note.isEmpty ? 'color:$color' : 'note:$note';
-      final existing = grouped[key];
-      grouped[key] = (
-        label: note,
-        color: color,
-        count: (existing?.count ?? 0) + 1,
-      );
+      final seenKeys = <String>{};
+      for (final flag in onItem) {
+        final note = '${flag['note'] ?? ''}'.trim();
+        final color = '${flag['color']}';
+        final key = note.isEmpty ? 'color:$color' : 'note:$note';
+        if (!seenKeys.add(key)) continue;
+        final existing = grouped[key];
+        grouped[key] = (
+          label: note,
+          color: color,
+          count: (existing?.count ?? 0) + 1,
+        );
+      }
     }
     final flagEntry = (
       key: 'any',
@@ -334,9 +344,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       return true;
     }
     // a saved flag's description is searchable too
-    final flag = _flagIndex()[flagItemKey(item.kind, item.id)];
-    final note = '${flag?['note'] ?? ''}'.toLowerCase().trim();
-    return note.isNotEmpty && note.contains(_query);
+    final onItem = _flagIndex()[flagItemKey(item.kind, item.id)] ?? const [];
+    for (final flag in onItem) {
+      final note = '${flag['note'] ?? ''}'.toLowerCase().trim();
+      if (note.isNotEmpty && note.contains(_query)) return true;
+    }
+    return false;
   }
 
   /// A box matches when its name or type matches the search, or when it
@@ -1910,7 +1923,8 @@ class _ItemDetails extends ConsumerWidget {
         );
     final flags = ref.watch(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final itemFlag = flagIndex(flags)[flagItemKey(item.kind, item.id)];
+    final itemFlags =
+        flagIndex(flags)[flagItemKey(item.kind, item.id)] ?? const [];
     // A moved part belongs to whichever side its latest movement sits on.
     String? partSide;
     if (item.kind == 'part' && history.isNotEmpty) {
@@ -1947,7 +1961,7 @@ class _ItemDetails extends ConsumerWidget {
                     value: item.reviewKind == 'serial'
                         ? 'Flagged — serial not found in the old stock; verify by hand'
                         : 'Flagged — this serial also appears in the old sales records'),
-              if (itemFlag != null)
+              if (itemFlags.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
@@ -1961,11 +1975,21 @@ class _ItemDetails extends ConsumerWidget {
                                 fontSize: 13)),
                       ),
                       Expanded(
-                        child: Text(
-                            '${'${itemFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : itemFlag['note']}',
-                            style: TextStyle(
-                                fontSize: 13.5,
-                                color: colorFromHex('${itemFlag['color']}'))),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final flag in itemFlags)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
+                                child: Text(
+                                  flagNoteText(flag),
+                                  style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: colorFromHex('${flag['color']}')),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -2021,14 +2045,15 @@ class _ItemDetails extends ConsumerWidget {
               context,
               ref,
               target: {'item_kind': item.kind, 'item_id': item.id},
-              current: itemFlag,
             ),
             icon: Icon(Icons.flag_outlined,
                 size: 18,
-                color: itemFlag == null
+                color: itemFlags.isEmpty
                     ? null
-                    : colorFromHex('${itemFlag['color']}')),
-            label: Text(itemFlag == null ? 'Flag' : 'Edit flag'),
+                    : colorFromHex('${itemFlags.first['color']}')),
+            label: Text(itemFlags.isEmpty
+                ? 'Flag'
+                : 'Flags (${itemFlags.length})'),
           ),
         ],
         if (canReturn) ...[
@@ -2349,7 +2374,8 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
     final item = widget.item;
     final flags = ref.watch(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final editFlag = flagIndex(flags)[flagItemKey(item.kind, item.id)];
+    final editFlags =
+        flagIndex(flags)[flagItemKey(item.kind, item.id)] ?? const [];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
@@ -2424,15 +2450,15 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
               context,
               ref,
               target: {'item_kind': item.kind, 'item_id': item.id},
-              current: editFlag,
             ),
             icon: Icon(Icons.flag_outlined,
                 size: 18,
-                color: editFlag == null
+                color: editFlags.isEmpty
                     ? null
-                    : colorFromHex('${editFlag['color']}')),
-            label:
-                Text(editFlag == null ? 'Flag this item' : 'Edit flag'),
+                    : colorFromHex('${editFlags.first['color']}')),
+            label: Text(editFlags.isEmpty
+                ? 'Flag this item'
+                : 'Flags (${editFlags.length})'),
           ),
           const SizedBox(height: 16),
           FilledButton(

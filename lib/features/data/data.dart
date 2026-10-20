@@ -527,24 +527,40 @@ String? flagKeyOf(Map<String, dynamic> flag) {
   return null;
 }
 
-/// The newest flag per target — rows arrive newest first, so the first
-/// one seen for a key wins.
-Map<String, Map<String, dynamic>> flagIndex(
+/// Every flag of each target — rows arrive newest first, so each list
+/// is newest first. One item / movement / repair can carry several
+/// flags at once.
+Map<String, List<Map<String, dynamic>>> flagIndex(
     List<Map<String, dynamic>> flags) {
-  final byKey = <String, Map<String, dynamic>>{};
+  final byKey = <String, List<Map<String, dynamic>>>{};
   for (final flag in flags) {
     final key = flagKeyOf(flag);
-    if (key != null) byKey.putIfAbsent(key, () => flag);
+    if (key != null) (byKey[key] ??= []).add(flag);
   }
   return byKey;
 }
 
-/// Saves the flag for [target] — any flag already on that exact target
-/// is replaced. [target] holds item_kind+item_id, or movement_id (plus
-/// group_ref when the whole send is flagged), or repair_id.
+/// How a group of flags on one target reads aloud — the joined notes,
+/// or 'Flagged' when none carries one.
+String flagLabel(List<Map<String, dynamic>> flags) {
+  final notes = [
+    for (final flag in flags)
+      if ('${flag['note'] ?? ''}'.trim().isNotEmpty) '${flag['note']}'.trim(),
+  ];
+  return notes.isEmpty ? 'Flagged' : notes.join(', ');
+}
+
+/// One flag's reading: its note, or 'Flagged' when none is written.
+String flagNoteText(Map<String, dynamic> flag) {
+  final note = '${flag['note'] ?? ''}'.trim();
+  return note.isEmpty ? 'Flagged' : note;
+}
+
+/// Adds a flag to [target] — flags already on it stay put, so one thing
+/// can carry several. [target] holds item_kind+item_id, or movement_id
+/// (plus group_ref when the whole send is flagged), or repair_id.
 Future<void> setFlag(Map<String, dynamic> target,
     {required String color, String? note}) async {
-  await _clearFlagRows(target);
   await _db.from('flags').insert({
     ...target,
     'color': color,
@@ -552,27 +568,9 @@ Future<void> setFlag(Map<String, dynamic> target,
   });
 }
 
-/// Takes the flag off [target] — same shape as [setFlag].
-Future<void> clearFlag(Map<String, dynamic> target) async {
-  await _clearFlagRows(target);
-}
-
-Future<void> _clearFlagRows(Map<String, dynamic> target) async {
-  var query = _db.from('flags').delete();
-  if (target['item_id'] != null) {
-    query = query
-        .eq('item_kind', '${target['item_kind']}')
-        .eq('item_id', target['item_id'] as int);
-  } else if (target['repair_id'] != null) {
-    query = query.eq('repair_id', target['repair_id'] as int);
-  } else if (target['group_ref'] != null) {
-    query = query.eq('group_ref', '${target['group_ref']}');
-  } else {
-    query = query
-        .eq('movement_id', target['movement_id'] as int)
-        .isFilter('group_ref', null);
-  }
-  await query;
+/// Removes one flag by its id — the target's other flags stay.
+Future<void> deleteFlag(int id) async {
+  await _db.from('flags').delete().eq('id', id);
 }
 
 /// Deletes a customer/dealer together with the sends that point at it —

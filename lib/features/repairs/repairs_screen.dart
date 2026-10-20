@@ -235,7 +235,8 @@ class _RepairDetails extends ConsumerWidget {
     final isAdmin = ref.watch(isAdminProvider);
     final flags = ref.watch(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final jobFlag = flagIndex(flags)[flagRepairKey(job['id'] as int)];
+    final jobFlags =
+        flagIndex(flags)[flagRepairKey(job['id'] as int)] ?? const [];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -267,7 +268,7 @@ class _RepairDetails extends ConsumerWidget {
                 KeyValue(
                     label: 'Problem',
                     value: '${job['problem_description']}'),
-              if (jobFlag != null)
+              if (jobFlags.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
@@ -281,11 +282,21 @@ class _RepairDetails extends ConsumerWidget {
                                 fontSize: 13)),
                       ),
                       Expanded(
-                        child: Text(
-                            '${'${jobFlag['note'] ?? ''}'.trim().isEmpty ? 'Flagged' : jobFlag['note']}',
-                            style: TextStyle(
-                                fontSize: 13.5,
-                                color: colorFromHex('${jobFlag['color']}'))),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final flag in jobFlags)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
+                                child: Text(
+                                  flagNoteText(flag),
+                                  style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: colorFromHex('${flag['color']}')),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -342,14 +353,15 @@ class _RepairDetails extends ConsumerWidget {
               context,
               ref,
               target: {'repair_id': job['id']},
-              current: jobFlag,
             ),
             icon: Icon(Icons.flag_outlined,
                 size: 18,
-                color: jobFlag == null
+                color: jobFlags.isEmpty
                     ? null
-                    : colorFromHex('${jobFlag['color']}')),
-            label: Text(jobFlag == null ? 'Flag this repair' : 'Edit flag'),
+                    : colorFromHex('${jobFlags.first['color']}')),
+            label: Text(jobFlags.isEmpty
+                ? 'Flag this repair'
+                : 'Flags (${jobFlags.length})'),
           ),
           const SizedBox(height: 12),
         ],
