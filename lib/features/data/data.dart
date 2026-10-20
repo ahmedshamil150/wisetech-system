@@ -462,6 +462,37 @@ final flagsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return rows;
 });
 
+/// The reusable flag library: a description + color, defined once in
+/// Records and reused anywhere a flag can be applied. Applying copies
+/// both onto the flag row, so deleting an entry never removes flags
+/// already in use.
+final flagDefsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final rows = await _db
+      .from('flag_defs')
+      .select('id, name, color, created_by, created_at')
+      .order('id', ascending: false);
+  return rows;
+});
+
+/// Creates or updates one library flag. Admins only (enforced by RLS).
+Future<void> saveFlagDef(
+    {int? id, required String name, required String color}) async {
+  if (id == null) {
+    await _db.from('flag_defs').insert({'name': name, 'color': color});
+  } else {
+    await _db
+        .from('flag_defs')
+        .update({'name': name, 'color': color})
+        .eq('id', id);
+  }
+}
+
+/// Removes a library flag — flags already applied keep their copy.
+Future<void> deleteFlagDef(int id) async {
+  await _db.from('flag_defs').delete().eq('id', id);
+}
+
 String flagItemKey(String kind, int id) => 'item:$kind:$id';
 
 String flagRowKey(int movementId) => 'row:$movementId';

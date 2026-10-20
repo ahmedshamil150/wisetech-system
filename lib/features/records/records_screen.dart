@@ -17,7 +17,7 @@ class RecordsScreen extends ConsumerStatefulWidget {
   ConsumerState<RecordsScreen> createState() => _RecordsScreenState();
 }
 
-const _sections = ['product', 'brand', 'customer', 'dealer', 'batch', 'box'];
+const _sections = ['product', 'brand', 'customer', 'dealer', 'batch', 'box', 'flag'];
 const _addLabels = [
   'Add product',
   'Add brand',
@@ -25,11 +25,12 @@ const _addLabels = [
   'Add dealer',
   'New batch',
   'New box',
+  'Add flag',
 ];
 
 class _RecordsScreenState extends ConsumerState<RecordsScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 6, vsync: this);
+  late final TabController _tab = TabController(length: 7, vsync: this);
   String _query = '';
 
   @override
@@ -65,6 +66,7 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
               Tab(text: 'Dealers'),
               Tab(text: 'Batches'),
               Tab(text: 'Boxes'),
+              Tab(text: 'Flags'),
             ],
           ),
         ),
@@ -87,6 +89,7 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
                 _PeoplePane(table: 'dealers', query: _query),
                 _BatchesPane(query: _query),
                 _BoxesPane(query: _query),
+                _FlagsPane(query: _query),
               ],
             ),
           ),
@@ -123,7 +126,9 @@ Future<void> showRecordForm(BuildContext context, String kind,
           ? _BatchForm(editRow: editRow)
           : kind == 'box'
               ? _BoxForm(editRow: editRow)
-              : _RecordForm(kind: kind, editRow: editRow),
+              : kind == 'flag'
+                  ? _FlagDefForm(editRow: editRow)
+                  : _RecordForm(kind: kind, editRow: editRow),
     ),
   );
 }
@@ -905,6 +910,240 @@ class _BoxesPane extends ConsumerWidget {
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// saved flags — the reusable library behind every flag dot in the app
+// ---------------------------------------------------------------------------
+
+class _FlagsPane extends ConsumerWidget {
+  const _FlagsPane({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final defs = ref.watch(flagDefsProvider);
+    final isAdmin = ref.watch(isAdminProvider);
+    final flags = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+
+    return defs.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) =>
+          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      data: (rows) {
+        final filtered = rows.where((row) {
+          if (query.isEmpty) return true;
+          return '${row['name']}'.toLowerCase().contains(query);
+        }).toList();
+        if (filtered.isEmpty) {
+          return EmptyState(
+              icon: Icons.flag_outlined,
+              message: query.isEmpty
+                  ? 'No saved flags yet. Add one — then use it on any item, '
+                      'movement or repair.'
+                  : 'No flags match this search.');
+        }
+        return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          itemCount: filtered.length,
+          itemBuilder: (context, index) {
+            final row = filtered[index];
+            final name = '${row['name']}';
+            final used = flags
+                .where(
+                    (flag) => '${flag['note'] ?? ''}'.trim() == name.trim())
+                .length;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: AppCard(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: colorFromHex('${row['color']}'),
+                    child: const Icon(Icons.flag, size: 16, color: Colors.white),
+                  ),
+                  title: Text(name,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                      'Used on $used thing${used == 1 ? '' : 's'}'),
+                  trailing: isAdmin
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Edit flag',
+                              icon: const Icon(Icons.edit_outlined, size: 20),
+                              onPressed: () =>
+                                  showRecordForm(context, 'flag', editRow: row),
+                            ),
+                            IconButton(
+                              tooltip: 'Delete flag',
+                              icon:
+                                  const Icon(Icons.delete_outline, size: 20),
+                              onPressed: () =>
+                                  _confirmDelete(context, ref, row),
+                            ),
+                          ],
+                        )
+                      : const Icon(Icons.chevron_right, size: 20),
+                  onTap: isAdmin
+                      ? () => showRecordForm(context, 'flag', editRow: row)
+                      : null,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref,
+      Map<String, dynamic> row) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete ${row['name']}?'),
+        content: const Text(
+            'The flag disappears from this list. Flags already applied '
+            'to items, movements or repairs keep their color and text.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await deleteFlagDef(row['id'] as int);
+      ref.invalidate(flagDefsProvider);
+      messenger.showSnackBar(
+          SnackBar(content: Text('${row['name']} deleted.')));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
+    }
+  }
+}
+
+/// Creates or edits one entry of the flag library: the description that
+/// reads on every dot and the color it draws in.
+class _FlagDefForm extends ConsumerStatefulWidget {
+  const _FlagDefForm({this.editRow});
+
+  final Map<String, dynamic>? editRow;
+
+  @override
+  ConsumerState<_FlagDefForm> createState() => _FlagDefFormState();
+}
+
+class _FlagDefFormState extends ConsumerState<_FlagDefForm> {
+  late final TextEditingController _name;
+  late String _color;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: '${widget.editRow?['name'] ?? ''}');
+    _color = '${widget.editRow?['color'] ?? kFlagColors.first}';
+    if (!kFlagColors.contains(_color)) _color = kFlagColors.first;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      showSnack(context, 'Description is required.', error: true);
+      return;
+    }
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await saveFlagDef(
+          id: widget.editRow?['id'] as int?, name: name, color: _color);
+      ref.invalidate(flagDefsProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      messenger.showSnackBar(SnackBar(
+          content: Text(widget.editRow == null
+              ? 'Flag saved to the library.'
+              : 'Flag updated.')));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.editRow != null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(editing ? 'Edit flag' : 'New flag',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _name,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Description *',
+              hintText: 'e.g. Check serial before selling',
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Color',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 10),
+          FlagColorPicker(
+            initial: _color,
+            onChanged: (color) => setState(() => _color = color),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(editing ? 'Save changes' : 'Add flag'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -146,7 +146,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   // '' = any, 'Green' = flagged probes (green dot), 'Red' = serial not
   // found in the old stock (red dot).
   String _review = '';
-  // '' = any, 'any' = any flag color, otherwise the exact hex of one.
+  // '' = any, 'any' = any flag, 'note:<text>' = flags whose description
+  // reads <text>, 'color:<hex>' = description-less flags of that color.
   String _flagFilter = '';
 
   @override
@@ -248,18 +249,29 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return flagIndex(flags);
   }
 
-  /// The admin-flag filter: any flag, or one exact color.
+  /// The admin-flag filter: any flag, one saved description, or one
+  /// exact color for flags that carry no description.
   bool _matchesFlag(InventoryItem item) {
     if (_flagFilter.isEmpty) return true;
     final flag = _flagIndex()[flagItemKey(item.kind, item.id)];
     if (_flagFilter == 'any') return flag != null;
-    return flag != null && '${flag['color']}' == _flagFilter;
+    if (flag == null) return false;
+    final note = '${flag['note'] ?? ''}'.trim();
+    if (_flagFilter.startsWith('note:')) {
+      return note == _flagFilter.substring(5);
+    }
+    if (_flagFilter.startsWith('color:')) {
+      return note.isEmpty && '${flag['color']}' == _flagFilter.substring(6);
+    }
+    return false;
   }
 
-  /// Counts for the flag chips — 'any' plus one entry per color that is
-  /// actually in use, ignoring the flag filter itself.
-  Map<String, int> _flagCounts(List<InventoryItem> rows) {
-    final tallied = <String, int>{'any': 0};
+  /// Counts for the flag chips — grouped by the description read on the
+  /// flag, plus one color entry per description-less flag, ignoring the
+  /// flag filter itself.
+  List<_FlagGroup> _flagGroups(List<InventoryItem> rows) {
+    final grouped = <String, ({String label, String color, int count})>{};
+    var any = 0;
     final index = _flagIndex();
     for (final item in rows) {
       if ((item.isSold && item.kind != 'part') ||
@@ -271,11 +283,39 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       }
       final flag = index[flagItemKey(item.kind, item.id)];
       if (flag == null) continue;
-      tallied['any'] = tallied['any']! + 1;
+      any++;
+      final note = '${flag['note'] ?? ''}'.trim();
       final color = '${flag['color']}';
-      tallied[color] = (tallied[color] ?? 0) + 1;
+      final key = note.isEmpty ? 'color:$color' : 'note:$note';
+      final existing = grouped[key];
+      grouped[key] = (
+        label: note,
+        color: color,
+        count: (existing?.count ?? 0) + 1,
+      );
     }
-    return tallied;
+    final flagEntry = (
+      key: 'any',
+      label: 'Flagged',
+      color: '',
+      count: any,
+    );
+    // descriptions in reading order, then the description-less colors
+    final rest = <_FlagGroup>[
+      for (final entry in grouped.entries)
+        (
+          key: entry.key,
+          label: entry.value.label,
+          color: entry.value.color,
+          count: entry.value.count,
+        ),
+    ]..sort((a, b) {
+        final aNote = a.key.startsWith('note:');
+        final bNote = b.key.startsWith('note:');
+        if (aNote != bNote) return aNote ? -1 : 1;
+        return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+      });
+    return [flagEntry, ...rest];
   }
 
   bool _matchesFilter(InventoryItem item) => switch (_type) {
@@ -288,9 +328,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   bool _matchesQuery(InventoryItem item) {
     if (_query.isEmpty) return true;
-    return item.code.toLowerCase().contains(_query) ||
+    if (item.code.toLowerCase().contains(_query) ||
         item.name.toLowerCase().contains(_query) ||
-        (item.serial ?? '').toLowerCase().contains(_query);
+        (item.serial ?? '').toLowerCase().contains(_query)) {
+      return true;
+    }
+    // a saved flag's description is searchable too
+    final flag = _flagIndex()[flagItemKey(item.kind, item.id)];
+    final note = '${flag?['note'] ?? ''}'.toLowerCase().trim();
+    return note.isNotEmpty && note.contains(_query);
   }
 
   /// A box matches when its name or type matches the search, or when it
@@ -425,7 +471,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         review: _review,
         reviewCounts: _reviewCounts(rows),
         flagFilter: _flagFilter,
-        flagCounts: _flagCounts(rows),
+        flagGroups: _flagGroups(rows),
         dateFrom: _dateFrom,
         dateTo: _dateTo,
         location: _location,
@@ -2851,6 +2897,11 @@ typedef _InventoryFilterValues = ({
   String flagFilter,
 });
 
+/// One flag chip in the Filters sheet: the filter key it selects, the
+/// description it reads (empty for plain colors), its dot color and a
+/// count of the items it would show.
+typedef _FlagGroup = ({String key, String label, String color, int count});
+
 /// Every inventory filter in one sheet: status with its counts, the
 /// acquisition date range, location, batch, vendor and the price paid.
 class _InventoryFilterSheet extends StatefulWidget {
@@ -2860,7 +2911,7 @@ class _InventoryFilterSheet extends StatefulWidget {
     required this.review,
     required this.reviewCounts,
     required this.flagFilter,
-    required this.flagCounts,
+    required this.flagGroups,
     required this.dateFrom,
     required this.dateTo,
     required this.location,
@@ -2877,7 +2928,7 @@ class _InventoryFilterSheet extends StatefulWidget {
   final String review;
   final Map<String, int> reviewCounts;
   final String flagFilter;
-  final Map<String, int> flagCounts;
+  final List<_FlagGroup> flagGroups;
   final String dateFrom;
   final String dateTo;
   final String location;
@@ -3095,20 +3146,15 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                     runSpacing: 8,
                     children: [
                       _flagChip(value: '', label: const Text('Any')),
-                      _flagChip(
-                        value: 'any',
-                        dotColor: scheme.primary,
-                        label: Text(
-                            'Flagged (${widget.flagCounts['any'] ?? 0})'),
-                      ),
-                      for (final color in (widget.flagCounts.keys
-                          .where((key) => key != 'any')
-                          .toList()
-                        ..sort()))
+                      for (final group in widget.flagGroups)
                         _flagChip(
-                          value: color,
-                          dotColor: colorFromHex(color),
-                          label: Text('${widget.flagCounts[color] ?? 0}'),
+                          value: group.key,
+                          dotColor: group.key == 'any'
+                              ? scheme.primary
+                              : colorFromHex(group.color),
+                          label: Text(group.label.isEmpty
+                              ? '${group.count}'
+                              : '${group.label} (${group.count})'),
                         ),
                     ],
                   ),

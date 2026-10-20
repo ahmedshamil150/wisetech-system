@@ -60,6 +60,63 @@ class FlagDot extends ConsumerWidget {
   }
 }
 
+/// The swatch grid for choosing a flag color — the flag sheet and the
+/// Records flag form both use it. The chosen color goes back through
+/// [onChanged]; the parent keeps it.
+class FlagColorPicker extends StatefulWidget {
+  const FlagColorPicker(
+      {super.key, required this.initial, required this.onChanged});
+
+  final String initial;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<FlagColorPicker> createState() => _FlagColorPickerState();
+}
+
+class _FlagColorPickerState extends State<FlagColorPicker> {
+  late String _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _color = widget.initial;
+  }
+
+  Widget _swatch(String hex) {
+    final selected = _color == hex;
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () {
+        setState(() => _color = hex);
+        widget.onChanged(hex);
+      },
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: colorFromHex(hex),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected ? scheme.onSurface : Colors.transparent,
+            width: 3,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [for (final hex in kFlagColors) _swatch(hex)],
+    );
+  }
+}
+
 /// Shows a dot when anything inside the box carries a flag — so a box
 /// with special cases is visible straight from the list, without
 /// opening it.
@@ -132,6 +189,7 @@ class _FlagSheet extends ConsumerStatefulWidget {
 class _FlagSheetState extends ConsumerState<_FlagSheet> {
   late String _color;
   final _note = TextEditingController();
+  int? _defId; // the saved flag currently picked, if any
   bool _saving = false;
 
   @override
@@ -180,30 +238,46 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
     }
   }
 
-  Widget _swatch(String hex) {
-    final selected = _color == hex;
+  Widget _savedChip(Map<String, dynamic> def) {
     final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: () => setState(() => _color = hex),
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        width: 34,
-        height: 34,
+    final id = def['id'] as int;
+    final selected = _defId == id;
+    return ChoiceChip(
+      avatar: Container(
+        width: 9,
+        height: 9,
         decoration: BoxDecoration(
-          color: colorFromHex(hex),
+          color: colorFromHex('${def['color']}'),
           shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? scheme.onSurface : Colors.transparent,
-            width: 3,
-          ),
         ),
       ),
+      label: Text('${def['name']}'),
+      selected: selected,
+      onSelected: (_) => setState(() {
+        if (selected) {
+          _defId = null;
+        } else {
+          _defId = id;
+          _color = '${def['color']}';
+          _note.text = '${def['name']}';
+        }
+      }),
+      selectedColor: scheme.primary,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : scheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+      backgroundColor: scheme.surface,
+      side: BorderSide(color: scheme.outlineVariant),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final defs = ref.watch(flagDefsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
@@ -223,21 +297,39 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          if (defs.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Use a saved flag',
+                style: TextStyle(
+                    fontSize: 13, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final def in defs) _savedChip(def)],
+            ),
+            const SizedBox(height: 16),
+          ] else
+            const SizedBox(height: 4),
           Text('Color',
               style: TextStyle(
                   fontSize: 13, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [for (final hex in kFlagColors) _swatch(hex)],
+          FlagColorPicker(
+            initial: _color,
+            onChanged: (color) => setState(() {
+              _color = color;
+              _defId = null;
+            }),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _note,
             textCapitalization: TextCapitalization.sentences,
             maxLines: 2,
+            onChanged: (_) {
+              if (_defId != null) setState(() => _defId = null);
+            },
             decoration: const InputDecoration(
               labelText: 'Detail (optional)',
               hintText: 'What is the special case?',
