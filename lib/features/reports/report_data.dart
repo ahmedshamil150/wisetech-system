@@ -46,8 +46,9 @@ List<InventoryItem> filterStockItems(
 }
 
 /// Movement rows for the report: the imported legacy rows never count,
-/// [kind] ('All', 'Workshop', 'Dealer' or 'Customer') narrows the type,
-/// and the movement date must sit inside the range.
+/// [kind] narrows the type — 'All' means every send and return except
+/// the box moves (those have their own report), 'Box moves' means only
+/// them — and the movement date must sit inside the range.
 List<Map<String, dynamic>> filterMovementRows(
   List<Map<String, dynamic>> rows, {
   required String kind,
@@ -57,10 +58,37 @@ List<Map<String, dynamic>> filterMovementRows(
   return [
     for (final row in rows)
       if ((row['movement_type'] ?? '').toString() != 'Legacy' &&
-          (kind == 'All' || row['movement_type'] == kind) &&
+          switch (kind) {
+            'All' => !isBoxMovement(row),
+            'Box moves' => isBoxMovement(row),
+            _ => row['movement_type'] == kind,
+          } &&
           dateInRange('${row['movement_date'] ?? ''}', from, to))
         row,
   ];
+}
+
+/// The PDF's built-in fonts only draw Latin-1 — anything else (em
+/// dashes, curly quotes, Arabic …) would print as a cross-in-a-box.
+/// Turn those into characters the report can actually show.
+String pdfText(String text) {
+  final buffer = StringBuffer();
+  for (final rune in text.runes) {
+    if (rune == 0x2013 || rune == 0x2014) {
+      buffer.write('-');
+    } else if (rune == 0x2018 || rune == 0x2019) {
+      buffer.write("'");
+    } else if (rune == 0x201C || rune == 0x201D) {
+      buffer.write('"');
+    } else if (rune == 0x2026) {
+      buffer.write('...');
+    } else if (rune == 0x0A || rune == 0x09 || (rune >= 0x20 && rune <= 0xFF)) {
+      buffer.writeCharCode(rune);
+    } else {
+      buffer.write('?');
+    }
+  }
+  return buffer.toString();
 }
 
 String _joinName(Object? join) =>

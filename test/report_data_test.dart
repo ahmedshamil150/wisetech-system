@@ -108,13 +108,40 @@ void main() {
         _movement(3, type: 'Legacy', date: '10-01-2026'),
         _movement(4, type: 'Dealer', date: '10-03-2026'),
         _movement(5, type: 'Dealer', date: null),
+        _movement(6, type: 'Return', date: '10-01-2026'),
       ];
       final all = filterMovementRows(rows,
           kind: 'All', from: from, to: to);
-      expect(all.map((row) => row['id']), [1, 2]);
+      expect(all.map((row) => row['id']), [1, 2, 6]);
       final dealers = filterMovementRows(rows,
           kind: 'Dealer', from: from, to: to);
       expect(dealers.map((row) => row['id']), [1]);
+    });
+
+    test('All keeps box moves out; Box moves keeps only them', () {
+      final rows = [
+        _movement(1, type: 'Dealer', date: '10-01-2026'),
+        _movement(2, type: 'Box', date: '10-01-2026', probeId: 7),
+        _movement(3, type: 'Unbox', date: '11-01-2026', probeId: 7),
+      ];
+      final all = filterMovementRows(rows,
+          kind: 'All', from: from, to: to);
+      expect(all.map((row) => row['id']), [1]);
+      final boxMoves = filterMovementRows(rows,
+          kind: 'Box moves', from: from, to: to);
+      expect(boxMoves.map((row) => row['id']), [2, 3]);
+    });
+  });
+
+  group('pdfText', () {
+    test('turns em dashes and curly quotes into Latin-1 safe ones', () {
+      expect(pdfText('WiseTech — Ultrasound'), 'WiseTech - Ultrasound');
+      expect(pdfText('don’t “quote”…'), 'don\'t "quote"...');
+    });
+
+    test('keeps normal text and marks unreadable runes', () {
+      expect(pdfText('Plain text 123'), 'Plain text 123');
+      expect(pdfText('عربي'), '????');
     });
   });
 

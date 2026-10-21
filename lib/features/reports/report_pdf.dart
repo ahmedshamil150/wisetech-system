@@ -5,9 +5,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:web/web.dart' as web;
 
+import 'report_data.dart';
+
 /// Builds the landscape A4 report: the shop's header, the report's
 /// title and range, the table (striped, with its header repeated on
-/// every page) and a page-number footer.
+/// every page) and a page-number footer. Every piece of text goes
+/// through [pdfText] so the built-in fonts can draw it.
 Future<Uint8List> buildReportPdf({
   required String title,
   required String subtitle,
@@ -20,6 +23,10 @@ Future<Uint8List> buildReportPdf({
   String two(int n) => n.toString().padLeft(2, '0');
   final stamp =
       '${two(now.day)}-${two(now.month)}-${now.year} ${two(now.hour)}:${two(now.minute)}';
+  final safeColumns = [for (final c in columns) pdfText(c)];
+  final safeData = [
+    for (final row in data) [for (final cell in row) pdfText(cell)],
+  ];
   doc.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
@@ -37,15 +44,15 @@ Future<Uint8List> buildReportPdf({
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('WiseTech — Ultrasound Inventory',
+                    pw.Text('WiseTech - Ultrasound Inventory',
                         style: pw.TextStyle(
                             fontSize: 9, color: PdfColors.grey600)),
                     pw.SizedBox(height: 2),
-                    pw.Text(title,
+                    pw.Text(pdfText(title),
                         style: pw.TextStyle(
                             fontSize: 16, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 2),
-                    pw.Text(subtitle,
+                    pw.Text(pdfText(subtitle),
                         style: pw.TextStyle(
                             fontSize: 9.5, color: PdfColors.grey700)),
                   ],
@@ -57,11 +64,11 @@ Future<Uint8List> buildReportPdf({
                   pw.Text('Generated $stamp',
                       style:
                           pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
-                  pw.Text('by $generatedBy',
+                  pw.Text('by ${pdfText(generatedBy)}',
                       style:
                           pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
                   pw.SizedBox(height: 2),
-                  pw.Text('${data.length} row${data.length == 1 ? '' : 's'}',
+                  pw.Text('${safeData.length} row${safeData.length == 1 ? '' : 's'}',
                       style: pw.TextStyle(
                           fontSize: 9, fontWeight: pw.FontWeight.bold)),
                 ],
@@ -70,7 +77,7 @@ Future<Uint8List> buildReportPdf({
           ),
         ),
         pw.SizedBox(height: 10),
-        if (data.isEmpty)
+        if (safeData.isEmpty)
           pw.Padding(
             padding: const pw.EdgeInsets.only(top: 24),
             child: pw.Text('No rows to report for this selection.',
@@ -78,8 +85,8 @@ Future<Uint8List> buildReportPdf({
           )
         else
           pw.TableHelper.fromTextArray(
-            headers: columns,
-            data: data,
+            headers: safeColumns,
+            data: safeData,
             headerStyle: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 fontSize: 8,
@@ -97,7 +104,7 @@ Future<Uint8List> buildReportPdf({
             oddRowDecoration:
                 const pw.BoxDecoration(color: PdfColors.grey100),
             columnWidths: {
-              for (var i = 0; i < columns.length; i++)
+              for (var i = 0; i < safeColumns.length; i++)
                 i: const pw.FlexColumnWidth(),
             },
           ),
@@ -105,7 +112,7 @@ Future<Uint8List> buildReportPdf({
       footer: (context) => pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text('WiseTech — Ultrasound Inventory',
+          pw.Text('WiseTech - Ultrasound Inventory',
               style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
           pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
               style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),

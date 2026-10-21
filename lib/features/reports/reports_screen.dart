@@ -17,6 +17,7 @@ const _kMovements = [
   'Workshop movements',
   'Dealer movements',
   'Customer movements',
+  'Box movements',
 ];
 
 String _titleOf(String kind) => switch (kind) {
@@ -27,7 +28,8 @@ String _titleOf(String kind) => switch (kind) {
       'All movements' => 'Movements report — all movements',
       'Workshop movements' => 'Movements report — workshop',
       'Dealer movements' => 'Movements report — dealer',
-      _ => 'Movements report — customer',
+      'Customer movements' => 'Movements report — customer',
+      _ => 'Movements report — box moves',
     };
 
 String _fileOf(String kind) => switch (kind) {
@@ -38,13 +40,15 @@ String _fileOf(String kind) => switch (kind) {
       'All movements' => 'movements-all',
       'Workshop movements' => 'movements-workshop',
       'Dealer movements' => 'movements-dealer',
-      _ => 'movements-customer',
+      'Customer movements' => 'movements-customer',
+      _ => 'movements-box',
     };
 
 String _movementKindOf(String kind) => switch (kind) {
       'Workshop movements' => 'Workshop',
       'Dealer movements' => 'Dealer',
       'Customer movements' => 'Customer',
+      'Box movements' => 'Box moves',
       _ => 'All',
     };
 
@@ -272,8 +276,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 : _kStock.contains(_kind)
                     ? 'Current stock whose bought date falls inside the '
                         'range — sold items are left out.'
-                    : 'Every movement dated inside the range — sends, '
-                        'returns, branch moves and box moves.',
+                    : _kind == 'Box movements'
+                        ? 'Only the box and unbox moves dated inside the '
+                            'range — they are kept out of the all-movements '
+                            'report.'
+                        : 'Every send, return and branch move dated inside '
+                            'the range — box moves have their own report.',
             style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 20),
