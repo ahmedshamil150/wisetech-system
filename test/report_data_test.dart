@@ -133,6 +133,20 @@ void main() {
     });
   });
 
+  group('filterRepairRows', () {
+    test('keeps jobs received inside the range only', () {
+      final rows = [
+        {'id': 1, 'received_at': '10-01-2026'},
+        {'id': 2, 'received_at': '10-06-2026'}, // out of range
+        {'id': 3, 'received_at': null}, // no date
+        {'id': 4, 'received_at': '31-01-2026'}, // both ends included
+      ];
+      final filtered =
+          filterRepairRows(rows, from: from, to: to);
+      expect(filtered.map((row) => row['id']), [1, 4]);
+    });
+  });
+
   group('pdfText', () {
     test('turns em dashes and curly quotes into Latin-1 safe ones', () {
       expect(pdfText('WiseTech — Ultrasound'), 'WiseTech - Ultrasound');
@@ -208,6 +222,36 @@ void main() {
       expect(all[11], 'Convex');
       expect(all[12], 'M8  Machine 8');
       expect(all[8], 'Vendor Co');
+    });
+    test('repairReportRow fills items, customer, costs and notes', () {
+      final cells = repairReportRow({
+        'job_number': 'REP-00007',
+        'received_at': '10-01-2026',
+        'customers': {'name': 'XYZ'},
+        'customer_contact': '555',
+        'problem_description': 'No image',
+        'status': 'Returned',
+        'returned_at': '20-01-2026',
+        'collected_by': 'Sami',
+        'profiles': {'display_name': 'Ahmed', 'username': 'ahmed'},
+        'estimated_cost': 50,
+        'final_cost': null,
+        'repair_notes': 'Fixed',
+        'return_notes': '',
+        'repair_items': [
+          {'name_model': 'Mindray DP', 'serial_number': 'SN-1'},
+          {'name_model': 'Probe X', 'serial_number': null},
+        ],
+      });
+      expect(cells, hasLength(12));
+      expect(cells[0], 'REP-00007');
+      expect(cells[2], 'XYZ');
+      expect(cells[3], 'Mindray DP (SN-1); Probe X');
+      expect(cells[6], '20-01-2026');
+      expect(cells[8], 'Ahmed');
+      expect(cells[9], '50');
+      expect(cells[10], '');
+      expect(cells[11], 'Fixed');
     });
   });
 }

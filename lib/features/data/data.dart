@@ -718,7 +718,7 @@ final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
       .select(
         'id, job_number, received_at, problem_description, repair_notes, '
         'return_notes, status, returned_at, collected_by, customer_contact, '
-        'created_at, customers(name), '
+        'estimated_cost, final_cost, created_at, customers(name), '
         'repair_items(id, equipment_type, name_model, serial_number, quantity), '
         'profiles:actor_id(display_name, username)',
       )

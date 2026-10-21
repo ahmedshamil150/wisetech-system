@@ -68,6 +68,21 @@ List<Map<String, dynamic>> filterMovementRows(
   ];
 }
 
+/// Repair jobs whose received date sits inside the range — the same
+/// "when it came in" rule the stock reports use, so a month's report
+/// is everything that arrived that month. Jobs without a readable
+/// received date never match.
+List<Map<String, dynamic>> filterRepairRows(
+  List<Map<String, dynamic>> rows, {
+  required DateTime from,
+  required DateTime to,
+}) {
+  return [
+    for (final row in rows)
+      if (dateInRange('${row['received_at'] ?? ''}', from, to)) row,
+  ];
+}
+
 /// The PDF's built-in fonts only draw Latin-1 — anything else (em
 /// dashes, curly quotes, Arabic …) would print as a cross-in-a-box.
 /// Turn those into characters the report can actually show.
@@ -184,6 +199,38 @@ List<String> movementReportRow(
   ];
 }
 
+/// One repair table row — the job's whole story: when it came in and
+/// went out, whose it is, what it was, who handled it and the costs.
+List<String> repairReportRow(Map<String, dynamic> row) {
+  final items = [
+    for (final item in (row['repair_items'] as List? ?? const []))
+      if (item is Map)
+        [
+          '${item['name_model'] ?? ''}',
+          if ('${item['serial_number'] ?? ''}'.isNotEmpty)
+            '(${item['serial_number']})',
+        ].join(' '),
+  ];
+  final notes = [
+    '${row['repair_notes'] ?? ''}',
+    '${row['return_notes'] ?? ''}',
+  ].where((text) => text.trim().isNotEmpty).join(' · ');
+  return [
+    '${row['job_number'] ?? ''}',
+    '${row['received_at'] ?? ''}',
+    _joinName(row['customers']),
+    items.join('; '),
+    '${row['problem_description'] ?? ''}',
+    '${row['status'] ?? ''}',
+    '${row['returned_at'] ?? ''}',
+    '${row['collected_by'] ?? ''}',
+    _actorName(row['profiles']),
+    row['estimated_cost'] == null ? '' : '${row['estimated_cost']}',
+    row['final_cost'] == null ? '' : '${row['final_cost']}',
+    notes,
+  ];
+}
+
 const kStockColumnsAll = [
   'Type', 'Code', 'Name', 'Serial', 'Status', 'Location', 'Acquired',
   'Batch', 'Vendor', 'Price', 'Box', 'Probe type', 'Machine',
@@ -201,4 +248,9 @@ const kMovementColumns = [
 
 const kBoxColumns = [
   'Name', 'Probe type', 'Probes inside', 'Serials inside', 'Notes',
+];
+
+const kRepairColumns = [
+  'Job', 'Received', 'Customer', 'Items', 'Problem', 'Status',
+  'Returned', 'Collected by', 'By', 'Est. cost', 'Final cost', 'Notes',
 ];
