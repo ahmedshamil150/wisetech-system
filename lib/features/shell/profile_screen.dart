@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
+import '../reports/reports_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -95,6 +96,16 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 8),
+              if (isAdmin) ...[
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const ReportsScreen())),
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Reports (PDF)'),
+                ),
+                const SizedBox(height: 8),
+              ],
               OutlinedButton.icon(
                 onPressed: () => auth.signOut(),
                 icon: const Icon(Icons.logout),
