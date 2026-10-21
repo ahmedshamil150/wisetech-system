@@ -241,6 +241,39 @@ String movementTitle(Map<String, dynamic> row) {
   return 'Sent to $to';
 }
 
+/// Whether a send carries the sold mark — its reason reads 'Sold',
+/// which is how the imported sales read too. A label only: the items
+/// keep their status.
+bool movementSold(Map<String, dynamic> row) =>
+    '${row['reason'] ?? ''}'.contains('Sold');
+
+/// Whether a send has been settled. Rows written before the paid flag
+/// existed simply read as unpaid.
+bool movementPaid(Map<String, dynamic> row) => row['paid'] == true;
+
+/// Whether a send went to one of the three sale-like destinations —
+/// only those can be marked as sold.
+bool isSoldKind(String kind) =>
+    kind == 'Dealer' || kind == 'Customer' || kind == 'Branch';
+
+/// Whether a send left for anywhere the company sends things to.
+bool isOutboundKind(String kind) =>
+    isSoldKind(kind) || kind == 'Workshop';
+
+/// The reason a send is recorded with. Undoing the sold mark writes
+/// this back — it mirrors the wording create_movement uses.
+String sendReason(String kind, {required bool demo}) {
+  final to = switch (kind) {
+    'Workshop' => 'workshop',
+    'Branch' => 'lahore branch',
+    'Dealer' => 'dealer',
+    _ => 'customer',
+  };
+  final suffix =
+      demo && (kind == 'Dealer' || kind == 'Customer') ? ' (demo)' : '';
+  return 'Sent to $to$suffix';
+}
+
 /// Today as dd-MM-yyyy, the date format movements are stored in.
 String movementToday() {
   final now = DateTime.now();
@@ -444,6 +477,41 @@ Future<void> setMovementDate(Iterable<int> movementIds, String date) async {
       .from('movements')
       .update({'movement_date': date})
       .inFilter('id', movementIds.toList());
+}
+
+/// Marks a whole send paid or unpaid — every row of its group takes the
+/// same flag, so the send reads as one settlement. Only admins may
+/// (enforced by RLS).
+Future<void> setSendPaid(List<Map<String, dynamic>> rows, bool paid) async {
+  await _updateSend(rows, {'paid': paid});
+}
+
+/// Flips the sold mark on a whole send: on, the reason reads 'Sold' and
+/// the item's history shows "Sold to X"; off, the original wording goes
+/// back. A label only — the items keep their status. Only admins may
+/// (enforced by RLS).
+Future<void> setSendSold(List<Map<String, dynamic>> rows, bool sold) async {
+  final first = rows.first;
+  final kind = '${first['movement_type'] ?? ''}';
+  await _updateSend(rows, {
+    'reason':
+        sold ? 'Sold' : sendReason(kind, demo: first['is_demo'] == true),
+  });
+}
+
+/// One update for the whole send: by group when the rows share one
+/// (Return rows carry their own group, box rows have none, so neither
+/// is ever caught here), row by row for the ungrouped legacy rows.
+Future<void> _updateSend(
+    List<Map<String, dynamic>> rows, Map<String, Object> values) async {
+  final group = '${rows.first['group_ref'] ?? ''}';
+  if (group.isNotEmpty) {
+    await _db.from('movements').update(values).eq('group_ref', group);
+    return;
+  }
+  for (final row in rows) {
+    await _db.from('movements').update(values).eq('id', row['id'] as int);
+  }
 }
 
 // ---------------------------------------------------------------------------

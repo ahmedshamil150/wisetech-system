@@ -589,6 +589,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     [
                       row['movement_date'] ?? '',
                       kind,
+                      if (movementSold(row)) 'Sold',
+                      if (isOutboundKind(kind))
+                        movementPaid(row) ? 'Paid' : 'Unpaid',
                       if (isDemo) 'Demo',
                       if (actorName.isNotEmpty) 'by $actorName',
                       if (reference.isNotEmpty) reference,
@@ -775,6 +778,35 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 ? 'Nothing to return — these items moved on.'
                 : '$count item${count == 1 ? '' : 's'} back in inventory.'),
         error: failure != null);
+  }
+
+  /// Admin: flips the sold mark on a whole send — the label only, the
+  /// items keep their status.
+  Future<void> _toggleSendSold(List<Map<String, dynamic>> rows,
+      {required bool sold}) async {
+    try {
+      await setSendSold(rows, sold);
+      ref.invalidate(allMovementsProvider);
+      if (!mounted) return;
+      showSnack(context, sold ? 'Marked as sold.' : 'Sold mark removed.');
+    } catch (error) {
+      if (!mounted) return;
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  /// Admin: marks the whole send paid or unpaid.
+  Future<void> _toggleSendPaid(List<Map<String, dynamic>> rows,
+      {required bool paid}) async {
+    try {
+      await setSendPaid(rows, paid);
+      ref.invalidate(allMovementsProvider);
+      if (!mounted) return;
+      showSnack(context, paid ? 'Marked paid.' : 'Marked unpaid.');
+    } catch (error) {
+      if (!mounted) return;
+      showSnack(context, errorMessage(error), error: true);
+    }
   }
 
   /// Opens the tick-list sheet for a multi-item send: the sender picks
@@ -986,6 +1018,9 @@ class _MovementDetails extends ConsumerWidget {
         (isAdmin || missing.any((r) => r['actor_id'] == myId));
     final first = rows.first;
     final kind = (first['movement_type'] ?? '').toString();
+    final outbound = isOutboundKind(kind);
+    final sold = rows.any(movementSold);
+    final paid = rows.any(movementPaid);
     final icon = switch (kind) {
       'Workshop' => Icons.build_outlined,
       'Branch' => Icons.storefront_outlined,
@@ -1105,6 +1140,8 @@ class _MovementDetails extends ConsumerWidget {
             [
               first['movement_date'] ?? '',
               kind,
+              if (sold) 'Sold',
+              if (outbound) paid ? 'Paid' : 'Unpaid',
               if (first['is_demo'] == true) 'Demo',
               if (actorName.isNotEmpty) 'by $actorName',
               if (reference.isNotEmpty) reference,
@@ -1159,6 +1196,25 @@ class _MovementDetails extends ConsumerWidget {
                 label: Text(sendFlags.isEmpty
                     ? 'Flag'
                     : 'Flags (${sendFlags.length})'),
+              ),
+            if (isAdmin && isSoldKind(kind))
+              TextButton.icon(
+                onPressed: () => state._toggleSendSold(rows, sold: !sold),
+                icon: Icon(
+                    sold ? Icons.undo_outlined : Icons.sell_outlined,
+                    size: 18),
+                label: Text(sold ? 'Undo sold' : 'Mark as sold'),
+              ),
+            if (isAdmin && outbound)
+              TextButton.icon(
+                onPressed: () => state._toggleSendPaid(rows, paid: !paid),
+                icon: Icon(
+                    paid
+                        ? Icons.radio_button_unchecked_outlined
+                        : Icons.check_circle_outline,
+                    size: 18,
+                    color: paid ? null : context.colors.success),
+                label: Text(paid ? 'Mark as unpaid' : 'Mark as paid'),
               ),
             if (canFixParty)
               TextButton.icon(
@@ -1425,6 +1481,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
   final List<InventoryItem> _selection = [];
   String _kind = 'Workshop';
   bool _demo = false;
+  bool _paid = false;
   final _target = TextEditingController();
   final _date = TextEditingController();
   final _notes = TextEditingController();
@@ -1563,6 +1620,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
           if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
           if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
           'p_demo': _demo,
+          'p_paid': _paid,
           'p_group_ref': groupRef,
         });
       }
@@ -1593,7 +1651,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       messenger.showSnackBar(SnackBar(
           content: Text(
               '${_selection.length} item(s) sent to $where$added$pending'
-              '${_demo ? ' (demo)' : ''}.')));
+              '${_demo ? ' (demo)' : ''}'
+              '${_paid ? ' — paid' : ''}.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -1800,6 +1859,37 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     controller: _notes,
                     maxLines: 3,
                     decoration: const InputDecoration(labelText: 'Notes'),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _paid
+                          ? context.colors.success.withValues(alpha: 0.07)
+                          : context.colors.quietFill,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: _paid
+                              ? context.colors.success
+                              : Theme.of(context).colorScheme.outlineVariant),
+                    ),
+                    child: SwitchListTile.adaptive(
+                      value: _paid,
+                      onChanged: (value) => setState(() => _paid = value),
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 2),
+                      title: const Text('Mark as paid',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14)),
+                      subtitle: Text(
+                          'The whole send is settled — it shows as Paid '
+                          'on the card',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
+                    ),
                   ),
                 ],
               ),
