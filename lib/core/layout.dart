@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 bool isDesktopLayout(BuildContext context) =>
     MediaQuery.sizeOf(context).width >= 900;
 
+/// True on phones and other narrow windows — the compact layout hides
+/// the quick-filter chip rows and keeps only the filter icon.
+bool isPhoneLayout(BuildContext context) =>
+    MediaQuery.sizeOf(context).width < 600;
+
 /// Centers content with a max width on desktop so lists and cards
 /// don't stretch edge-to-edge on wide screens.
 Widget desktopWrap(BuildContext context, Widget child) {

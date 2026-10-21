@@ -14,6 +14,12 @@ Future<void> _pumpFrames(WidgetTester tester, [int frames = 30]) async {
   }
 }
 
+/// Phone widths (< 600) show the filter control as a plain icon;
+/// wider windows keep the labeled button.
+Finder _filtersFinder(Size size) => size.width < 600
+    ? find.byTooltip('Filters')
+    : find.widgetWithText(OutlinedButton, 'Filters');
+
 Future<void> _checkApply({
   required WidgetTester tester,
   required Widget screen,
@@ -29,7 +35,7 @@ Future<void> _checkApply({
           MaterialApp(theme: _darkTheme, home: Scaffold(body: screen))));
   await _pumpFrames(tester);
 
-  final filtersButton = find.widgetWithText(OutlinedButton, 'Filters');
+  final filtersButton = _filtersFinder(size);
   expect(filtersButton, findsOneWidget, reason: '$label: Filters button');
   await tester.tap(filtersButton);
   await _pumpFrames(tester);
@@ -126,7 +132,7 @@ void main() {
             home: const Scaffold(body: InventoryScreen()))));
     await _pumpFrames(tester);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Filters'));
+    await tester.tap(_filtersFinder(const Size(390, 844)));
     await _pumpFrames(tester);
 
     final apply = find.text('Apply');

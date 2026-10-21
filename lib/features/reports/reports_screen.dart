@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import 'pdf_download.dart';
 import 'report_data.dart';
 import 'report_pdf.dart';
 

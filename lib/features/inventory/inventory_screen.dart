@@ -433,11 +433,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       label: Text('$label ($count)'),
       selected: selected,
       onSelected: (_) => onTap(),
+      visualDensity:
+          isPhoneLayout(context) ? VisualDensity.compact : null,
       selectedColor: Theme.of(context).colorScheme.primary,
       labelStyle: TextStyle(
         color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
         fontWeight: FontWeight.w700,
-        fontSize: 13,
+        fontSize: isPhoneLayout(context) ? 12 : 13,
       ),
       backgroundColor: context.colors.isDark
           ? context.colors.quietFill
@@ -556,15 +558,26 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ),
               if (_type != 'Boxes') ...[
                 const SizedBox(width: 6),
-                OutlinedButton.icon(
-                  onPressed: _openFilters,
-                  icon: Badge(
-                    isLabelVisible: _activeFilterCount > 0,
-                    label: Text('$_activeFilterCount'),
-                    child: const Icon(Icons.filter_list, size: 20),
+                if (isPhoneLayout(context))
+                  IconButton(
+                    tooltip: 'Filters',
+                    onPressed: _openFilters,
+                    icon: Badge(
+                      isLabelVisible: _activeFilterCount > 0,
+                      label: Text('$_activeFilterCount'),
+                      child: const Icon(Icons.filter_list, size: 22),
+                    ),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _openFilters,
+                    icon: Badge(
+                      isLabelVisible: _activeFilterCount > 0,
+                      label: Text('$_activeFilterCount'),
+                      child: const Icon(Icons.filter_list, size: 20),
+                    ),
+                    label: const Text('Filters'),
                   ),
-                  label: const Text('Filters'),
-                ),
               ],
               if (isAdmin) ...[
                 const SizedBox(width: 4),
@@ -578,7 +591,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         ),
         SizedBox(
-          height: 40,
+          height: isPhoneLayout(context) ? 36 : 40,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -605,7 +618,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ? '$shownCount box${shownCount == 1 ? '' : 'es'}'
                       : '$shownCount item${shownCount == 1 ? '' : 's'}',
                   style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: isPhoneLayout(context) ? 11.5 : 12.5,
                       color: Theme.of(context).colorScheme.onSurfaceVariant)),
               if (_status != 'All') ...[
                 const SizedBox(width: 8),
@@ -790,6 +803,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget _itemTile(BuildContext context, InventoryItem item,
       {bool indented = false}) {
     final icon = _kindIcon(item.kind);
+    final phone = isPhoneLayout(context);
     return Padding(
       padding: EdgeInsets.only(bottom: 8, left: indented ? 32 : 0),
       child: AppCard(
@@ -802,11 +816,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           title: Text(item.code.isNotEmpty
               ? item.code
               : (item.serial ?? item.title),
-              style: const TextStyle(fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: phone ? 13.5 : 14)),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.title),
+              Text(item.title,
+                  style: TextStyle(fontSize: phone ? 12 : 13)),
               const SizedBox(height: 4),
               Row(
                 children: [
@@ -831,7 +848,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       '${item.location}${item.date == null ? '' : ' · ${item.date}'}',
                       overflow: TextOverflow.ellipsis,
                       style:
-                          TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline),
+                          TextStyle(fontSize: phone ? 11.5 : 12, color: Theme.of(context).colorScheme.outline),
                     ),
                   ),
                 ],

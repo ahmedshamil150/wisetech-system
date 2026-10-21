@@ -43,6 +43,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// Filters the sheet holds — the search box has its own count.
   int get _activeFilterCount {
     var n = 0;
+    if (_filter != 'All') n++;
     if (_party != 'All') n++;
     if (_actor != 'All') n++;
     if (_kind != 'All') n++;
@@ -88,39 +89,42 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
     return Column(
       children: [
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            itemCount: _filters.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final label = _filters[index];
-              final selected = _filter == label;
-              return ChoiceChip(
-                label: Text('$label (${counts[label] ?? 0})'),
-                selected: selected,
-                onSelected: (_) => setState(() {
-                  _filter = label;
-                  _party = 'All';
-                }),
-                selectedColor: Theme.of(context).colorScheme.primary,
-                labelStyle: TextStyle(
-                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-                backgroundColor: context.colors.isDark
-                    ? context.colors.quietFill
-                    : Theme.of(context).colorScheme.surface,
-                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-              );
-            },
+        // phones keep only the filter icon — the send-kind chips move
+        // into the Filters sheet
+        if (!isPhoneLayout(context))
+          SizedBox(
+            height: 44,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              itemCount: _filters.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final label = _filters[index];
+                final selected = _filter == label;
+                return ChoiceChip(
+                  label: Text('$label (${counts[label] ?? 0})'),
+                  selected: selected,
+                  onSelected: (_) => setState(() {
+                    _filter = label;
+                    _party = 'All';
+                  }),
+                  selectedColor: Theme.of(context).colorScheme.primary,
+                  labelStyle: TextStyle(
+                    color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                  backgroundColor: context.colors.isDark
+                      ? context.colors.quietFill
+                      : Theme.of(context).colorScheme.surface,
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                );
+              },
+            ),
           ),
-        ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          padding: EdgeInsets.fromLTRB(16, isPhoneLayout(context) ? 12 : 4, 16, 4),
           child: Row(
             children: [
               Expanded(
@@ -132,15 +136,26 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 ),
               ),
               const SizedBox(width: 6),
-              OutlinedButton.icon(
-                onPressed: _openFilters,
-                icon: Badge(
-                  isLabelVisible: _activeFilterCount > 0,
-                  label: Text('$_activeFilterCount'),
-                  child: const Icon(Icons.filter_list, size: 20),
+              if (isPhoneLayout(context))
+                IconButton(
+                  tooltip: 'Filters',
+                  onPressed: _openFilters,
+                  icon: Badge(
+                    isLabelVisible: _activeFilterCount > 0,
+                    label: Text('$_activeFilterCount'),
+                    child: const Icon(Icons.filter_list, size: 22),
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: _openFilters,
+                  icon: Badge(
+                    isLabelVisible: _activeFilterCount > 0,
+                    label: Text('$_activeFilterCount'),
+                    child: const Icon(Icons.filter_list, size: 20),
+                  ),
+                  label: const Text('Filters'),
                 ),
-                label: const Text('Filters'),
-              ),
               if (_hasFilters)
                 IconButton(
                   tooltip: 'Clear filters',
@@ -432,6 +447,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   Future<void> _openFilters() async {
     final rows = ref.read(movementsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final fullHistory = ref.read(allMovementsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final labels = ref.read(itemLabelsProvider);
+    final counts = _groupCounts(rows, fullHistory, labels);
     final showParty = _filter == 'Customer' || _filter == 'Dealer';
     // a choice from an earlier visit must still be selectable, even when
     // the rows behind it have changed
@@ -452,6 +471,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       title: 'Filters',
       heightFraction: 0.85,
       builder: (sheetContext) => _MovementFilterSheet(
+        show: _filter,
+        showCounts: counts,
         showParty: showParty,
         partyLabel:
             _filter == 'Customer' ? 'Any customer' : 'Any dealer',
@@ -468,6 +489,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     );
     if (result == null || !mounted) return;
     setState(() {
+      _filter = result.show;
       _party = result.party;
       _actor = result.actor;
       _kind = result.kind;
@@ -511,6 +533,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         : '';
     final reference = (row['reference'] ?? '').toString();
     final isDemo = row['is_demo'] == true;
+    final phone = isPhoneLayout(context);
 
     // any item of the send may carry flags, and the send itself too —
     // the card shows the first target that has one
@@ -552,8 +575,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   ],
                   Expanded(
                     child: Text('$label → ${row['to_location'] ?? ''}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: phone ? 13 : 14)),
                   ),
                 ],
               ),
@@ -561,13 +585,16 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 2),
-                  Text([
-                    row['movement_date'] ?? '',
-                    kind,
-                    if (isDemo) 'Demo',
-                    if (actorName.isNotEmpty) 'by $actorName',
-                    if (reference.isNotEmpty) reference,
-                  ].join(' · ')),
+                  Text(
+                    [
+                      row['movement_date'] ?? '',
+                      kind,
+                      if (isDemo) 'Demo',
+                      if (actorName.isNotEmpty) 'by $actorName',
+                      if (reference.isNotEmpty) reference,
+                    ].join(' · '),
+                    style: TextStyle(fontSize: phone ? 11.5 : 12),
+                  ),
                 ],
               ),
               trailing: Icon(Icons.chevron_right, size: 20, color: Theme.of(context).colorScheme.outline),
@@ -2057,6 +2084,7 @@ String _sendTitle(List<Map<String, dynamic>> rows, Map<String, String> labels) {
 /// What the Filters sheet hands back � display form, '' / 'All' meaning
 /// "off".
 typedef _MovementFilterValues = ({
+  String show,
   String party,
   String actor,
   String kind,
@@ -2065,10 +2093,13 @@ typedef _MovementFilterValues = ({
   String demo,
 });
 
-/// Every movement filter in one sheet: who it went to, who sent it, the
-/// item kind, the date range and whether demo rows are wanted.
+/// Every movement filter in one sheet: which sends to show, who they
+/// went to, who sent them, the item kind, the date range and whether
+/// demo rows are wanted.
 class _MovementFilterSheet extends StatefulWidget {
   const _MovementFilterSheet({
+    required this.show,
+    required this.showCounts,
     required this.showParty,
     required this.partyLabel,
     required this.party,
@@ -2083,6 +2114,8 @@ class _MovementFilterSheet extends StatefulWidget {
   });
 
   /// Only customer and dealer sends have a "sent to" name to pick.
+  final String show;
+  final Map<String, int> showCounts;
   final bool showParty;
   final String partyLabel;
   final String party;
@@ -2102,6 +2135,7 @@ class _MovementFilterSheet extends StatefulWidget {
 class _MovementFilterSheetState extends State<_MovementFilterSheet> {
   late final TextEditingController _from;
   late final TextEditingController _to;
+  late String _show;
   late String _party;
   late String _actor;
   late String _kind;
@@ -2114,6 +2148,7 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
     super.initState();
     _from = TextEditingController(text: widget.dateFrom);
     _to = TextEditingController(text: widget.dateTo);
+    _show = widget.show;
     _party = widget.party;
     _actor = widget.actor;
     _kind = widget.kind;
@@ -2129,6 +2164,7 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
 
   void _apply() {
     Navigator.pop(context, (
+      show: _show,
       party: widget.showParty ? _party : widget.party,
       actor: _actor,
       kind: _kind,
@@ -2176,6 +2212,41 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // on phone the send-kind chips live here instead of a
+                  // row above the list
+                  if (isPhoneLayout(context)) ...[
+                    _label('Show'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final option in _filters)
+                          ChoiceChip(
+                            label: Text(
+                                '$option (${widget.showCounts[option] ?? 0})'),
+                            selected: _show == option,
+                            onSelected: (_) => setState(() {
+                              _show = option;
+                              _party = 'All';
+                            }),
+                            selectedColor: scheme.primary,
+                            labelStyle: TextStyle(
+                              color: _show == option
+                                  ? Colors.white
+                                  : scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                            backgroundColor: context.colors.isDark
+                                ? context.colors.quietFill
+                                : scheme.surface,
+                            side:
+                                BorderSide(color: scheme.outlineVariant),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   if (widget.showParty) ...[
                     _label('Sent to'),
                     DropdownButtonFormField<String>(
@@ -2265,6 +2336,7 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
             children: [
               TextButton(
                 onPressed: () => Navigator.pop(context, (
+                  show: 'All',
                   party: 'All',
                   actor: 'All',
                   kind: 'All',
