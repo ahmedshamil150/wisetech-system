@@ -33,12 +33,26 @@ class _ProbeLine {
   }
 }
 
+/// One spare part inside a local purchase — a doctor sometimes sells a
+/// single board, sometimes several at once, so each keeps its own name,
+/// serial and condition.
+class _PartLine {
+  final model = TextEditingController();
+  final serial = TextEditingController();
+  String condition = 'Used';
+
+  void dispose() {
+    model.dispose();
+    serial.dispose();
+  }
+}
+
 /// Intake for used equipment bought from a local person. A purchase can
 /// hold any combination of items — a machine with its probes and printer,
-/// a machine alone, or just a probe or a printer. Everything enters the
-/// standing BATCH-LOCAL batch, linked to the seller as its vendor, and a
-/// probe or printer bought with the machine is attached to it so it
-/// travels with the machine later.
+/// a machine alone, just a probe or a printer, or spare parts on their
+/// own. Everything enters the standing BATCH-LOCAL batch, linked to the
+/// seller as its vendor, and a probe or printer bought with the machine
+/// is attached to it so it travels with the machine later.
 class LocalPurchaseForm extends ConsumerStatefulWidget {
   const LocalPurchaseForm({super.key});
 
@@ -50,6 +64,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
   bool _withMachine = true;
   bool _withProbe = false;
   bool _withPrinter = false;
+  bool _withPart = false;
 
   final _machineModel = TextEditingController();
   final _machineSerial = TextEditingController();
@@ -64,8 +79,9 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
   String _machineCondition = 'Used';
   String _printerCondition = 'Used';
   // A seller can hand over several probes with one machine, so the probe
-  // section holds a line per probe.
+  // section holds a line per probe; parts come one per line the same way.
   final List<_ProbeLine> _probeLines = [];
+  final List<_PartLine> _partLines = [];
   int? _batchId;
   bool _loadingId = true;
   bool _saving = false;
@@ -104,6 +120,9 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       c.dispose();
     }
     for (final line in _probeLines) {
+      line.dispose();
+    }
+    for (final line in _partLines) {
       line.dispose();
     }
     super.dispose();
@@ -161,8 +180,9 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       showSnack(context, 'Seller name is required.', error: true);
       return;
     }
-    if (!_withMachine && !_withProbe && !_withPrinter) {
-      showSnack(context, 'Pick at least one item — machine, probe or printer.',
+    if (!_withMachine && !_withProbe && !_withPrinter && !_withPart) {
+      showSnack(context, 'Pick at least one item — machine, probe, printer '
+          'or part.',
           error: true);
       return;
     }
@@ -191,6 +211,24 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     if (_withPrinter && _printerModel.text.trim().isEmpty) {
       showSnack(context, 'Printer model is required.', error: true);
       return;
+    }
+    if (_withPart) {
+      if (_partLines.isEmpty) {
+        showSnack(context, 'Add a part name or turn the part switch off.',
+            error: true);
+        return;
+      }
+      for (var i = 0; i < _partLines.length; i++) {
+        if (_partLines[i].model.text.trim().isEmpty) {
+          showSnack(
+              context,
+              _partLines.length == 1
+                  ? 'Part name is required.'
+                  : 'Part ${i + 1} name is required.',
+              error: true);
+          return;
+        }
+      }
     }
     if (_batchId == null) {
       showSnack(context,
@@ -299,6 +337,41 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
           if (notes.isNotEmpty) 'notes': notes,
         });
         if (!created.contains(code)) created.add(code);
+      }
+
+      // Spare parts stand on their own: each line becomes its own part
+      // row with the next PART-… number, never attached to the machine.
+      if (_withPart) {
+        for (var i = 0; i < _partLines.length; i++) {
+          final line = _partLines[i];
+          final name = line.model.text.trim();
+          final (productId, brandId) = await _productFor(name, 'Part');
+          final code = await suggestedId('part');
+          await db.from('parts').insert({
+            'internal_id': code,
+            'name_model': name,
+            'catalog_product_id': productId,
+            'batch_id': _batchId,
+            'vendor_id': sellerId,
+            'acquisition_date': date,
+            'status': 'Available',
+            'current_location': 'Company',
+            'condition': line.condition,
+            'brand_id': ?brandId,
+            if (line.serial.text.trim().isNotEmpty)
+              'serial_number': line.serial.text.trim(),
+            // the price lands on the machine first, then the first
+            // standalone item — parts only when they are all there is
+            if (price != null &&
+                !_withMachine &&
+                !_withProbe &&
+                !_withPrinter &&
+                i == 0)
+              'purchase_price': price,
+            if (notes.isNotEmpty) 'notes': notes,
+          });
+          if (!created.contains(code)) created.add(code);
+        }
       }
 
       ref.invalidate(inventoryProvider);
@@ -415,12 +488,77 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     );
   }
 
+  /// One part's fields inside the parts section. Several parts get a
+  /// "Part N" header and a remove button each, exactly like probes.
+  Widget _partLine(BuildContext context, int i, List<String> partNames) {
+    final line = _partLines[i];
+    final many = _partLines.length > 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (many && i > 0) ...[
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+        ],
+        if (many)
+          Row(
+            children: [
+              Expanded(
+                child: Text('Part ${i + 1}',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+              IconButton(
+                tooltip: 'Remove this part',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () {
+                  line.dispose();
+                  setState(() => _partLines.removeAt(i));
+                },
+              ),
+            ],
+          ),
+        PickyField(
+          controller: line.model,
+          label: 'Name *',
+          hint: 'e.g. CB board, power supply — suggestions appear',
+          options: partNames,
+          pickTitle: 'part names',
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: line.serial,
+          autocorrect: false,
+          decoration: const InputDecoration(labelText: 'Serial number'),
+        ),
+        const SizedBox(height: 12),
+        _conditionField(
+          value: line.condition,
+          options: _kitItemConditions,
+          label: 'Condition',
+          onChanged: (v) => line.condition = v,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final productNames = ref.watch(productsProvider).maybeWhen(
-          data: (rows) => rows.map((r) => r['name_model'].toString()).toList(),
-          orElse: () => const <String>[],
+    final products = ref.watch(productsProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
         );
+    final productNames = [
+      for (final row in products) row['name_model'].toString(),
+    ];
+    // the part suggestions only offer catalog parts, so a board never
+    // shows up next to machine models
+    final partNames = [
+      for (final row in products)
+        if (row['category'] == 'Part') row['name_model'].toString(),
+    ];
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -472,6 +610,12 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                           })),
                       _itemChip(context, 'Printer', _withPrinter,
                           () => setState(() => _withPrinter = !_withPrinter)),
+                      _itemChip(context, 'Part', _withPart, () => setState(() {
+                            _withPart = !_withPart;
+                            if (_withPart && _partLines.isEmpty) {
+                              _partLines.add(_PartLine());
+                            }
+                          })),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -607,6 +751,30 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                       options: _kitItemConditions,
                       label: 'Condition',
                       onChanged: (v) => _printerCondition = v,
+                    ),
+                  ],
+                  if (_withPart) ...[
+                    const SizedBox(height: 16),
+                    _sectionTitle(_partLines.length > 1 ? 'Parts' : 'Part'),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, bottom: 8),
+                      child: Text(
+                        'Each line becomes its own part in stock, bought '
+                        'from this seller.',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                    for (var i = 0; i < _partLines.length; i++)
+                      _partLine(context, i, partNames),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          setState(() => _partLines.add(_PartLine())),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add another part'),
                     ),
                   ],
                   const SizedBox(height: 16),

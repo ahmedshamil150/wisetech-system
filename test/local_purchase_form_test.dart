@@ -67,7 +67,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await _pumpFrames(tester);
     expect(
-        find.text('Pick at least one item — machine, probe or printer.'),
+        find.text('Pick at least one item — machine, probe, printer or part.'),
         findsOneWidget);
   });
 
@@ -131,5 +131,50 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await _pumpFrames(tester);
     expect(find.text('Probe 2 model is required.'), findsOneWidget);
+  });
+
+  testWidgets('the parts section can hold several parts', (tester) async {
+    await _openForm(tester);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Part'));
+    await _pumpFrames(tester);
+    // machine + one part line
+    expect(find.byType(PickyField), findsNWidgets(2));
+
+    final add = find.widgetWithText(OutlinedButton, 'Add another part');
+    await tester.ensureVisible(add);
+    await _pumpFrames(tester);
+    await tester.tap(add);
+    await _pumpFrames(tester);
+
+    expect(find.byType(PickyField), findsNWidgets(3));
+    expect(find.text('Parts'), findsOneWidget);
+    expect(find.text('Part 2'), findsOneWidget);
+
+    // Removing the extra part drops back to the plain single layout.
+    final remove = find.byIcon(Icons.close);
+    await tester.ensureVisible(remove.last);
+    await _pumpFrames(tester);
+    await tester.tap(remove.last);
+    await _pumpFrames(tester);
+
+    expect(find.byType(PickyField), findsNWidgets(2));
+    expect(find.text('Parts'), findsNothing);
+    expect(find.text('Part 2'), findsNothing);
+  });
+
+  testWidgets('save asks for a name per selected part', (tester) async {
+    await _openForm(tester);
+    await tester.enterText(find.byType(TextField).first, 'Ali');
+
+    // machine off, so the parts validation is what answers
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Machine'));
+    await _pumpFrames(tester);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Part'));
+    await _pumpFrames(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await _pumpFrames(tester);
+    expect(find.text('Part name is required.'), findsOneWidget);
   });
 }
