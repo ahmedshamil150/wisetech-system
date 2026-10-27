@@ -102,11 +102,54 @@ void main() {
       expect(parts.back, isEmpty);
     });
 
-    test('an item that moved on counts as still out, not returned', () {
+    test('an item a later send took lands in its own bucket', () {
       final send = [_row(13, 'machine', 27), _row(12, 'printer', 45825)];
       final parts = partitionSendRows(send, latest);
-      expect(parts.out.map((r) => r['id']), [13, 12]);
+      expect(parts.out.map((r) => r['id']), [12]);
+      expect(parts.movedOn.map((r) => r['id']), [13]);
       expect(parts.back, isEmpty);
+    });
+
+    test('90T send with the 33T probe: two back, one moved on', () {
+      // machine 101 + probe 194 came back on 14-10; probe 65 (33T) came
+      // back too and left again on a newer send the same day
+      final scenario = latestMovementByItem([
+        _row(403, 'machine', 101),
+        _row(404, 'probe', 194),
+        _row(405, 'probe', 65),
+        _row(1441, 'machine', 101, type: 'Return'),
+        _row(1442, 'probe', 194, type: 'Return'),
+        _row(1443, 'probe', 65, type: 'Return'),
+        _row(1444, 'probe', 65, group: 'other-send'),
+      ]);
+      final parts = partitionSendRows(
+          [_row(403, 'machine', 101), _row(404, 'probe', 194), _row(405, 'probe', 65)],
+          scenario);
+      expect(parts.back.map((r) => r['id']), [403, 404]);
+      expect(parts.movedOn.map((r) => r['id']), [405]);
+      expect(parts.out, isEmpty);
+      expect(returnedBannerText(parts.back.length, 3),
+          '2 of 3 items came back from this send');
+    });
+  });
+
+  group('returnedBannerText', () {
+    test('the whole send back reads as plain "Back in inventory"', () {
+      expect(returnedBannerText(3, 3), 'Back in inventory');
+      expect(returnedBannerText(4, 3), 'Back in inventory');
+    });
+
+    test('one returned item is called out on its own', () {
+      expect(returnedBannerText(1, 3),
+          'Only this item came back from this send');
+    });
+
+    test('a partial return says how many of the send came back', () {
+      // 90T + its probe back, the 33T probe still with the customer:
+      // regression — this once printed the raw row list instead of the
+      // count ('$rows.length' interpolated the list, not its length)
+      expect(returnedBannerText(2, 3),
+          '2 of 3 items came back from this send');
     });
   });
 }

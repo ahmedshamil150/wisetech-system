@@ -209,11 +209,16 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               // back: the items still out stay on its card under the
               // send's own tab, the returned ones move to 'Returned',
               // where the card says only this item came back — a
-              // returned item never sits on the send's card again
-              final visible = <({List<Map<String, dynamic>> rows, int total})>[];
+              // returned item never sits on the send's card again. A row
+              // a later send took with it stays on its own card too, but
+              // marked 'Moved on', so it never reads as a live send.
+              final visible =
+                  <({List<Map<String, dynamic>> rows, int total, Set<int> movedOn})>[];
               for (final members in entries) {
                 final parts = partitionSendRows(members, latest);
-                final shown = _filter == 'Returned' ? parts.back : parts.out;
+                final shown = _filter == 'Returned'
+                    ? parts.back
+                    : <Map<String, dynamic>>[...parts.out, ...parts.movedOn];
                 if (shown.isEmpty) continue;
                 if (_filter != 'All' &&
                     _filter != 'Returned' &&
@@ -224,7 +229,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     !shown.any((row) => _searchMatches(row, labels))) {
                   continue;
                 }
-                visible.add((rows: shown, total: members.length));
+                visible.add((
+                  rows: shown,
+                  total: members.length,
+                  movedOn: {for (final row in parts.movedOn) row['id'] as int},
+                ));
               }
               if (visible.isEmpty) {
                 return EmptyState(
@@ -263,6 +272,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                           return _tile(context, card.rows, labels,
                               back: _filter == 'Returned',
                               sendTotal: card.total,
+                              movedOn: card.movedOn,
                               returnedOn: _filter == 'Returned'
                                   ? _returnedDates(card.rows, latest)
                                   : const <int, String>{});
@@ -332,7 +342,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     for (final members in entries) {
       final parts = partitionSendRows(members, latest);
       for (final filter in _filters) {
-        final shown = filter == 'Returned' ? parts.back : parts.out;
+        final shown = filter == 'Returned'
+            ? parts.back
+            : <Map<String, dynamic>>[...parts.out, ...parts.movedOn];
         if (shown.isEmpty) continue;
         if (filter != 'All' &&
             filter != 'Returned' &&
@@ -515,6 +527,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       Map<String, String> labels,
       {required bool back,
       int? sendTotal,
+      Set<int> movedOn = const {},
       Map<int, String> returnedOn = const {}}) {
     final row = rows.first;
     final kind = (row['movement_type'] ?? '').toString();
@@ -588,6 +601,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                       row['movement_date'] ?? '',
                       if (returnedOn.containsKey(row['id'] as int))
                         'Back ${returnedOn[row['id'] as int]}',
+                      if (movedOn.contains(row['id'] as int)) 'Moved on',
                       kind,
                       if (movementSold(row)) 'Sold',
                       if (isOutboundKind(kind))
@@ -616,12 +630,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                         // a partial return says how much of the send
                         // came back, so one returned item reads as its
                         // own event rather than the whole send
-                        sendTotal == null || sendTotal == rows.length
+                        sendTotal == null
                             ? 'Back in inventory'
-                            : rows.length == 1
-                                ? 'Only this item came back from this send'
-                                : '$rows.length of $sendTotal items came '
-                                    'back from this send',
+                            : returnedBannerText(rows.length, sendTotal),
                         style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
@@ -653,6 +664,15 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                         Padding(
                           padding: EdgeInsets.only(left: 6),
                           child: Text('Demo',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Theme.of(context).colorScheme.outline)),
+                        ),
+                      if (movedOn.contains(other['id'] as int))
+                        Padding(
+                          padding: EdgeInsets.only(left: 6),
+                          child: Text('Moved on',
                               style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
@@ -1006,13 +1026,17 @@ class _MovementDetails extends ConsumerWidget {
     SendRowState stateOf(Map<String, dynamic> row) =>
         sendRowState(row, latest);
 
-    // what already came back is kept apart from what is still out: a
-    // single returned item shows in its own "Returned" section here and
-    // leaves the send's card in the list
+    // what already came back is kept apart from what is still out, and
+    // from what a later send took with it: each gets its own section
+    // here, and the returned ones leave the send's card in the list
     final parts = partitionSendRows(rows, latest);
     final outRows = parts.out;
     final backRows = parts.back;
-    final mixed = outRows.isNotEmpty && backRows.isNotEmpty;
+    final movedRows = parts.movedOn;
+    final mixed = [outRows, movedRows, backRows]
+            .where((groupRows) => groupRows.isNotEmpty)
+            .length >
+        1;
 
     String labelOf(Map<String, dynamic> row) {
       final key = movementItemKey(row);
@@ -1020,7 +1044,7 @@ class _MovementDetails extends ConsumerWidget {
       return labels['${key.key}:${key.value}'] ?? 'Unknown item';
     }
 
-    final back = outRows.isEmpty; // every item of this send is back
+    final back = outRows.isEmpty && movedRows.isEmpty; // all of it is back
     final canManage = isAdmin || rows.any((r) => r['actor_id'] == myId);
     final missing = rows.where(movementPartyMissing).toList();
     final canFixParty = missing.isNotEmpty &&
@@ -1203,6 +1227,26 @@ class _MovementDetails extends ConsumerWidget {
           ],
         );
 
+    // a send with every fate in it reads as three lists, not one
+    final sections = <(String, List<Map<String, dynamic>>)>[];
+    if (mixed) {
+      if (outRows.isNotEmpty) {
+        sections.add(('Still out (${outRows.length})', outRows));
+      }
+      if (movedRows.isNotEmpty) {
+        sections.add(
+            ('Moved on with a later send (${movedRows.length})', movedRows));
+      }
+      if (backRows.isNotEmpty) {
+        sections.add(('Returned (${backRows.length})', backRows));
+      }
+    } else {
+      sections.add((
+        back ? 'Returned items (${rows.length})' : 'Items (${rows.length})',
+        rows,
+      ));
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
@@ -1287,18 +1331,10 @@ class _MovementDetails extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
         ],
-        // what is back is shown apart from what is still out: a single
-        // returned item leaves this list and shows under 'Returned'
-        if (mixed) ...[
-          section('Still out (${outRows.length})', outRows),
-          section('Returned (${backRows.length})', backRows),
-        ] else ...[
-          section(
-              back
-                  ? 'Returned items (${rows.length})'
-                  : 'Items (${rows.length})',
-              rows),
-        ],
+        // each fate gets its own list: a single returned item leaves
+        // this list and shows under 'Returned'
+        for (final (title, sectionRows) in sections)
+          section(title, sectionRows),
       ],
     );
   }

@@ -326,19 +326,40 @@ SendRowState sendRowState(
   return SendRowState.movedOn;
 }
 
-/// Splits one send's rows into the items still out with it and the
-/// items that already came back. The list shows the first part on the
-/// send's own card and the second part under 'Returned', so a single
-/// returned item leaves its card instead of sitting on it.
-({List<Map<String, dynamic>> out, List<Map<String, dynamic>> back})
+/// Splits one send's rows into three: what is still out with it, what
+/// already came back, and what a later movement took away (returned and
+/// sent on again). The list shows the first two — the returned part
+/// under 'Returned' — and the detail sheet labels each group, so a
+/// single returned item leaves its send's card instead of sitting on it.
+({List<Map<String, dynamic>> out,
+    List<Map<String, dynamic>> back,
+    List<Map<String, dynamic>> movedOn})
     partitionSendRows(List<Map<String, dynamic>> rows,
         Map<String, Map<String, dynamic>> latest) {
   final out = <Map<String, dynamic>>[];
   final back = <Map<String, dynamic>>[];
+  final movedOn = <Map<String, dynamic>>[];
   for (final row in rows) {
-    (sendRowState(row, latest) == SendRowState.back ? back : out).add(row);
+    switch (sendRowState(row, latest)) {
+      case SendRowState.back:
+        back.add(row);
+      case SendRowState.movedOn:
+        movedOn.add(row);
+      case SendRowState.out:
+        out.add(row);
+    }
   }
-  return (out: out, back: back);
+  return (out: out, back: back, movedOn: movedOn);
+}
+
+/// The green line under a card in the Returned tab: the whole send came
+/// back, or — when only part of it did — how many of its items did.
+/// [shown] is the number of returned rows on the card, [sendTotal] how
+/// many items the send had altogether.
+String returnedBannerText(int shown, int sendTotal) {
+  if (shown >= sendTotal) return 'Back in inventory';
+  if (shown == 1) return 'Only this item came back from this send';
+  return '$shown of $sendTotal items came back from this send';
 }
 
 InventoryItem _item(String kind, Map<String, dynamic> row,
