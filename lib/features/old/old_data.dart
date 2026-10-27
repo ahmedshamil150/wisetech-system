@@ -179,6 +179,11 @@ typedef OldSalesArgs = ({
   String invoicePresence, // All | With invoice | Without invoice
 });
 
+/// The `party:kind:NAME` notes line that records a sale's buyer when the
+/// buyer is not a customers row — the exact format the sales list parses
+/// back into a name and chip, and what the legacy import wrote too.
+String oldSalePartyNote(String kind, String name) => 'party:$kind:$name';
+
 /// `dd-MM-yyyy` → `yyyy-MM-dd` for the database.
 String oldDisplayToIso(String display) {
   final parts = display.split('-');

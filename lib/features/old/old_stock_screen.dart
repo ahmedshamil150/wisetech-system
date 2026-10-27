@@ -6,6 +6,7 @@ import '../common/widgets.dart';
 import '../data/data.dart';
 import 'old_data.dart';
 import 'old_item_form.dart';
+import 'old_sell_sheet.dart';
 import 'old_table.dart';
 
 /// The old stock: BATCH-OLD machines, probes and printers plus the shared
@@ -130,8 +131,13 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
 }
 
 /// A single old-stock row: code, model, serial, status chip, location.
+/// Admins get a sell button on the row itself (hidden once the item is
+/// Sold); tapping the row still opens the edit form.
 Widget _oldItemTile(BuildContext context, Map<String, dynamic> row,
-    {required String code, required String name, VoidCallback? onTap}) {
+    {required String code,
+    required String name,
+    VoidCallback? onTap,
+    VoidCallback? onSell}) {
   final serial = (row['serial_number'] ?? '').toString();
   final status = (row['status'] ?? '').toString();
   final location = (row['current_location'] ?? '').toString();
@@ -174,7 +180,20 @@ Widget _oldItemTile(BuildContext context, Map<String, dynamic> row,
             ),
           ],
         ),
-        trailing: const Icon(Icons.chevron_right, size: 20),
+        trailing: onSell == null
+            ? const Icon(Icons.chevron_right, size: 20)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Sell',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onSell,
+                    icon: const Icon(Icons.sell_outlined, size: 20),
+                  ),
+                  const Icon(Icons.chevron_right, size: 20),
+                ],
+              ),
       ),
     ),
   );
@@ -189,6 +208,7 @@ class _MachinesPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider);
     final data = ref.watch(oldMachinesProvider(
         (page: page, search: search, status: 'All')));
     return data.when(
@@ -204,7 +224,10 @@ class _MachinesPane extends ConsumerWidget {
         rowBuilder: (row) => _oldItemTile(context, row,
             code: (row['machine_id'] ?? '').toString(),
             name: (row['model'] ?? '').toString(),
-            onTap: () => showOldItemForm(context, kind: 'machine', row: row)),
+            onTap: () => showOldItemForm(context, kind: 'machine', row: row),
+            onSell: isAdmin && row['status'] != 'Sold'
+                ? () => showOldSellSheet(context, kind: 'machine', row: row)
+                : null),
       ),
     );
   }
@@ -219,6 +242,7 @@ class _ProbesPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider);
     final data = ref
         .watch(oldProbesProvider((page: page, search: search, status: 'All')));
     return data.when(
@@ -234,7 +258,10 @@ class _ProbesPane extends ConsumerWidget {
         rowBuilder: (row) => _oldItemTile(context, row,
             code: (row['internal_id'] ?? '').toString(),
             name: (row['model'] ?? '').toString(),
-            onTap: () => showOldItemForm(context, kind: 'probe', row: row)),
+            onTap: () => showOldItemForm(context, kind: 'probe', row: row),
+            onSell: isAdmin && row['status'] != 'Sold'
+                ? () => showOldSellSheet(context, kind: 'probe', row: row)
+                : null),
       ),
     );
   }
@@ -249,6 +276,7 @@ class _PrintersPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider);
     final data = ref.watch(oldPrintersProvider(
         (page: page, search: search, status: 'All')));
     return data.when(
@@ -264,7 +292,10 @@ class _PrintersPane extends ConsumerWidget {
         rowBuilder: (row) => _oldItemTile(context, row,
             code: (row['internal_id'] ?? '').toString(),
             name: (row['name_model'] ?? '').toString(),
-            onTap: () => showOldItemForm(context, kind: 'printer', row: row)),
+            onTap: () => showOldItemForm(context, kind: 'printer', row: row),
+            onSell: isAdmin && row['status'] != 'Sold'
+                ? () => showOldSellSheet(context, kind: 'printer', row: row)
+                : null),
       ),
     );
   }
@@ -281,6 +312,7 @@ class _PartsPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider);
     final all = ref.watch(inventoryProvider).maybeWhen(
           data: (rows) => rows.where((i) => i.kind == 'part').toList(),
           orElse: () => const <InventoryItem>[],
@@ -321,7 +353,10 @@ class _PartsPane extends ConsumerWidget {
       rowBuilder: (row) => _oldItemTile(context, row,
           code: (row['code'] ?? '').toString(),
           name: (row['name'] ?? '').toString(),
-          onTap: () => _openPart(context, row['id'] as int)),
+          onTap: () => _openPart(context, row['id'] as int),
+          onSell: isAdmin && row['status'] != 'Sold'
+              ? () => showOldSellSheet(context, kind: 'part', row: row)
+              : null),
     );
   }
 

@@ -208,6 +208,46 @@ class _OldMovementFormState extends ConsumerState<_OldMovementForm> {
 // sales
 // ---------------------------------------------------------------------------
 
+/// Asks once, then removes a sale and its line items. Returns true when
+/// the rows are gone — the caller refreshes its list and closes its sheet.
+/// Nothing else is touched: only this sale's own rows go.
+Future<bool> confirmDeleteOldSale(
+  BuildContext context,
+  WidgetRef ref,
+  Map<String, dynamic> row,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Delete this sale?'),
+      content: const Text(
+          'This removes the sale and its line items. This cannot be undone.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel')),
+        FilledButton(
+          style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return false;
+  try {
+    // remove the line items first in case there is no cascade
+    await db.from('sale_items').delete().eq('sale_id', row['id']);
+    await db.from('sales').delete().eq('id', row['id']);
+    ref.invalidate(oldSalesProvider);
+    return true;
+  } catch (error) {
+    if (context.mounted) showSnack(context, errorMessage(error), error: true);
+    return false;
+  }
+}
+
 /// Opens the edit form for one imported sale.
 Future<void> showOldSaleForm(
   BuildContext context, {
@@ -303,42 +343,11 @@ class _OldSaleFormState extends ConsumerState<_OldSaleForm> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this sale?'),
-        content: const Text(
-            'This removes the sale and its line items. This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    if (!mounted) return;
-    setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
-    try {
-      // remove the line items first in case there is no cascade
-      await db.from('sale_items').delete().eq('sale_id', widget.row['id']);
-      await db.from('sales').delete().eq('id', widget.row['id']);
-      ref.invalidate(oldSalesProvider);
-      if (!mounted) return;
-      Navigator.pop(context);
-      messenger.showSnackBar(const SnackBar(content: Text('Sale deleted.')));
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      showSnack(context, errorMessage(error), error: true);
-    }
+    if (!await confirmDeleteOldSale(context, ref, widget.row)) return;
+    if (!mounted) return;
+    Navigator.pop(context);
+    messenger.showSnackBar(const SnackBar(content: Text('Sale deleted.')));
   }
 
   @override

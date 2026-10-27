@@ -143,7 +143,7 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
     final trno = (row['old_trno'] ?? '').toString();
     final invoice = (row['invoice_reference'] ?? '').toString();
     final price = row['sale_price'];
-    final buyer = _parseBuyer(row);
+    final buyer = oldSaleBuyer(row);
     final lines = (row['sale_items'] as List?)?.cast<Map>() ?? [];
     final lineSummary = lines
         .map((line) => (line['item_description'] ?? '').toString())
@@ -220,7 +220,7 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
   }
 
   void _showDetails(Map<String, dynamic> row, {required bool isAdmin}) {
-    final buyer = _parseBuyer(row);
+    final buyer = oldSaleBuyer(row);
     final lines = (row['sale_items'] as List?)?.cast<Map>() ?? [];
     final notes = (row['notes'] ?? '').toString();
     final cleanNotes = notes
@@ -247,7 +247,23 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
                       style:
                           TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                 ),
-                if (isAdmin)
+                if (isAdmin) ...[
+                  TextButton.icon(
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final deleted = await confirmDeleteOldSale(
+                          context, ref, row);
+                      if (!deleted || !sheetContext.mounted) return;
+                      Navigator.pop(sheetContext);
+                      messenger.showSnackBar(
+                          const SnackBar(content: Text('Sale deleted.')));
+                    },
+                    icon: Icon(Icons.delete_outline,
+                        size: 18, color: Theme.of(context).colorScheme.error),
+                    label: Text('Delete',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
+                  ),
                   TextButton.icon(
                     onPressed: () {
                       Navigator.pop(sheetContext);
@@ -256,6 +272,7 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     label: const Text('Edit'),
                   ),
+                ],
                 TextButton(
                   onPressed: () => Navigator.pop(sheetContext),
                   child: const Text('Close'),
@@ -376,9 +393,9 @@ class _OldSalesScreenState extends ConsumerState<OldSalesScreen> {
 
 /// Who bought the sale: a customers row, a party:kind:NAME tag in notes
 /// (dealer/branch sales), or an unknown legacy customer.
-typedef _Buyer = ({String name, String kind});
+typedef OldSaleBuyer = ({String name, String kind});
 
-_Buyer _parseBuyer(Map<String, dynamic> row) {
+OldSaleBuyer oldSaleBuyer(Map<String, dynamic> row) {
   final customer = (row['customers'] as Map?)?['name']?.toString() ?? '';
   if (customer.isNotEmpty) return (name: customer, kind: 'Customer');
   final notes = (row['notes'] ?? '').toString();
