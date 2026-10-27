@@ -876,7 +876,9 @@ final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
       .select(
         'id, job_number, received_at, problem_description, repair_notes, '
         'return_notes, status, returned_at, collected_by, customer_contact, '
-        'estimated_cost, final_cost, created_at, customers(name), '
+        'delivered_by, accessories_received, condition_on_arrival, '
+        'estimated_cost, final_cost, money_received, money_received_by, '
+        'created_at, customer_id, customers(name), '
         'repair_items(id, equipment_type, name_model, serial_number, quantity), '
         'profiles:actor_id(display_name, username)',
       )
@@ -913,12 +915,15 @@ Future<int> createRepair({
   return id as int;
 }
 
-/// Marks a repair as fixed and handed back.
+/// Marks a repair as fixed and handed back — with the money that came
+/// over the counter at that moment and whoever took it.
 Future<void> repairSentBack({
   required int id,
   required String returnedAt,
   String? collectedBy,
   String? notes,
+  double? moneyReceived,
+  String? receivedBy,
 }) async {
   await _db
       .from('repair_jobs')
@@ -928,8 +933,115 @@ Future<void> repairSentBack({
         if (collectedBy != null && collectedBy.isNotEmpty)
           'collected_by': collectedBy,
         if (notes != null && notes.isNotEmpty) 'repair_notes': notes,
+        'money_received': ?moneyReceived,
+        if (receivedBy != null && receivedBy.isNotEmpty)
+          'money_received_by': receivedBy,
       })
       .eq('id', id);
+}
+
+/// The payment line of a returned repair — "5000 — received by Ahmed",
+/// or '' when the return carried no money record.
+String repairMoneyText(Map<String, dynamic> job) {
+  final raw = job['money_received'];
+  final amount = raw == null ? null : double.tryParse('$raw');
+  if (amount == null || amount == 0) return '';
+  final shown = amount == amount.roundToDouble()
+      ? amount.toInt().toString()
+      : '$amount';
+  final by = (job['money_received_by'] ?? '').toString().trim();
+  return by.isEmpty ? shown : '$shown — received by $by';
+}
+
+/// Edits a repair job and reconciles its item list: lines carrying an id
+/// are updated in place, new lines are inserted, lines left out of the
+/// list are deleted. Only this job's own rows are touched.
+Future<void> updateRepair({
+  required int id,
+  required String customerName,
+  String? contact,
+  required String receivedAt,
+  String? problem,
+  String? deliveredBy,
+  String? accessories,
+  String? condition,
+  double? estimatedCost,
+  double? finalCost,
+  String? repairNotes,
+  required String status,
+  String? returnedAt,
+  String? collectedBy,
+  String? returnNotes,
+  double? moneyReceived,
+  String? receivedBy,
+  required List<Map<String, dynamic>> items,
+}) async {
+  // a renamed sender moves the job to that customer (created if new)
+  final customerId = await resolveReferenceId(
+      table: 'customers',
+      name: customerName,
+      payload: {'customer_type': 'Customer'});
+
+  String? nullable(String text) => text.trim().isEmpty ? null : text.trim();
+
+  await _db.from('repair_jobs').update({
+    'customer_id': customerId,
+    'customer_contact': nullable(contact ?? ''),
+    'received_at': receivedAt,
+    'problem_description': problem?.trim() ?? '',
+    'delivered_by': nullable(deliveredBy ?? ''),
+    'accessories_received': nullable(accessories ?? ''),
+    'condition_on_arrival': nullable(condition ?? ''),
+    'estimated_cost': estimatedCost,
+    'final_cost': finalCost,
+    'repair_notes': nullable(repairNotes ?? ''),
+    'status': status,
+    // the return details belong to a returned job only
+    if (status == 'Returned') ...{
+      'returned_at': nullable(returnedAt ?? ''),
+      'collected_by': nullable(collectedBy ?? ''),
+      'return_notes': nullable(returnNotes ?? ''),
+      'money_received': moneyReceived,
+      'money_received_by': nullable(receivedBy ?? ''),
+    },
+  }).eq('id', id);
+
+  final keep = <int>{};
+  for (final item in items) {
+    final serial = '${item['serial'] ?? ''}'.trim();
+    final row = {
+      'equipment_type': '${item['type'] ?? 'machine'}',
+      'name_model': '${item['model'] ?? ''}',
+      'serial_number': serial.isEmpty ? null : serial,
+      'quantity': 1,
+    };
+    final itemId = item['id'];
+    if (itemId is int) {
+      await _db.from('repair_items').update(row).eq('id', itemId);
+      keep.add(itemId);
+    } else {
+      final inserted = await _db
+          .from('repair_items')
+          .insert({...row, 'repair_job_id': id})
+          .select('id')
+          .single();
+      keep.add(inserted['id'] as int);
+    }
+  }
+  final existing =
+      await _db.from('repair_items').select('id').eq('repair_job_id', id);
+  for (final row in existing) {
+    final itemId = row['id'] as int;
+    if (!keep.contains(itemId)) {
+      await _db.from('repair_items').delete().eq('id', itemId);
+    }
+  }
+}
+
+/// Removes a repair job and its items — only this job's own rows.
+Future<void> deleteRepair(int id) async {
+  await _db.from('repair_items').delete().eq('repair_job_id', id);
+  await _db.from('repair_jobs').delete().eq('id', id);
 }
 
 /// Puts a leftover probe into a box: it comes off its machine, becomes
