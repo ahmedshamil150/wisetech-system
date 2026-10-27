@@ -281,6 +281,66 @@ String movementToday() {
   return '${two(now.day)}-${two(now.month)}-${now.year}';
 }
 
+/// `machine:12` style key of the item a movement row is about — the
+/// same key [itemLabelsProvider] and InventoryItem.key use. Null when
+/// the row names no item.
+MapEntry<String, int>? movementItemKey(Map<String, dynamic> row) {
+  for (final kind in kItemKinds) {
+    final id = row['${kind}_id'];
+    if (id is int) return MapEntry(kind, id);
+  }
+  return null;
+}
+
+/// The newest movement row of every item in [rows], keyed `kind:id`.
+/// Whether an item is still out, back in stock or moved on is read off
+/// this — the list, the counts and the detail sheet all share it.
+Map<String, Map<String, dynamic>> latestMovementByItem(
+    Iterable<Map<String, dynamic>> rows) {
+  final latest = <String, Map<String, dynamic>>{};
+  for (final row in rows) {
+    final key = movementItemKey(row);
+    if (key == null) continue;
+    final mapKey = '${key.key}:${key.value}';
+    final id = row['id'] as int;
+    final seen = latest[mapKey];
+    if (seen == null || id > (seen['id'] as int)) latest[mapKey] = row;
+  }
+  return latest;
+}
+
+/// Where a send's member stands right now: still out with this send,
+/// already back in stock, or moved on to a later movement.
+enum SendRowState { out, back, movedOn }
+
+/// The state of one send row, judged from [latest] (from
+/// [latestMovementByItem]).
+SendRowState sendRowState(
+    Map<String, dynamic> row, Map<String, Map<String, dynamic>> latest) {
+  final key = movementItemKey(row);
+  if (key == null) return SendRowState.movedOn;
+  final last = latest['${key.key}:${key.value}'];
+  if (last == null) return SendRowState.out;
+  if (last['movement_type'] == 'Return') return SendRowState.back;
+  if (last['id'] == row['id']) return SendRowState.out;
+  return SendRowState.movedOn;
+}
+
+/// Splits one send's rows into the items still out with it and the
+/// items that already came back. The list shows the first part on the
+/// send's own card and the second part under 'Returned', so a single
+/// returned item leaves its card instead of sitting on it.
+({List<Map<String, dynamic>> out, List<Map<String, dynamic>> back})
+    partitionSendRows(List<Map<String, dynamic>> rows,
+        Map<String, Map<String, dynamic>> latest) {
+  final out = <Map<String, dynamic>>[];
+  final back = <Map<String, dynamic>>[];
+  for (final row in rows) {
+    (sendRowState(row, latest) == SendRowState.back ? back : out).add(row);
+  }
+  return (out: out, back: back);
+}
+
 InventoryItem _item(String kind, Map<String, dynamic> row,
     {required String codeField, required String nameField}) {
   final batch = row['batches'];
@@ -413,8 +473,9 @@ final allMovementsProvider =
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
-        'reason, notes, reference, is_demo, created_at, actor_id, machine_id, '
-        'probe_id, printer_id, part_id, dealers(name), customers(name), '
+        'reason, notes, reference, is_demo, paid, created_at, actor_id, machine_id, '
+        'probe_id, printer_id, part_id, dealer_id, customer_id, workshop_id, '
+        'dealers(name), customers(name), '
         'workshops(name), profiles(display_name, username)',
       )
       .neq('movement_type', 'Legacy')
@@ -499,11 +560,19 @@ Future<void> setSendSold(List<Map<String, dynamic>> rows, bool sold) async {
   });
 }
 
+/// Rewrites the notes of a whole send — every row of its group takes
+/// the same text, the way the new-movement form writes one note for
+/// the whole send. Only admins may (enforced by RLS).
+Future<void> setMovementNotes(
+    List<Map<String, dynamic>> rows, String notes) async {
+  await _updateSend(rows, {'notes': notes.isEmpty ? null : notes});
+}
+
 /// One update for the whole send: by group when the rows share one
 /// (Return rows carry their own group, box rows have none, so neither
 /// is ever caught here), row by row for the ungrouped legacy rows.
 Future<void> _updateSend(
-    List<Map<String, dynamic>> rows, Map<String, Object> values) async {
+    List<Map<String, dynamic>> rows, Map<String, Object?> values) async {
   final group = '${rows.first['group_ref'] ?? ''}';
   if (group.isNotEmpty) {
     await _db.from('movements').update(values).eq('group_ref', group);
