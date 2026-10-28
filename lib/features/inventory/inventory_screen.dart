@@ -658,68 +658,78 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ),
         const SizedBox(height: 4),
         Expanded(
-          child: _type == 'Boxes'
-              ? _boxesList(context)
-              : items.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => EmptyState(
-                icon: Icons.error_outline, message: errorMessage(error)),
-            data: (rows) {
-              final entries = arrangeAsKits(filtered);
-              if (entries.isEmpty) {
-                return const EmptyState(
-                    icon: Icons.inventory_2_outlined,
-                    message: 'No items match this filter.');
-              }
-              return AppRefresh(
-                child: ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) => _itemTile(
-                    context,
-                    entries[index].$1,
-                    indented: entries[index].$2,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: _type == 'Boxes'
+                    ? _boxesList(context)
+                    : items.when(
+                        loading: () =>
+                            const Center(child: CircularProgressIndicator()),
+                        error: (error, _) => EmptyState(
+                            icon: Icons.error_outline,
+                            message: errorMessage(error)),
+                        data: (rows) {
+                          final entries = arrangeAsKits(filtered);
+                          if (entries.isEmpty) {
+                            return const EmptyState(
+                                icon: Icons.inventory_2_outlined,
+                                message: 'No items match this filter.');
+                          }
+                          return AppRefresh(
+                            child: ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 4, 16, 84),
+                              itemCount: entries.length,
+                              itemBuilder: (context, index) => _itemTile(
+                                context,
+                                entries[index].$1,
+                                indented: entries[index].$2,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              // two new records live here: stock added to inventory, and
+              // stock bought locally from a seller
+              if (isAdmin && _type != 'Boxes')
+                Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      AppFab(
+                        tooltip: 'Buy local',
+                        icon: Icons.shopping_cart_outlined,
+                        secondary: true,
+                        onPressed: () => showLocalPurchaseSheet(context),
+                      ),
+                      const SizedBox(height: 12),
+                      AppFab(
+                        tooltip: 'Add to inventory',
+                        onPressed: () => showAppSheet<void>(
+                          context: context,
+                          title: 'Add product',
+                          heightFraction: 0.85,
+                          builder: (sheetContext) => Padding(
+                            padding: EdgeInsets.only(
+                                bottom: MediaQuery.of(sheetContext)
+                                    .viewInsets
+                                    .bottom),
+                            child: const _AddItemForm(),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            },
+            ],
           ),
         ),
-        if (isAdmin && _type != 'Boxes')
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => showAppSheet<void>(
-                      context: context,
-                      title: 'Add product',
-                      heightFraction: 0.85,
-                      builder: (sheetContext) => Padding(
-                        padding: EdgeInsets.only(
-                            bottom: MediaQuery.of(sheetContext)
-                                .viewInsets
-                                .bottom),
-                        child: const _AddItemForm(),
-                      ),
-                    ),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add product'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => showLocalPurchaseSheet(context),
-                    icon: const Icon(Icons.person_add_alt_outlined),
-                    label: const Text('Buy local'),
-                  ),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }

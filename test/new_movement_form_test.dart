@@ -110,7 +110,7 @@ void main() {
   testWidgets('the form records several groups sharing one party and date',
       (tester) async {
     await pumpScreen(tester);
-    await tapVisible(tester, find.text('New movement'));
+    await tapVisible(tester, find.byTooltip('New movement'));
 
     expect(find.text('What is going out *'), findsOneWidget);
     expect(find.text('Choose an item'), findsOneWidget);
@@ -138,7 +138,7 @@ void main() {
 
   testWidgets('each group keeps its own sold and paid marks', (tester) async {
     await pumpScreen(tester);
-    await tapVisible(tester, find.text('New movement'));
+    await tapVisible(tester, find.byTooltip('New movement'));
 
     // sold only exists on a sale-like send — a workshop trip cannot
     // have been sold

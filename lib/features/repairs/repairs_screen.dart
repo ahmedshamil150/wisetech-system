@@ -160,71 +160,77 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
           orElse: () => const SizedBox(height: 10),
         ),
         Expanded(
-          child: repairs.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => EmptyState(
-                icon: Icons.error_outline, message: errorMessage(error)),
-            data: (rows) {
-              final filtered = filterRepairJobs(
-                rows,
-                filter: _filter,
-                flaggedIds: flaggedIds,
-              );
-              if (rows.isEmpty) {
-                return const EmptyState(
-                    icon: Icons.build_outlined,
-                    message: 'No repair jobs recorded yet.');
-              }
-              if (filtered.isEmpty) {
-                return const EmptyState(
-                    icon: Icons.filter_alt_off_outlined,
-                    message: 'Nothing matches these filters.');
-              }
-              return AppRefresh(
-                child: ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  itemCount: filtered.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == filtered.length) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Center(
-                          child: Text(
-                            '${filtered.length} repair'
-                            '${filtered.length == 1 ? '' : 's'}',
-                            style: TextStyle(
-                                fontSize: 12.5,
-                                color: scheme.onSurfaceVariant),
-                          ),
-                        ),
-                      );
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: repairs.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (error, _) => EmptyState(
+                      icon: Icons.error_outline,
+                      message: errorMessage(error)),
+                  data: (rows) {
+                    final filtered = filterRepairJobs(
+                      rows,
+                      filter: _filter,
+                      flaggedIds: flaggedIds,
+                    );
+                    if (rows.isEmpty) {
+                      return const EmptyState(
+                          icon: Icons.build_outlined,
+                          message: 'No repair jobs recorded yet.');
                     }
-                    return _tile(context, filtered[index]);
+                    if (filtered.isEmpty) {
+                      return const EmptyState(
+                          icon: Icons.filter_alt_off_outlined,
+                          message: 'Nothing matches these filters.');
+                    }
+                    return AppRefresh(
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 84),
+                        itemCount: filtered.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == filtered.length) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Center(
+                                child: Text(
+                                  '${filtered.length} repair'
+                                  '${filtered.length == 1 ? '' : 's'}',
+                                  style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: scheme.onSurfaceVariant),
+                                ),
+                              ),
+                            );
+                          }
+                          return _tile(context, filtered[index]);
+                        },
+                      ),
+                    );
                   },
                 ),
-              );
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(46),
-            ),
-            onPressed: () => showAppSheet<void>(
-              context: context,
-              title: 'New repair',
-              heightFraction: 0.92,
-              builder: (sheetContext) => Padding(
-                padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-                child: const _NewRepairForm(),
               ),
-            ),
-            icon: const Icon(Icons.add),
-            label: const Text('New repair'),
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: AppFab(
+                  tooltip: 'New repair',
+                  onPressed: () => showAppSheet<void>(
+                    context: context,
+                    title: 'New repair',
+                    heightFraction: 0.92,
+                    builder: (sheetContext) => Padding(
+                      padding: EdgeInsets.only(
+                          bottom:
+                              MediaQuery.of(sheetContext).viewInsets.bottom),
+                      child: const _NewRepairForm(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

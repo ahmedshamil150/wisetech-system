@@ -75,6 +75,21 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     });
   }
 
+  /// The page's round add button: a new movement.
+  Widget _newMovementFab(BuildContext context) => AppFab(
+        tooltip: 'New movement',
+        onPressed: () => showAppSheet<void>(
+          context: context,
+          title: 'New movement',
+          heightFraction: 0.85,
+          builder: (sheetContext) => Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+            child: const _NewMovementForm(),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final movements = ref.watch(movementsProvider);
@@ -241,13 +256,21 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 ));
               }
               if (visible.isEmpty) {
-                return EmptyState(
-                    icon: Icons.alt_route_outlined,
-                    message: _filter == 'Returned'
-                        ? 'No items are back in inventory yet.'
-                        : _hasFilters
-                            ? 'No movements match these filters.'
-                            : 'No movements recorded yet.');
+                return Stack(
+                  children: [
+                    Positioned.fill(
+                      child: EmptyState(
+                          icon: Icons.alt_route_outlined,
+                          message: _filter == 'Returned'
+                              ? 'No items are back in inventory yet.'
+                              : _hasFilters
+                                  ? 'No movements match these filters.'
+                                  : 'No movements recorded yet.'),
+                    ),
+                    Positioned(
+                        right: 16, bottom: 16, child: _newMovementFab(context)),
+                  ],
+                );
               }
               for (final card in visible) {
                 card.rows.sort(_mainItemFirst);
@@ -268,45 +291,40 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     ),
                   ),
                   Expanded(
-                    child: AppRefresh(
-                      child: ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                        itemCount: visible.length,
-                        itemBuilder: (context, index) {
-                          final card = visible[index];
-                          return _tile(context, card.rows, labels,
-                              back: _filter == 'Returned',
-                              sendTotal: card.total,
-                              sendCount: card.sends,
-                              movedOn: card.movedOn,
-                              returnedOn: _filter == 'Returned'
-                                  ? _returnedDates(card.rows, latest)
-                                  : const <int, String>{});
-                        },
-                      ),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: AppRefresh(
+                            child: ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 8, 16, 84),
+                              itemCount: visible.length,
+                              itemBuilder: (context, index) {
+                                final card = visible[index];
+                                return _tile(context, card.rows, labels,
+                                    back: _filter == 'Returned',
+                                    sendTotal: card.total,
+                                    sendCount: card.sends,
+                                    movedOn: card.movedOn,
+                                    returnedOn: _filter == 'Returned'
+                                        ? _returnedDates(card.rows, latest)
+                                        : const <int, String>{});
+                              },
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          right: 16,
+                          bottom: 16,
+                          child: _newMovementFab(context),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               );
             },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-          child: FilledButton.icon(
-            onPressed: () => showAppSheet<void>(
-              context: context,
-              title: 'New movement',
-              heightFraction: 0.85,
-              builder: (sheetContext) => Padding(
-                padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-                child: const _NewMovementForm(),
-              ),
-            ),
-            icon: const Icon(Icons.add),
-            label: const Text('New movement'),
           ),
         ),
       ],

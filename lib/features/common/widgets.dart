@@ -28,6 +28,50 @@ class AppCard extends StatelessWidget {
   }
 }
 
+/// The round add button floating at the bottom right of a page: the plus
+/// alone is that page's "record a new one". [secondary] carries the
+/// second action of a page (Buy local on Inventory), and [tooltip] names
+/// the action on hover or long press.
+class AppFab extends StatelessWidget {
+  const AppFab({
+    super.key,
+    required this.tooltip,
+    required this.onPressed,
+    this.icon = Icons.add,
+    this.secondary = false,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData icon;
+  final bool secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: secondary ? scheme.surfaceContainerHighest : scheme.primary,
+        shape: const CircleBorder(),
+        elevation: 3,
+        shadowColor: Colors.black45,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 52,
+            height: 52,
+            child: Icon(icon,
+                size: 26,
+                color: secondary ? scheme.onSurfaceVariant : scheme.onPrimary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class EmptyState extends StatelessWidget {
   const EmptyState({super.key, required this.icon, required this.message});
 

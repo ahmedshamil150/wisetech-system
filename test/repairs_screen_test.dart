@@ -133,7 +133,7 @@ void main() {
 
   testWidgets('new repair form opens with roomy sections', (tester) async {
     await pumpScreen(tester);
-    await tester.tap(find.text('New repair'));
+    await tester.tap(find.byTooltip('New repair'));
     await _pumpFrames(tester);
 
     expect(find.text('Who sent it'), findsWidgets);
