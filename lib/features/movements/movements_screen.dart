@@ -89,42 +89,41 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
     return Column(
       children: [
-        // phones keep only the filter icon — the send-kind chips move
-        // into the Filters sheet
-        if (!isPhoneLayout(context))
-          SizedBox(
-            height: 44,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              itemCount: _filters.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final label = _filters[index];
-                final selected = _filter == label;
-                return ChoiceChip(
-                  label: Text('$label (${counts[label] ?? 0})'),
-                  selected: selected,
-                  onSelected: (_) => setState(() {
-                    _filter = label;
-                    _party = 'All';
-                  }),
-                  selectedColor: Theme.of(context).colorScheme.primary,
-                  labelStyle: TextStyle(
-                    color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                  backgroundColor: context.colors.isDark
-                      ? context.colors.quietFill
-                      : Theme.of(context).colorScheme.surface,
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                );
-              },
-            ),
+        // the kind chips and their counts show at every width — the
+        // row scrolls sideways on a phone
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            itemCount: _filters.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final label = _filters[index];
+              final selected = _filter == label;
+              return ChoiceChip(
+                label: Text('$label (${counts[label] ?? 0})'),
+                selected: selected,
+                onSelected: (_) => setState(() {
+                  _filter = label;
+                  _party = 'All';
+                }),
+                selectedColor: Theme.of(context).colorScheme.primary,
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+                backgroundColor: context.colors.isDark
+                    ? context.colors.quietFill
+                    : Theme.of(context).colorScheme.surface,
+                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              );
+            },
           ),
+        ),
         Padding(
-          padding: EdgeInsets.fromLTRB(16, isPhoneLayout(context) ? 12 : 4, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: Row(
             children: [
               Expanded(

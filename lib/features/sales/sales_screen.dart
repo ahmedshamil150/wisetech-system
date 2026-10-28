@@ -19,7 +19,7 @@ final allSalesProvider =
           'id, sale_date, invoice_reference, sale_price, notes, old_trno, '
           'old_source_id, customer_id, customers(name), '
           'sale_items(item_description, item_serial, item_price, item_type, '
-          'is_main_item)')
+          'is_main_item, machine_id, probe_id, printer_id, part_id)')
       .order('sale_date', ascending: false);
   return rows;
 });

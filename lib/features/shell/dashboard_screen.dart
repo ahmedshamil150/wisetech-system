@@ -7,13 +7,44 @@ import '../common/widgets.dart';
 import '../data/data.dart';
 import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
+import '../sales/sales_screen.dart';
+import 'dashboard_stats.dart';
 import 'navigation_providers.dart';
 
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  /// The window every number on the page counts — the running month
+  /// until another period is picked.
+  DashPeriod _period = dashThisMonth();
+  String _batch = '';
+
+  Future<void> _pickPeriod() async {
+    final picked = await showAppSheet<DashPeriod>(
+      context: context,
+      title: 'Period',
+      heightFraction: 0.8,
+      builder: (_) => _PeriodSheet(current: _period),
+    );
+    if (picked != null) setState(() => _period = picked);
+  }
+
+  Future<void> _pickBatch(List<({String code, String label})> options) async {
+    final picked = await showAppSheet<String>(
+      context: context,
+      title: 'Batch',
+      builder: (_) => _BatchSheet(options: options, selected: _batch),
+    );
+    if (picked != null) setState(() => _batch = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final profile = ref.watch(profileProvider);
     final name = profile.maybeWhen(
           data: (p) => (p?['display_name'] ?? p?['username'] ?? '') as String,
@@ -21,53 +52,111 @@ class DashboardScreen extends ConsumerWidget {
         );
     final scheme = Theme.of(context).colorScheme;
     final myId = ref.read(authControllerProvider).currentUser?.id;
-
     final inRepair = ref.watch(openRepairsCountProvider);
-    final stats = ref.watch(inventoryProvider).when(
-          loading: () => <(String, IconData, String, String)>[
-            for (final (label, icon, target) in _statSlots)
-              (label, icon, '…', target),
-          ],
-          error: (_, _) => <(String, IconData, String, String)>[
-            for (final (label, icon, target) in _statSlots)
-              (label, icon, '—', target),
-          ],
-          data: (items) {
-            int count(Iterable<InventoryItem> rows) => rows.length;
-            final inStock = items.where((i) =>
-                i.status == 'In Stock' || i.status == 'Available');
-            final workshop = items.where((i) => i.status == 'With Workshop');
-            final branch = items.where((i) => i.status == 'With Branch');
-            final dealer = items.where((i) => i.status == 'With Dealer');
-            final customer =
-                items.where((i) => i.status == 'With Customer');
-            return <(String, IconData, String, String)>[
-              ('In stock', Icons.inventory_2_outlined, '${count(inStock)}',
-                  'In Stock'),
-              ('With workshop', Icons.build_outlined, '${count(workshop)}',
-                  'With Workshop'),
-              ('With branch', Icons.storefront_outlined, '${count(branch)}',
-                  'With Branch'),
-              ('With dealer', Icons.handshake_outlined, '${count(dealer)}',
-                  'With Dealer'),
-              ('With customer', Icons.person_outline, '${count(customer)}',
-                  'With Customer'),
-              ('In repair', Icons.handyman_outlined, '$inRepair', 'repairs'),
-            ];
-          },
-        );
 
-    final total = ref.watch(inventoryProvider).maybeWhen(
-          data: (items) => items
-              .where((item) => !item.isSold || item.kind == 'part')
-              .length,
-          orElse: () => 0,
+    final inventoryItems = ref.watch(inventoryProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <InventoryItem>[],
         );
+    final allItems = ref.watch(allItemsProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => inventoryItems,
+        );
+    final batchByItem = {
+      for (final item in allItems) item.key: item.batch ?? '',
+    };
+    final batchRows = ref.watch(batchesProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final batchOptions = <({String code, String label})>[
+      (code: '', label: 'All batches'),
+      for (final row in batchRows)
+        (
+          code: '${row['code']}',
+          label: row['letter'] == null
+              ? '${row['code']}'
+              : '${row['letter']} · ${row['code']}',
+        ),
+      (code: 'BATCH-OLD', label: 'Old stock · BATCH-OLD'),
+    ];
 
     final movementRows = ref.watch(movementsProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
+    final allMovementRows = ref.watch(allMovementsProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final labels = ref.watch(itemLabelsProvider);
+    final salesRows = ref.watch(allSalesProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final saleEntries = mergeSaleEntries(
+      salesRows: salesRows,
+      movementRows: allMovementRows,
+      labels: labels,
+    );
+    final repairRows = ref.watch(repairsProvider).maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+
+    final stats = computeDashStats(
+      movementRows: movementRows,
+      saleEntries: saleEntries,
+      repairRows: repairRows,
+      batchByItem: batchByItem,
+      period: _period,
+      batch: _batch,
+      includeRepairs: _batch.isEmpty,
+    );
+
+    // stock is a snapshot of now — the period never narrows it
+    final stock = _batch.isEmpty
+        ? inventoryItems
+        : [
+            for (final item in allItems)
+              if (item.batch == _batch) item,
+          ];
+    int stockCount(bool Function(InventoryItem) test) =>
+        stock.where(test).length;
+    final stockCards = <(String, IconData, String, String)>[
+      (
+        'In stock',
+        Icons.inventory_2_outlined,
+        '${stockCount((i) => i.status == 'In Stock' || i.status == 'Available')}',
+        'In Stock'
+      ),
+      (
+        'With workshop',
+        Icons.build_outlined,
+        '${stockCount((i) => i.status == 'With Workshop')}',
+        'With Workshop'
+      ),
+      (
+        'With branch',
+        Icons.storefront_outlined,
+        '${stockCount((i) => i.status == 'With Branch')}',
+        'With Branch'
+      ),
+      (
+        'With dealer',
+        Icons.handshake_outlined,
+        '${stockCount((i) => i.status == 'With Dealer')}',
+        'With Dealer'
+      ),
+      (
+        'With customer',
+        Icons.person_outline,
+        '${stockCount((i) => i.status == 'With Customer')}',
+        'With Customer'
+      ),
+      if (_batch.isEmpty)
+        ('In repair', Icons.handyman_outlined, '$inRepair', 'repairs'),
+    ];
 
     final isAdmin = ref.watch(isAdminProvider);
     final newPeople = ref.watch(recentPartiesProvider).maybeWhen(
@@ -89,15 +178,16 @@ class DashboardScreen extends ConsumerWidget {
         .toSet()
         .length;
 
-    // who sent the most machines out
+    // who sent the most, inside the chosen period and batch
     final byPerson = <String, Map<String, dynamic>>{};
     for (final row in movementRows) {
       if (row['machine_id'] == null) continue;
       final kind = row['movement_type'];
-      if (kind != 'Workshop' &&
-          kind != 'Branch' &&
-          kind != 'Dealer' &&
-          kind != 'Customer') {
+      if (!const {'Workshop', 'Branch', 'Dealer', 'Customer'}.contains(kind)) {
+        continue;
+      }
+      if (!dashInPeriod('${row['movement_date'] ?? ''}', _period)) continue;
+      if (_batch.isNotEmpty && itemBatchOf(row, batchByItem) != _batch) {
         continue;
       }
       final actorId = (row['actor_id'] ?? '').toString();
@@ -123,260 +213,623 @@ class DashboardScreen extends ConsumerWidget {
           (b.value['total'] as int).compareTo(a.value['total'] as int));
 
     final desktop = isDesktopLayout(context);
+    final batchLabel = _batch.isEmpty
+        ? 'All batches'
+        : _batchShortLabel(_batch, batchRows);
 
     return AppRefresh(
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.all(desktop ? 24 : 16),
         children: [
-        Text(
-          name.isEmpty ? 'Welcome' : 'Welcome, $name',
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          total == 0
-              ? 'Here is your activity with the team inventory.'
-              : 'Here is your activity with the team inventory · $total items.',
-          style: TextStyle(color: scheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: 20),
-        GridView.count(
-          crossAxisCount: desktop ? 4 : 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.4,
-          children: [
-            for (final (label, icon, value, target) in stats)
-              AppCard(
-                onTap: () => openStat(ref, target),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, size: 22, color: scheme.primary),
-                      const SizedBox(height: 8),
-                      Text(label,
-                          style: TextStyle(
-                              fontSize: 13, color: scheme.onSurfaceVariant)),
-                      const SizedBox(height: 2),
-                      Text(value,
-                          style: const TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.w800)),
-                    ],
-                  ),
+          Text(
+            name.isEmpty ? 'Welcome' : 'Welcome, $name',
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Here is your activity with the team inventory.',
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickPeriod,
+                  icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                  label: Text(_period.label,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               ),
-          ],
-        ),
-        if (missingSends > 0) ...[
-          const SizedBox(height: 16),
-          Card(
-            elevation: 0,
-            color: context.colors.warningContainer,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(color: context.colors.warningBorder),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickBatch(batchOptions),
+                  icon: const Icon(Icons.layers_outlined, size: 18),
+                  label: Text(batchLabel,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text('This period · ${_period.label}',
+              style:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: desktop ? 4 : 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: desktop ? 1.55 : 1.2,
+            children: [
+              _StatCard(
+                label: 'Sales',
+                value: saleAmountText(stats.salesAmount),
+                sub: stats.salesCount == 1
+                    ? '1 sale'
+                    : '${stats.salesCount} sales',
+                icon: Icons.sell_outlined,
+                onTap: () => ref.read(shellTabProvider.notifier).set(3),
+              ),
+              _StatCard(
+                label: 'Sent out',
+                value: '${stats.sendCount}',
+                sub: stats.itemCount == 1
+                    ? '1 item'
+                    : '${stats.itemCount} items',
+                icon: Icons.swap_horiz_outlined,
+                onTap: () => ref.read(shellTabProvider.notifier).set(2),
+              ),
+              _StatCard(
+                label: 'Returned',
+                value: '${stats.returnedItems}',
+                sub: 'items back',
+                icon: Icons.assignment_return_outlined,
+                onTap: () => ref.read(shellTabProvider.notifier).set(2),
+              ),
+              if (_batch.isEmpty)
+                _StatCard(
+                  label: 'Repairs in',
+                  value: '${stats.repairsReceived}',
+                  sub: stats.repairsBack == 1
+                      ? '1 sent back'
+                      : '${stats.repairsBack} sent back',
+                  icon: Icons.handyman_outlined,
+                  onTap: () => ref.read(shellTabProvider.notifier).set(4),
+                ),
+            ],
+          ),
+          if (_batch.isEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final kind in const [
+                  'Workshop',
+                  'Branch',
+                  'Dealer',
+                  'Customer'
+                ])
+                  if ((stats.sendsByKind[kind] ?? 0) > 0)
+                    _CountChip(
+                      label: kind,
+                      value: '${stats.sendsByKind[kind]}',
+                    ),
+                if (stats.repairsMoney > 0)
+                  _CountChip(
+                    label: 'Repair money',
+                    value: saleAmountText(stats.repairsMoney),
+                  ),
+              ],
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.warning_amber_rounded,
-                          color: kAmber, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '$missingSends send${missingSends == 1 ? '' : 's'} '
-                          'without a name',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 15),
+          ] else ...[
+            const SizedBox(height: 10),
+            Text(
+              'Batch view counts stock, sends, returns and sales whose items '
+              'are all in this batch. Repairs and mixed-batch sales stay '
+              'under All batches.',
+              style: TextStyle(fontSize: 12, color: scheme.outline),
+            ),
+          ],
+          const SizedBox(height: 20),
+          const Text('Right now',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(
+            _batch.isEmpty
+                ? 'Where the stock stands today.'
+                : 'Where the stock in $batchLabel stands today.',
+            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: desktop ? 4 : 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.4,
+            children: [
+              for (final (label, icon, value, target) in stockCards)
+                AppCard(
+                  onTap: () => openStat(ref, target),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, size: 22, color: scheme.primary),
+                        const SizedBox(height: 8),
+                        Text(label,
+                            style: TextStyle(
+                                fontSize: 13, color: scheme.onSurfaceVariant)),
+                        const SizedBox(height: 2),
+                        Text(value,
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (missingSends > 0) ...[
+            const SizedBox(height: 16),
+            Card(
+              elevation: 0,
+              color: context.colors.warningContainer,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: context.colors.warningBorder),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded,
+                            color: kAmber, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$missingSends send${missingSends == 1 ? '' : 's'} '
+                            'without a name',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'You recorded these without the dealer or customer '
+                      'name. Add it whenever you know it.',
+                      style: TextStyle(
+                          color: scheme.onSurfaceVariant, fontSize: 13),
+                    ),
+                    const SizedBox(height: 10),
+                    FilledButton.tonal(
+                      onPressed: () =>
+                          showAddPartySheet(context, ref, missingMine),
+                      child: const Text('Add now'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (isAdmin && newPeople.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            AppCard(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Recently added',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w800)),
+                    Text(
+                      'Customers and dealers anyone just added.',
+                      style: TextStyle(
+                          color: scheme.onSurfaceVariant, fontSize: 12.5),
+                    ),
+                    const SizedBox(height: 6),
+                    for (var i = 0; i < newPeople.length; i++) ...[
+                      if (i > 0) const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.person_add_alt_outlined,
+                                size: 20, color: kAmber),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${newPeople[i]['name']}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13.5)),
+                                  Text(
+                                    '${newPeople[i]['by']} added a '
+                                    '${newPeople[i]['kind']} · '
+                                    '${_shopDate(newPeople[i]['at'])}',
+                                    style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'You recorded these without the dealer or customer '
-                    'name. Add it whenever you know it.',
-                    style: TextStyle(
-                        color: scheme.onSurfaceVariant, fontSize: 13),
-                  ),
-                  const SizedBox(height: 10),
-                  FilledButton.tonal(
-                    onPressed: () =>
-                        showAddPartySheet(context, ref, missingMine),
-                    child: const Text('Add now'),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
-        if (isAdmin && newPeople.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          AppCard(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Recently added',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                  Text(
-                    'Customers and dealers anyone just added.',
-                    style: TextStyle(
-                        color: scheme.onSurfaceVariant, fontSize: 12.5),
-                  ),
-                  const SizedBox(height: 6),
-                  for (var i = 0; i < newPeople.length; i++) ...[
-                    if (i > 0) const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person_add_alt_outlined,
-                              size: 20, color: kAmber),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('${newPeople[i]['name']}',
+          ],
+          if (ranking.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            AppCard(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Who sent the most?',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Machines out · ${_period.label}',
+                      style: TextStyle(
+                          color: scheme.onSurfaceVariant, fontSize: 12.5),
+                    ),
+                    const SizedBox(height: 10),
+                    for (var i = 0; i < ranking.length; i++) ...[
+                      if (i > 0) const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              child: Text('#${i + 1}',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                      color: i == 0
+                                          ? context.colors.brandText
+                                          : scheme.outline)),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${ranking[i].value['name']}'
+                                    '${ranking[i].key == myId ? ' (you)' : ''}',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700,
-                                        fontSize: 13.5)),
-                                Text(
-                                  '${newPeople[i]['by']} added a '
-                                  '${newPeople[i]['kind']} · '
-                                  '${_shopDate(newPeople[i]['at'])}',
-                                  style: TextStyle(
-                                      color: scheme.onSurfaceVariant,
-                                      fontSize: 12),
-                                ),
-                              ],
+                                        fontSize: 13.5),
+                                  ),
+                                  Text(
+                                    'Dealer ${ranking[i].value['Dealer']} · '
+                                    'Customer ${ranking[i].value['Customer']} · '
+                                    'Workshop ${ranking[i].value['Workshop']}'
+                                    ' · Branch ${ranking[i].value['Branch']}',
+                                    style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                            if (i == 0)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 8),
+                                child: Icon(Icons.emoji_events_outlined,
+                                    color: kAmber, size: 20),
+                              ),
+                            Text('${ranking[i].value['total']}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 16)),
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-        ],
-        if (ranking.isNotEmpty) ...[
+          ],
           const SizedBox(height: 16),
-          AppCard(
+          Card(
+            elevation: 0,
+            color: context.colors.tintBlue,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Who sent the most?',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Machines out to the workshop, dealers and customers.',
-                    style: TextStyle(
-                        color: scheme.onSurfaceVariant, fontSize: 12.5),
-                  ),
-                  const SizedBox(height: 10),
-                  for (var i = 0; i < ranking.length; i++) ...[
-                    if (i > 0) const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 28,
-                            child: Text('#${i + 1}',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 13,
-                                color: i == 0
-                                    ? context.colors.brandText
-                                    : scheme.outline)),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${ranking[i].value['name']}'
-                                  '${ranking[i].key == myId ? ' (you)' : ''}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13.5),
-                                ),
-                                Text(
-                                  'Dealer ${ranking[i].value['Dealer']} · '
-                                  'Customer ${ranking[i].value['Customer']} · '
-                                  'Workshop ${ranking[i].value['Workshop']}'
-                                  ' · Branch ${ranking[i].value['Branch']}',
-                                  style: TextStyle(
-                                      color: scheme.onSurfaceVariant,
-                                      fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (i == 0)
-                            const Padding(
-                              padding: EdgeInsets.only(right: 8),
-                              child: Icon(Icons.emoji_events_outlined,
-                                  color: kAmber, size: 20),
-                            ),
-                          Text('${ranking[i].value['total']}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w800, fontSize: 16)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Send an item to the workshop or a dealer on the Movements '
+                'page, or record a sale — the numbers above update right away.',
+                style: TextStyle(color: context.colors.brandText),
               ),
             ),
           ),
         ],
-        const SizedBox(height: 16),
-        Card(
-          elevation: 0,
-          color: context.colors.tintBlue,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'Send an item to the workshop or a dealer on the Movements '
-              'page, or record a sale — the numbers above update right away.',
-                                style: TextStyle(color: context.colors.brandText),
-            ),
-          ),
-        ),
-      ],
-    ));
+      ),
+    );
   }
 }
-const _statSlots = [
-  ('In stock', Icons.inventory_2_outlined, 'In Stock'),
-  ('With workshop', Icons.build_outlined, 'With Workshop'),
-  ('With branch', Icons.storefront_outlined, 'With Branch'),
-  ('With dealer', Icons.handshake_outlined, 'With Dealer'),
-  ('With customer', Icons.person_outline, 'With Customer'),
-  ('In repair', Icons.handyman_outlined, 'repairs'),
-];
+
+String _batchShortLabel(
+    String code, List<Map<String, dynamic>> rows) {
+  if (code.isEmpty) return 'All batches';
+  if (code == 'BATCH-OLD') return 'Old stock';
+  for (final row in rows) {
+    if ('${row['code']}' == code) {
+      return '${row['letter'] ?? code}';
+    }
+  }
+  return code;
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.sub,
+    required this.icon,
+    this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final String sub;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AppCard(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 22, color: scheme.primary),
+            const SizedBox(height: 8),
+            Text(label,
+                style:
+                    TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 2),
+            Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w800)),
+            Text(sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CountChip extends StatelessWidget {
+  const _CountChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: context.colors.quietFill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text('$label $value',
+          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+    );
+  }
+}
+
+/// Period picker: quick windows, any month, or a typed From–To range.
+class _PeriodSheet extends StatefulWidget {
+  const _PeriodSheet({required this.current});
+
+  final DashPeriod current;
+
+  @override
+  State<_PeriodSheet> createState() => _PeriodSheetState();
+}
+
+class _PeriodSheetState extends State<_PeriodSheet> {
+  final _from = TextEditingController();
+  final _to = TextEditingController();
+  late int _monthValue;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _monthValue = now.year * 100 + now.month;
+  }
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final months = <int>[];
+    var month = DateTime(now.year, now.month, 1);
+    for (var i = 0; i < 24; i++) {
+      months.add(month.year * 100 + month.month);
+      month = DateTime(month.year, month.month - 1, 1);
+    }
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ActionChip(
+              label: const Text('This month'),
+              onPressed: () => Navigator.pop(context, dashThisMonth()),
+            ),
+            ActionChip(
+              label: const Text('Last month'),
+              onPressed: () => Navigator.pop(context, dashLastMonth()),
+            ),
+            ActionChip(
+              label: Text('${now.year}'),
+              onPressed: () => Navigator.pop(context, dashThisYear()),
+            ),
+            ActionChip(
+              label: const Text('All time'),
+              onPressed: () => Navigator.pop(context, dashAllTime),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text('A month',
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                initialValue: _monthValue,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Month'),
+                items: [
+                  for (final value in months)
+                    DropdownMenuItem(
+                      value: value,
+                      child: Text(
+                          dashMonthLabel(value ~/ 100, value % 100)),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _monthValue = value);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                dashMonthPeriod(_monthValue ~/ 100, _monthValue % 100),
+              ),
+              child: const Text('Show'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text('Any dates',
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurfaceVariant)),
+        const SizedBox(height: 6),
+        DateField(controller: _from, label: 'From'),
+        const SizedBox(height: 10),
+        DateField(controller: _to, label: 'To'),
+        if (_error.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(_error,
+              style: TextStyle(fontSize: 12, color: scheme.error)),
+        ],
+        const SizedBox(height: 10),
+        FilledButton.tonal(
+          onPressed: () {
+            final period = dashCustomPeriod(_from.text, _to.text);
+            if (period == null) {
+              setState(() => _error = 'Type both dates as DD-MM-YYYY.');
+              return;
+            }
+            Navigator.pop(context, period);
+          },
+          child: const Text('Show these dates'),
+        ),
+        const SizedBox(height: 8),
+        Text('Now showing: ${widget.current.label}',
+            style: TextStyle(fontSize: 12, color: scheme.outline)),
+      ],
+    );
+  }
+}
+
+/// Batch picker — all batches, one current batch, or the old stock.
+class _BatchSheet extends StatelessWidget {
+  const _BatchSheet({required this.options, required this.selected});
+
+  final List<({String code, String label})> options;
+  final String selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(bottom: 16),
+      children: [
+        for (final option in options)
+          ListTile(
+            leading: Icon(
+              option.code.isEmpty
+                  ? Icons.layers_outlined
+                  : Icons.inventory_2_outlined,
+              size: 20,
+              color: scheme.primary,
+            ),
+            title: Text(option.label,
+                style: const TextStyle(fontSize: 14)),
+            trailing: option.code == selected
+                ? Icon(Icons.check, size: 20, color: scheme.primary)
+                : null,
+            onTap: () => Navigator.pop(context, option.code),
+          ),
+      ],
+    );
+  }
+}
 
 /// A stat card was tapped — open the page it counts, pre-filtered.
 void openStat(WidgetRef ref, String target) {
