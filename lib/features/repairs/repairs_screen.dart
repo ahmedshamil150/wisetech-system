@@ -7,6 +7,7 @@ import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../../core/layout.dart';
+import 'repair_filters.dart';
 
 /// Repair jobs: machines fixed for customers — ours or theirs.
 /// Everyone on the team can add and update them.
@@ -17,65 +18,146 @@ class RepairsScreen extends ConsumerStatefulWidget {
   ConsumerState<RepairsScreen> createState() => _RepairsScreenState();
 }
 
-const _filters = ['All', 'In repair', 'Sent back'];
+const _quickFilters = ['All', 'In repair', 'Sent back', 'Cancelled'];
 
 class _RepairsScreenState extends ConsumerState<RepairsScreen> {
-  String _filter = 'All';
-  String _query = '';
+  RepairFilter _filter = defaultRepairFilter;
+
+  RepairFilter _change({
+    String? query,
+    String? state,
+    String? itemType,
+    String? money,
+    String? dateFrom,
+    String? dateTo,
+    bool? flaggedOnly,
+  }) =>
+      (
+        query: query ?? _filter.query,
+        state: state ?? _filter.state,
+        itemType: itemType ?? _filter.itemType,
+        money: money ?? _filter.money,
+        dateFrom: dateFrom ?? _filter.dateFrom,
+        dateTo: dateTo ?? _filter.dateTo,
+        flaggedOnly: flaggedOnly ?? _filter.flaggedOnly,
+      );
+
+  void _clearSheetFilters() {
+    setState(() => _filter = _change(
+          state: 'All',
+          itemType: 'All',
+          money: 'All',
+          dateFrom: '',
+          dateTo: '',
+          flaggedOnly: false,
+        ));
+  }
+
+  Future<void> _openFilters() async {
+    final result = await showAppSheet<RepairFilter>(
+      context: context,
+      title: 'Filter repairs',
+      heightFraction: 0.85,
+      builder: (sheetContext) => _RepairsFilterSheet(initial: _filter),
+    );
+    if (result == null) return;
+    setState(() => _filter = result);
+  }
+
+  Set<int> _flaggedRepairIds() {
+    final flags = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    return {
+      for (final flag in flags)
+        if (flag['repair_id'] is int) flag['repair_id'] as int,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     final repairs = ref.watch(repairsProvider);
-    final rows = repairs.maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final counts = <String, int>{'All': 0, 'In repair': 0, 'Sent back': 0};
-    for (final row in rows) {
-      if (_query.isNotEmpty && !_searchText(row).contains(_query)) continue;
-      counts['All'] = counts['All']! + 1;
-      if (repairIsOpen('${row['status']}')) {
-        counts['In repair'] = counts['In repair']! + 1;
-      } else {
-        counts['Sent back'] = counts['Sent back']! + 1;
-      }
-    }
+    final flaggedIds = _flaggedRepairIds();
+    final scheme = Theme.of(context).colorScheme;
+    final active = repairFilterCount(_filter);
 
     return Column(
       children: [
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            itemCount: _filters.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final label = _filters[index];
-              final selected = _filter == label;
-              return ChoiceChip(
-                label: Text('$label (${counts[label] ?? 0})'),
-                selected: selected,
-                onSelected: (_) => setState(() => _filter = label),
-                selectedColor: Theme.of(context).colorScheme.primary,
-                labelStyle: TextStyle(
-                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: SearchField(
+                  hint: 'Search customer, job number, model or serial',
+                  onChanged: (value) => setState(
+                      () => _filter = _change(query: value.trim().toLowerCase())),
                 ),
-                backgroundColor: context.colors.isDark
-              ? context.colors.quietFill
-              : Theme.of(context).colorScheme.surface,
-                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-              );
-            },
+              ),
+              const SizedBox(width: 8),
+              if (isPhoneLayout(context))
+                IconButton(
+                  tooltip: 'Filters',
+                  onPressed: _openFilters,
+                  icon: Badge(
+                    isLabelVisible: active > 0,
+                    label: Text('$active'),
+                    child: const Icon(Icons.filter_list, size: 22),
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: _openFilters,
+                  icon: Badge(
+                    isLabelVisible: active > 0,
+                    label: Text('$active'),
+                    child: const Icon(Icons.filter_list, size: 20),
+                  ),
+                  label: const Text('Filters'),
+                ),
+              if (active > 0)
+                IconButton(
+                  tooltip: 'Clear filters',
+                  icon: Icon(Icons.close, size: 20, color: scheme.error),
+                  onPressed: _clearSheetFilters,
+                ),
+            ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: SearchField(
-            hint: 'Search by customer, machine or job number',
-            onChanged: (value) =>
-                setState(() => _query = value.trim().toLowerCase()),
+        repairs.maybeWhen(
+          data: (rows) => SizedBox(
+            height: 46,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+              itemCount: _quickFilters.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final label = _quickFilters[index];
+                final selected = _filter.state == label;
+                final count = filterRepairJobs(
+                  rows,
+                  filter: _change(state: label),
+                  flaggedIds: flaggedIds,
+                ).length;
+                return ChoiceChip(
+                  label: Text('$label ($count)'),
+                  selected: selected,
+                  onSelected: (_) =>
+                      setState(() => _filter = _change(state: label)),
+                  selectedColor: scheme.primary,
+                  labelStyle: TextStyle(
+                    color: selected ? Colors.white : scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                  backgroundColor:
+                      context.colors.isDark ? context.colors.quietFill : scheme.surface,
+                  side: BorderSide(color: scheme.outlineVariant),
+                );
+              },
+            ),
           ),
+          orElse: () => const SizedBox(height: 10),
         ),
         Expanded(
           child: repairs.when(
@@ -83,37 +165,58 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
             error: (error, _) => EmptyState(
                 icon: Icons.error_outline, message: errorMessage(error)),
             data: (rows) {
-              final filtered = rows.where((row) {
-                final open = repairIsOpen('${row['status']}');
-                if (_filter == 'In repair' && !open) return false;
-                if (_filter == 'Sent back' && open) return false;
-                if (_query.isEmpty) return true;
-                return _searchText(row).contains(_query);
-              }).toList();
-              if (filtered.isEmpty) {
+              final filtered = filterRepairJobs(
+                rows,
+                filter: _filter,
+                flaggedIds: flaggedIds,
+              );
+              if (rows.isEmpty) {
                 return const EmptyState(
                     icon: Icons.build_outlined,
-                    message: 'No repair records yet.');
+                    message: 'No repair jobs recorded yet.');
+              }
+              if (filtered.isEmpty) {
+                return const EmptyState(
+                    icon: Icons.filter_alt_off_outlined,
+                    message: 'Nothing matches these filters.');
               }
               return AppRefresh(
                 child: ListView.builder(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) =>
-                      _tile(context, filtered[index]),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  itemCount: filtered.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == filtered.length) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Center(
+                          child: Text(
+                            '${filtered.length} repair'
+                            '${filtered.length == 1 ? '' : 's'}',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: scheme.onSurfaceVariant),
+                          ),
+                        ),
+                      );
+                    }
+                    return _tile(context, filtered[index]);
+                  },
                 ),
               );
             },
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
           child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
             onPressed: () => showAppSheet<void>(
               context: context,
               title: 'New repair',
-              heightFraction: 0.85,
+              heightFraction: 0.92,
               builder: (sheetContext) => Padding(
                 padding: EdgeInsets.only(
                     bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -128,63 +231,171 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
     );
   }
 
-  String _searchText(Map<String, dynamic> row) {
-    final parts = [
-      '${row['job_number']}',
-      '${row['customers'] is Map ? (row['customers'] as Map)['name'] ?? '' : ''}',
-      '${row['received_at']}',
-      '${row['returned_at'] ?? ''}',
-      for (final item in _itemsOf(row))
-        '${item['name_model']} ${item['serial_number'] ?? ''} ${item['equipment_type']}',
-    ];
-    return parts.join(' ').toLowerCase();
-  }
-
-  List<Map<String, dynamic>> _itemsOf(Map<String, dynamic> row) =>
-      (row['repair_items'] as List? ?? const [])
-          .cast<Map<String, dynamic>>();
-
-  Widget _tile(BuildContext context, Map<String, dynamic> row) {
-    final open = repairIsOpen('${row['status']}');
+  Widget _tile(BuildContext context, Map<String, dynamic> job) {
+    final scheme = Theme.of(context).colorScheme;
+    final state = repairStateOf(job['status']);
     final customer =
-        ((row['customers'] as Map?)?['name'] ?? '').toString();
-    final items = _itemsOf(row);
-    final color = open ? context.colors.warning : context.colors.success;
+        ((job['customers'] as Map?)?['name'] ?? '').toString().trim();
+    final items = repairJobItems(job);
+    final money = repairMoneyText(job);
+    final color = switch (state) {
+      'In repair' => context.colors.warning,
+      'Sent back' => context.colors.success,
+      _ => scheme.outline,
+    };
+    final models = [
+      for (final item in items)
+        if ('${item['name_model'] ?? ''}'.trim().isNotEmpty)
+          '${item['name_model']}'.trim(),
+    ].join(' · ');
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: AppCard(
-        child: ListTile(
-          onTap: () => showAppSheet<void>(
-            context: context,
-            title: '${row['job_number']}  ·  $customer',
-            heightFraction: 0.8,
-            builder: (sheetContext) => _RepairDetails(job: row),
-          ),
-          leading: CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.12),
-            child: Icon(Icons.build_outlined, color: color),
-          ),
-          title: Row(
+        onTap: () => showAppSheet<void>(
+          context: context,
+          title: '${job['job_number']}  ·  $customer',
+          heightFraction: 0.9,
+          builder: (sheetContext) => _RepairDetails(job: job),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              FlagDot(targetKey: flagRepairKey(row['id'] as int)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text('${row['job_number']}  ·  $customer',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14)),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 19,
+                    backgroundColor: color.withValues(alpha: 0.12),
+                    child: Icon(Icons.build_outlined, size: 19, color: color),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            FlagDot(
+                                targetKey:
+                                    flagRepairKey(job['id'] as int)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text('${job['job_number']}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 15)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          customer.isEmpty ? 'Customer not recorded' : customer,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _RepairStatusChip(status: '${job['status']}'),
+                ],
               ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _InfoTag(
+                    icon: Icons.event_available_outlined,
+                    text: 'In ${job['received_at']}',
+                  ),
+                  if (state == 'Sent back')
+                    _InfoTag(
+                      icon: Icons.assignment_turned_in_outlined,
+                      text: 'Back ${job['returned_at'] ?? '—'}',
+                    ),
+                  _InfoTag(
+                    icon: Icons.inventory_2_outlined,
+                    text: '${items.length} item'
+                        '${items.length == 1 ? '' : 's'}',
+                  ),
+                  if (money.isNotEmpty)
+                    _InfoTag(
+                        icon: Icons.payments_outlined, text: money),
+                ],
+              ),
+              if (models.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  models,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, color: scheme.onSurface),
+                ),
+              ],
             ],
           ),
-          subtitle: Text([
-            'In: ${row['received_at']}',
-            open
-                ? '${items.length} item(s) with us'
-                : 'Back: ${row['returned_at'] ?? '—'}',
-          ].join(' · ')),
-          trailing: _RepairStatusChip(status: '${row['status']}'),
         ),
       ),
+    );
+  }
+}
+
+class _InfoTag extends StatelessWidget {
+  const _InfoTag({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: context.colors.quietFill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12.5, color: scheme.outline),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurfaceVariant)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text, {this.top = 16});
+
+  final String text;
+  final double top;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: top, bottom: 6, left: 4),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: Theme.of(context).colorScheme.onSurfaceVariant)),
     );
   }
 }
@@ -196,8 +407,13 @@ class _RepairStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final open = repairIsOpen(status);
-    final color = open ? context.colors.warning : context.colors.success;
+    final state = repairStateOf(status);
+    final scheme = Theme.of(context).colorScheme;
+    final color = switch (state) {
+      'In repair' => context.colors.warning,
+      'Sent back' => context.colors.success,
+      _ => scheme.outline,
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -205,9 +421,189 @@ class _RepairStatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        open ? 'In repair' : 'Sent back',
+        state,
         style: TextStyle(
             color: color, fontSize: 11.5, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// filters
+// ---------------------------------------------------------------------------
+
+/// Every filter the repairs list understands: state, item kind, whether
+/// money came back, the received-date range and flagged jobs.
+class _RepairsFilterSheet extends StatefulWidget {
+  const _RepairsFilterSheet({required this.initial});
+
+  final RepairFilter initial;
+
+  @override
+  State<_RepairsFilterSheet> createState() => _RepairsFilterSheetState();
+}
+
+class _RepairsFilterSheetState extends State<_RepairsFilterSheet> {
+  late final TextEditingController _from;
+  late final TextEditingController _to;
+  late String _state;
+  late String _itemType;
+  late String _money;
+  late bool _flaggedOnly;
+
+  static const _states = ['All', 'In repair', 'Sent back', 'Cancelled'];
+  static const _itemTypes = {
+    'All': 'All items',
+    'machine': 'Machines',
+    'probe': 'Probes',
+    'printer': 'Printers',
+    'other': 'Other items',
+  };
+  static const _moneyOptions = ['All', 'Received', 'Not received'];
+
+  @override
+  void initState() {
+    super.initState();
+    _from = TextEditingController(text: widget.initial.dateFrom);
+    _to = TextEditingController(text: widget.initial.dateTo);
+    _state = widget.initial.state;
+    _itemType = widget.initial.itemType;
+    _money = widget.initial.money;
+    _flaggedOnly = widget.initial.flaggedOnly;
+  }
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
+
+  void _apply() {
+    Navigator.pop(context, (
+      query: widget.initial.query,
+      state: _state,
+      itemType: _itemType,
+      money: _money,
+      dateFrom: _from.text.trim(),
+      dateTo: _to.text.trim(),
+      flaggedOnly: _flaggedOnly,
+    ));
+  }
+
+  void _reset() {
+    setState(() {
+      _state = 'All';
+      _itemType = 'All';
+      _money = 'All';
+      _flaggedOnly = false;
+      _from.clear();
+      _to.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + keyboard),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Filter repairs',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(onPressed: _reset, child: const Text('Reset')),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _SectionTitle('Received between', top: 8),
+                  AppCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        DateField(controller: _from, label: 'From date'),
+                        const SizedBox(height: 14),
+                        DateField(controller: _to, label: 'To date'),
+                      ],
+                    ),
+                  ),
+                  const _SectionTitle('Show'),
+                  DropdownButtonFormField<String>(
+                    initialValue: _state,
+                    decoration: const InputDecoration(labelText: 'Repairs'),
+                    items: [
+                      for (final value in _states)
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text(value == 'All' ? 'All repairs' : value),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _state = value ?? 'All'),
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _itemType,
+                    decoration: const InputDecoration(labelText: 'Item type'),
+                    items: [
+                      for (final option in _itemTypes.entries)
+                        DropdownMenuItem(
+                            value: option.key, child: Text(option.value)),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _itemType = value ?? 'All'),
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _money,
+                    decoration: const InputDecoration(labelText: 'Money'),
+                    items: [
+                      for (final value in _moneyOptions)
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text(switch (value) {
+                            'All' => 'Any',
+                            'Received' => 'Money received',
+                            _ => 'No money recorded',
+                          }),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _money = value ?? 'All'),
+                  ),
+                  const SizedBox(height: 6),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Flagged only',
+                        style: TextStyle(fontSize: 14)),
+                    value: _flaggedOnly,
+                    onChanged: (value) =>
+                        setState(() => _flaggedOnly = value),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: _apply, child: const Text('Apply filters')),
+        ],
       ),
     );
   }
@@ -238,14 +634,15 @@ class _RepairDetails extends ConsumerWidget {
       }
     }
     final job = live ?? this.job;
-    final open = repairIsOpen('${job['status']}');
+    final scheme = Theme.of(context).colorScheme;
+    final state = repairStateOf(job['status']);
+    final open = state == 'In repair';
     final customer = ((job['customers'] as Map?)?['name'] ?? '').toString();
     final enteredBy = job['profiles'];
     final enteredName = enteredBy is Map
         ? ((enteredBy['display_name'] ?? enteredBy['username'] ?? '').toString())
         : '';
-    final items = (job['repair_items'] as List? ?? const [])
-        .cast<Map<String, dynamic>>();
+    final items = repairJobItems(job);
     final isAdmin = ref.watch(isAdminProvider);
     final flags = ref.watch(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
@@ -253,20 +650,39 @@ class _RepairDetails extends ConsumerWidget {
         flagIndex(flags)[flagRepairKey(job['id'] as int)] ?? const [];
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Text('${job['job_number']}',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${job['job_number']}',
+                      style: const TextStyle(
+                          fontSize: 19, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(
+                    customer.isEmpty ? 'Customer not recorded' : customer,
+                    style: TextStyle(
+                        fontSize: 13, color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
             ),
-            TextButton.icon(
+            const SizedBox(width: 8),
+            _RepairStatusChip(status: '${job['status']}'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            OutlinedButton.icon(
               onPressed: () => showAppSheet<void>(
                 context: context,
                 title: 'Edit ${job['job_number']}',
-                heightFraction: 0.9,
+                heightFraction: 0.95,
                 builder: (sheetContext) => Padding(
                   padding: EdgeInsets.only(
                       bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -274,19 +690,16 @@ class _RepairDetails extends ConsumerWidget {
                 ),
               ),
               icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Edit'),
+              label: const Text('Edit job'),
             ),
-            const SizedBox(width: 4),
-            _RepairStatusChip(status: '${job['status']}'),
           ],
         ),
-        Text(customer, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 12),
+        const _SectionTitle('Customer & dates'),
         AppCard(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Column(
             children: [
-              KeyValue(label: 'Sent by', value: customer),
+              KeyValue(label: 'Sent by', value: customer.isEmpty ? '—' : customer),
               KeyValue(
                   label: 'Contact',
                   value: '${job['customer_contact'] ?? '—'}'),
@@ -295,114 +708,129 @@ class _RepairDetails extends ConsumerWidget {
                 KeyValue(label: 'Delivered by', value: '${job['delivered_by']}'),
               if (enteredName.isNotEmpty)
                 KeyValue(label: 'Entered by', value: enteredName),
-              if ('${job['problem_description'] ?? ''}'.isNotEmpty)
-                KeyValue(
-                    label: 'Problem',
-                    value: '${job['problem_description']}'),
-              if ('${job['accessories_received'] ?? ''}'.isNotEmpty)
-                KeyValue(
-                    label: 'Accessories',
-                    value: '${job['accessories_received']}'),
-              if ('${job['condition_on_arrival'] ?? ''}'.isNotEmpty)
-                KeyValue(
-                    label: 'Condition',
-                    value: '${job['condition_on_arrival']}'),
-              if (job['estimated_cost'] != null)
-                KeyValue(
-                    label: 'Estimated cost',
-                    value: '${job['estimated_cost']}'),
-              if (job['final_cost'] != null)
-                KeyValue(label: 'Final cost', value: '${job['final_cost']}'),
-              if (open && '${job['repair_notes'] ?? ''}'.isNotEmpty)
-                KeyValue(
-                    label: 'Repair notes', value: '${job['repair_notes']}'),
-              if (jobFlags.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 110,
-                        child: Text('Flag',
-                            style: TextStyle(
-                                color: Theme.of(context).colorScheme.outline,
-                                fontSize: 13)),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (final flag in jobFlags)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  flagNoteText(flag),
-                                  style: TextStyle(
-                                      fontSize: 13.5,
-                                      color: colorFromHex('${flag['color']}')),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        const Text('Items',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        AppCard(
-          padding: const EdgeInsets.all(4),
-          child: Column(
-            children: [
-              for (final item in items)
-                ListTile(
-                  dense: true,
-                  leading: Text(
-                    itemKindLabel('${item['equipment_type'] ?? 'other'}'),
-                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline),
-                  ),
-                  title: Text('${item['name_model']}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 13.5)),
-                  subtitle: '${item['serial_number'] ?? ''}'.isEmpty
-                      ? null
-                      : Text('${item['serial_number']}'),
-                ),
-            ],
-          ),
-        ),
-        if (!open) ...[
-          const SizedBox(height: 16),
+        if ('${job['problem_description'] ?? ''}'.isNotEmpty ||
+            '${job['accessories_received'] ?? ''}'.isNotEmpty ||
+            '${job['condition_on_arrival'] ?? ''}'.isNotEmpty ||
+            '${job['repair_notes'] ?? ''}'.isNotEmpty) ...[
+          const _SectionTitle('Problem & condition'),
           AppCard(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                if ('${job['problem_description'] ?? ''}'.isNotEmpty)
+                  KeyValue(
+                      label: 'Problem',
+                      value: '${job['problem_description']}'),
+                if ('${job['accessories_received'] ?? ''}'.isNotEmpty)
+                  KeyValue(
+                      label: 'Accessories',
+                      value: '${job['accessories_received']}'),
+                if ('${job['condition_on_arrival'] ?? ''}'.isNotEmpty)
+                  KeyValue(
+                      label: 'Condition',
+                      value: '${job['condition_on_arrival']}'),
+                if ('${job['repair_notes'] ?? ''}'.isNotEmpty)
+                  KeyValue(
+                      label: 'Repair notes',
+                      value: '${job['repair_notes']}'),
+              ],
+            ),
+          ),
+        ],
+        if (job['estimated_cost'] != null || job['final_cost'] != null) ...[
+          const _SectionTitle('Cost'),
+          AppCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                if (job['estimated_cost'] != null)
+                  KeyValue(
+                      label: 'Estimated',
+                      value: '${job['estimated_cost']}'),
+                if (job['final_cost'] != null)
+                  KeyValue(
+                      label: 'Final cost', value: '${job['final_cost']}'),
+              ],
+            ),
+          ),
+        ],
+        _SectionTitle('Items (${items.length})'),
+        if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+            child: Text('No items recorded.',
+                style: TextStyle(fontSize: 13, color: scheme.outline)),
+          ),
+        for (final item in items) _itemCard(context, item),
+        if (state == 'Sent back') ...[
+          const _SectionTitle('Return'),
+          AppCard(
+            padding: const EdgeInsets.all(14),
             child: Column(
               children: [
                 KeyValue(
                     label: 'Sent back on',
                     value: '${job['returned_at'] ?? '—'}'),
                 if ('${job['collected_by'] ?? ''}'.isNotEmpty)
-                  KeyValue(label: 'Collected by', value: '${job['collected_by']}'),
+                  KeyValue(
+                      label: 'Collected by',
+                      value: '${job['collected_by']}'),
                 if (repairMoneyText(job).isNotEmpty)
                   KeyValue(
-                      label: 'Money received',
-                      value: repairMoneyText(job)),
+                      label: 'Money received', value: repairMoneyText(job)),
                 if ('${job['return_notes'] ?? ''}'.isNotEmpty)
                   KeyValue(
-                      label: 'Return notes', value: '${job['return_notes']}'),
-                if ('${job['repair_notes'] ?? ''}'.isNotEmpty)
-                  KeyValue(label: 'Notes', value: '${job['repair_notes']}'),
+                      label: 'Return notes',
+                      value: '${job['return_notes']}'),
+              ],
+            ),
+          ),
+        ],
+        if (jobFlags.isNotEmpty) ...[
+          const _SectionTitle('Flags'),
+          AppCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final flag in jobFlags)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Container(
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              color: colorFromHex('${flag['color']}'),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            flagNoteText(flag),
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                color: colorFromHex('${flag['color']}')),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
         ],
         const SizedBox(height: 20),
-        if (isAdmin) ...[
+        if (isAdmin)
           OutlinedButton.icon(
             onPressed: () => showFlagSheet(
               context,
@@ -418,14 +846,16 @@ class _RepairDetails extends ConsumerWidget {
                 ? 'Flag this repair'
                 : 'Flags (${jobFlags.length})'),
           ),
-          const SizedBox(height: 12),
-        ],
+        if (isAdmin && open) const SizedBox(height: 10),
         if (open)
           FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
             onPressed: () => showAppSheet<void>(
               context: context,
               title: 'Repaired — send it back',
-              heightFraction: 0.8,
+              heightFraction: 0.85,
               builder: (sheetContext) => Padding(
                 padding: EdgeInsets.only(
                     bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
@@ -436,6 +866,61 @@ class _RepairDetails extends ConsumerWidget {
             label: const Text('Repaired — send it back'),
           ),
       ],
+    );
+  }
+
+  Widget _itemCard(BuildContext context, Map<String, dynamic> item) {
+    final scheme = Theme.of(context).colorScheme;
+    final serial = '${item['serial_number'] ?? ''}'.trim();
+    final quantity = (item['quantity'] as num? ?? 1).toInt();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppCard(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        child: Row(
+          children: [
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: context.colors.primaryTint,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                itemKindLabel('${item['equipment_type'] ?? 'machine'}'),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.brandText),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${item['name_model'] ?? ''}',
+                      style: const TextStyle(
+                          fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  if (serial.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('Serial $serial',
+                          style: TextStyle(
+                              fontSize: 12, color: scheme.outline)),
+                    ),
+                ],
+              ),
+            ),
+            if (quantity > 1)
+              Text('×$quantity',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurfaceVariant)),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -543,47 +1028,55 @@ class _SendBackFormState extends ConsumerState<_SendBackForm> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
           Flexible(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  DateField(controller: _date, label: 'Sent back on *'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _collectedBy,
-                    decoration: const InputDecoration(
-                        labelText: 'Collected by (optional)'),
+                  const _SectionTitle('Return', top: 8),
+                  AppCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        DateField(controller: _date, label: 'Sent back on *'),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _collectedBy,
+                          decoration: const InputDecoration(
+                              labelText: 'Collected by (optional)'),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
+                  const _SectionTitle('Money'),
+                  AppCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
                           controller: _money,
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
                           decoration: const InputDecoration(
                               labelText: 'Money received (optional)'),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
+                        const SizedBox(height: 14),
+                        TextField(
                           controller: _receivedBy,
                           decoration: const InputDecoration(
                               labelText: 'Received by (optional)'),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                  const _SectionTitle('Notes'),
                   TextField(
                     controller: _notes,
                     maxLines: 3,
-                    decoration:
-                        const InputDecoration(labelText: 'Notes (optional)'),
+                    decoration: const InputDecoration(
+                        labelText: 'What was repaired (optional)'),
                   ),
                 ],
               ),
@@ -591,6 +1084,9 @@ class _SendBackFormState extends ConsumerState<_SendBackForm> {
           ),
           const SizedBox(height: 16),
           FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
@@ -646,6 +1142,7 @@ class _RepairLineCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final productRows = ref.watch(productsProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
@@ -663,63 +1160,61 @@ class _RepairLineCard extends ConsumerWidget {
         if (category == null || '${row['category']}' == category)
           '${row['name_model']}',
     ];
-    return AppCard(
-      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  key: ValueKey('repair-type-$index-${line.type}'),
-                  initialValue: line.type,
-                  isDense: true,
-                  items: const [
-                    'machine',
-                    'probe',
-                    'printer',
-                    'other',
-                  ]
-                      .map((t) => DropdownMenuItem(
-                          value: t, child: Text(itemKindLabel(t))))
-                      .toList(),
-                  onChanged: (value) {
-                    line.type = value ?? 'machine';
-                    onChanged();
-                  },
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Item ${index + 1}',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurfaceVariant)),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Remove',
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: onRemove,
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: PickyField(
-                  controller: line.model,
-                  label: 'Model',
-                  hint: 'Start typing — suggestions appear',
-                  options: models,
-                  pickTitle: 'models',
+                IconButton(
+                  tooltip: 'Remove this item',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.close, size: 18, color: scheme.error),
+                  onPressed: onRemove,
                 ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              key: ValueKey('repair-type-$index-${line.type}'),
+              initialValue: line.type,
+              decoration: const InputDecoration(labelText: 'Item type'),
+              items: const ['machine', 'probe', 'printer', 'other']
+                  .map((t) => DropdownMenuItem(
+                      value: t, child: Text(itemKindLabel(t))))
+                  .toList(),
+              onChanged: (value) {
+                line.type = value ?? 'machine';
+                onChanged();
+              },
+            ),
+            const SizedBox(height: 14),
+            PickyField(
+              controller: line.model,
+              label: 'Model *',
+              hint: 'Start typing — suggestions appear',
+              options: models,
+              pickTitle: 'models',
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: line.serial,
+              decoration: const InputDecoration(
+                labelText: 'Serial number (optional)',
               ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 130,
-                child: TextField(
-                  controller: line.serial,
-                  decoration: const InputDecoration(
-                      labelText: 'Serial', isDense: true),
-                ),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -810,8 +1305,8 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
       ref.invalidate(repairsProvider);
       if (!mounted) return;
       Navigator.pop(context);
-      messenger
-          .showSnackBar(SnackBar(content: Text('Repair recorded for ${_customer.text.trim()}.')));
+      messenger.showSnackBar(SnackBar(
+          content: Text('Repair recorded for ${_customer.text.trim()}.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -821,11 +1316,14 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final customerNames = ref.watch(customersProvider).maybeWhen(
           data: (rows) => rows.map((r) => r['name'].toString()).toList(),
           orElse: () => const <String>[],
         );
-    final stock = ref.watch(inventoryProvider).maybeWhen(
+    // both sides of the split: a machine sent to a customer from our
+    // stock (current or old-data) can come back for repair
+    final stock = ref.watch(allItemsProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
@@ -849,85 +1347,88 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
           Flexible(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  PickyField(
-                    controller: _customer,
-                    label: 'Sent by *',
-                    hint: 'Name of the customer or person',
-                    options: customerNames,
-                    pickTitle: 'customers',
+                  const _SectionTitle('Who sent it', top: 8),
+                  AppCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        PickyField(
+                          controller: _customer,
+                          label: 'Sent by *',
+                          hint: 'Name of the customer or person',
+                          options: customerNames,
+                          pickTitle: 'customers',
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _contact,
+                          keyboardType: TextInputType.phone,
+                          decoration:
+                              const InputDecoration(labelText: 'Contact'),
+                        ),
+                        const SizedBox(height: 14),
+                        DateField(controller: _date, label: 'Received on *'),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: TextField(
-                        controller: _contact,
-                        keyboardType: TextInputType.phone,
-                        decoration:
-                            const InputDecoration(labelText: 'Contact'),
-                      )),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: DateField(
-                              controller: _date, label: 'Received on *')),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                  const _SectionTitle('What is wrong'),
                   TextField(
                     controller: _problem,
-                    maxLines: 2,
+                    maxLines: 3,
                     decoration: const InputDecoration(
-                        labelText: 'Problem (optional)'),
+                        labelText: 'Problem (optional)',
+                        hintText: 'What did the customer report?'),
                   ),
-                  const SizedBox(height: 16),
+                  const _SectionTitle('Items *'),
                   Row(
                     children: [
                       Expanded(
-                        child: Text('Items *',
-                            style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picked =
+                                await showPickItem(context, items: stock);
+                            if (picked != null) _addStockItem(picked);
+                          },
+                          icon: const Icon(Icons.inventory_2_outlined,
+                              size: 18),
+                          label: const Text('From our stock'),
+                        ),
                       ),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final picked =
-                              await showPickItem(context, items: stock);
-                          if (picked != null) _addStockItem(picked);
-                        },
-                        icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                        label: const Text('Our stock'),
-                      ),
-                      TextButton.icon(
-                        onPressed: _addOutsideItem,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Outside'),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _addOutsideItem,
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Outside item'),
+                        ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
                   if (_lines.isEmpty)
                     Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
                       child: Text(
                           'Add the machine — plus its probes and printer.',
-                          style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: 13)),
+                          style: TextStyle(
+                              color: scheme.outline, fontSize: 13)),
                     )
                   else
                     for (var index = 0; index < _lines.length; index++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _RepairLineCard(
-                          index: index,
-                          line: _lines[index],
-                          onChanged: () => setState(() {}),
-                          onRemove: () {
-                            _lines[index].dispose();
-                            setState(() => _lines.removeAt(index));
-                          },
-                        ),
+                      _RepairLineCard(
+                        index: index,
+                        line: _lines[index],
+                        onChanged: () => setState(() {}),
+                        onRemove: () {
+                          _lines[index].dispose();
+                          setState(() => _lines.removeAt(index));
+                        },
                       ),
                 ],
               ),
@@ -935,13 +1436,16 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
           ),
           const SizedBox(height: 16),
           FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
+                : const Text('Save repair'),
           ),
         ],
       ),
@@ -1192,7 +1696,8 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
           data: (rows) => rows.map((r) => r['name'].toString()).toList(),
           orElse: () => const <String>[],
         );
-    final stock = ref.watch(inventoryProvider).maybeWhen(
+    // both sides of the split — see _NewRepairForm
+    final stock = ref.watch(allItemsProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
@@ -1226,127 +1731,146 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
           Flexible(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  PickyField(
-                    controller: _customer,
-                    label: 'Sent by *',
-                    hint: 'Name of the customer or person',
-                    options: customerNames,
-                    pickTitle: 'customers',
+                  const _SectionTitle('Customer & dates', top: 8),
+                  AppCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        PickyField(
+                          controller: _customer,
+                          label: 'Sent by *',
+                          hint: 'Name of the customer or person',
+                          options: customerNames,
+                          pickTitle: 'customers',
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _contact,
+                          keyboardType: TextInputType.phone,
+                          decoration:
+                              const InputDecoration(labelText: 'Contact'),
+                        ),
+                        const SizedBox(height: 14),
+                        DateField(controller: _date, label: 'Received on *'),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _deliveredBy,
+                          decoration: const InputDecoration(
+                              labelText: 'Delivered by (optional)'),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: TextField(
-                        controller: _contact,
-                        keyboardType: TextInputType.phone,
-                        decoration:
-                            const InputDecoration(labelText: 'Contact'),
-                      )),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: DateField(
-                              controller: _date, label: 'Received on *')),
-                    ],
+                  const _SectionTitle('Problem & condition'),
+                  AppCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _problem,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                              labelText: 'Problem (optional)'),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _accessories,
+                          decoration: const InputDecoration(
+                              labelText: 'Accessories received (optional)'),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _condition,
+                          decoration: const InputDecoration(
+                              labelText: 'Condition on arrival (optional)'),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _deliveredBy,
-                    decoration: const InputDecoration(
-                        labelText: 'Delivered by (optional)'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _problem,
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                        labelText: 'Problem (optional)'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _accessories,
-                    decoration: const InputDecoration(
-                        labelText: 'Accessories received (optional)'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _condition,
-                    decoration: const InputDecoration(
-                        labelText: 'Condition on arrival (optional)'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
+                  const _SectionTitle('Cost & notes'),
+                  AppCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
                           controller: _estimated,
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
                           decoration: const InputDecoration(
                               labelText: 'Estimated cost (optional)'),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
+                        const SizedBox(height: 14),
+                        TextField(
                           controller: _finalCost,
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
                           decoration: const InputDecoration(
                               labelText: 'Final cost (optional)'),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _repairNotes,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                              labelText: 'Repair notes (optional)'),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _repairNotes,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                        labelText: 'Repair notes (optional)'),
-                  ),
-                  const SizedBox(height: 12),
+                  const _SectionTitle('Status'),
                   DropdownButtonFormField<String>(
                     initialValue: statusOptions.contains(_status)
                         ? _status
                         : 'Received',
-                    decoration:
-                        const InputDecoration(labelText: 'Status'),
+                    decoration: const InputDecoration(labelText: 'Status'),
                     items: [
                       for (final value in statusOptions)
-                        DropdownMenuItem(
-                            value: value, child: Text(value)),
+                        DropdownMenuItem(value: value, child: Text(value)),
                     ],
-                    onChanged: (value) => setState(
-                        () => _status = value ?? 'Received'),
+                    onChanged: (value) =>
+                        setState(() => _status = value ?? 'Received'),
                   ),
                   if (returned) ...[
-                    const SizedBox(height: 16),
-                    Text('Return details',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: scheme.onSurfaceVariant)),
-                    const SizedBox(height: 8),
-                    DateField(
-                        controller: _returnedAt, label: 'Sent back on'),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _collectedBy,
-                      decoration: const InputDecoration(
-                          labelText: 'Collected by (optional)'),
+                    const _SectionTitle('Return details'),
+                    AppCard(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          DateField(
+                              controller: _returnedAt,
+                              label: 'Sent back on'),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _collectedBy,
+                            decoration: const InputDecoration(
+                                labelText: 'Collected by (optional)'),
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _returnNotes,
+                            maxLines: 2,
+                            decoration: const InputDecoration(
+                                labelText: 'Return notes (optional)'),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
+                    const _SectionTitle('Money received'),
+                    AppCard(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
                             controller: _money,
                             keyboardType:
                                 const TextInputType.numberWithOptions(
@@ -1354,61 +1878,52 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
                             decoration: const InputDecoration(
                                 labelText: 'Money received (optional)'),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
+                          const SizedBox(height: 14),
+                          TextField(
                             controller: _receivedBy,
                             decoration: const InputDecoration(
                                 labelText: 'Received by (optional)'),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _returnNotes,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                          labelText: 'Return notes (optional)'),
+                        ],
+                      ),
                     ),
                   ],
-                  const SizedBox(height: 16),
+                  const _SectionTitle('Items *'),
                   Row(
                     children: [
                       Expanded(
-                        child: Text('Items *',
-                            style: TextStyle(
-                                fontSize: 13, color: scheme.onSurfaceVariant)),
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picked =
+                                await showPickItem(context, items: stock);
+                            if (picked != null) {
+                              setState(() => _lines.add(_RepairLine(
+                                    type: picked.kind,
+                                    model: '${picked.code}  ${picked.name}',
+                                    serial: picked.serial ?? '',
+                                  )));
+                            }
+                          },
+                          icon: const Icon(Icons.inventory_2_outlined,
+                              size: 18),
+                          label: const Text('From our stock'),
+                        ),
                       ),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final picked =
-                              await showPickItem(context, items: stock);
-                          if (picked != null) {
-                            setState(() => _lines.add(_RepairLine(
-                                  type: picked.kind,
-                                  model:
-                                      '${picked.code}  ${picked.name}',
-                                  serial: picked.serial ?? '',
-                                )));
-                          }
-                        },
-                        icon: const Icon(Icons.inventory_2_outlined,
-                            size: 18),
-                        label: const Text('Our stock'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => setState(() =>
-                            _lines.add(_RepairLine(type: 'machine'))),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Outside'),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => setState(
+                              () => _lines.add(_RepairLine(type: 'machine'))),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Outside item'),
+                        ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
                   if (_lines.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
                       child: Text(
                           'A repair needs at least one item — add it back.',
                           style: TextStyle(
@@ -1416,17 +1931,14 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
                     )
                   else
                     for (var index = 0; index < _lines.length; index++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _RepairLineCard(
-                          index: index,
-                          line: _lines[index],
-                          onChanged: () => setState(() {}),
-                          onRemove: () {
-                            _lines[index].dispose();
-                            setState(() => _lines.removeAt(index));
-                          },
-                        ),
+                      _RepairLineCard(
+                        index: index,
+                        line: _lines[index],
+                        onChanged: () => setState(() {}),
+                        onRemove: () {
+                          _lines[index].dispose();
+                          setState(() => _lines.removeAt(index));
+                        },
                       ),
                   if (isAdmin) ...[
                     const SizedBox(height: 8),
@@ -1444,6 +1956,9 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
           ),
           const SizedBox(height: 16),
           FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
