@@ -131,8 +131,27 @@ void main() {
         period: october,
       );
       expect(stats.returnedItems, 2);
+      expect(stats.returnedBack, 2);
       expect(stats.sendCount, 0);
       expect(stats.itemCount, 0);
+    });
+
+    test('a returned item sent out again is not counted as back', () {
+      final stats = computeDashStats(
+        movementRows: [
+          _move(1, type: 'Return', machineId: 1, group: 'r1',
+              date: '05-10-2026'),
+          _move(2, type: 'Customer', machineId: 1, group: 'g9',
+              date: '06-10-2026'),
+          _move(3, type: 'Return', probeId: 2, group: 'r2'),
+        ],
+        saleEntries: const [],
+        repairRows: const [],
+        batchByItem: _batches,
+        period: october,
+      );
+      expect(stats.returnedItems, 2);
+      expect(stats.returnedBack, 1);
     });
 
     test('a batch narrows movements to items in it', () {

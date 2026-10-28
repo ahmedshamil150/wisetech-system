@@ -133,6 +133,7 @@ typedef DashStats = ({
   int itemCount,
   Map<String, int> sendsByKind,
   int returnedItems,
+  int returnedBack,
   int repairsReceived,
   int repairsBack,
   double repairsMoney,
@@ -152,9 +153,11 @@ DashStats computeDashStats({
   bool inBatch(Map<String, dynamic> row) =>
       batch.isEmpty || itemBatchOf(row, batchByItem) == batch;
 
+  final latest = latestMovementByItem(movementRows);
   final sendGroups = <String, Set<String>>{};
   var itemCount = 0;
   var returned = 0;
+  var returnedBack = 0;
 
   for (final row in movementRows) {
     final type = '${row['movement_type'] ?? ''}';
@@ -164,6 +167,11 @@ DashStats computeDashStats({
 
     if (type == 'Return') {
       returned++;
+      // an item that came back and was sent out again is no longer in
+      // stock — only the item whose latest movement is this return counts
+      final key = movementItemKey(row);
+      final last = key == null ? null : latest['${key.key}:${key.value}'];
+      if (last != null && last['id'] == row['id']) returnedBack++;
       continue;
     }
     if (!_sendKinds.contains(type)) continue;
@@ -210,6 +218,7 @@ DashStats computeDashStats({
     itemCount: itemCount,
     sendsByKind: sendsByKind,
     returnedItems: returned,
+    returnedBack: returnedBack,
     repairsReceived: repairsReceived,
     repairsBack: repairsBack,
     repairsMoney: repairsMoney,

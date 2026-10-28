@@ -182,16 +182,18 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               final latest = latestMovementByItem(fullHistory);
 
               // Return rows are history, not cards — they show in the
-              // item details instead
+              // item details instead. The date range is applied per card
+              // below: a send by the day it went out, a returned item by
+              // the day it came back.
               final sends = allRows
                   .where((row) => row['movement_type'] != 'Return')
+                  .where((row) => _passes(row, skipDates: true))
                   .toList();
-              final filtered = sends.where((row) => _passes(row)).toList();
 
               // rows that travelled together (same invoice) stay in one card
               final entries = <List<Map<String, dynamic>>>[];
               final groups = <String, List<Map<String, dynamic>>>{};
-              for (final row in filtered) {
+              for (final row in sends) {
                 final group = (row['group_ref'] ?? '').toString();
                 if (group.isEmpty) {
                   entries.add([row]);
@@ -216,8 +218,15 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               for (final members in entries) {
                 final parts = partitionSendRows(members, latest);
                 final shown = _filter == 'Returned'
-                    ? parts.back
-                    : <Map<String, dynamic>>[...parts.out, ...parts.movedOn];
+                    ? <Map<String, dynamic>>[
+                        for (final row in parts.back)
+                          if (_passesDate(_returnDateOf(row, latest))) row,
+                      ]
+                    : <Map<String, dynamic>>[
+                        for (final row in [...parts.out, ...parts.movedOn])
+                          if (_passesDate('${row['movement_date'] ?? ''}'))
+                            row,
+                      ];
                 if (shown.isEmpty) continue;
                 if (_filter != 'All' &&
                     _filter != 'Returned' &&
@@ -322,7 +331,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final row in allRows) {
       if (row['movement_type'] == 'Return') continue;
-      if (!_passes(row)) continue;
+      if (!_passes(row, skipDates: true)) continue;
       final group = (row['group_ref'] ?? '').toString();
       if (group.isEmpty) {
         entries.add([row]);
@@ -342,8 +351,14 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       final parts = partitionSendRows(members, latest);
       for (final filter in _filters) {
         final shown = filter == 'Returned'
-            ? parts.back
-            : <Map<String, dynamic>>[...parts.out, ...parts.movedOn];
+            ? <Map<String, dynamic>>[
+                for (final row in parts.back)
+                  if (_passesDate(_returnDateOf(row, latest))) row,
+              ]
+            : <Map<String, dynamic>>[
+                for (final row in [...parts.out, ...parts.movedOn])
+                  if (_passesDate('${row['movement_date'] ?? ''}')) row,
+              ];
         if (shown.isEmpty) continue;
         if (filter != 'All' &&
             filter != 'Returned' &&
@@ -375,7 +390,31 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return dates;
   }
 
-  bool _passes(Map<String, dynamic> row) {
+  /// The date a row is judged by in the range filter. A send is judged
+  /// by the day it went out; a returned item under 'Returned' is judged
+  /// by the day it came back — an October return of a September send
+  /// still belongs to October.
+  String? _returnDateOf(
+      Map<String, dynamic> row, Map<String, Map<String, dynamic>> latest) {
+    final key = movementItemKey(row);
+    final last = key == null ? null : latest['${key.key}:${key.value}'];
+    if (last == null || last['movement_type'] != 'Return') return null;
+    return (last['movement_date'] ?? '').toString();
+  }
+
+  bool _passesDate(String? raw) {
+    if (_dateFrom.isEmpty && _dateTo.isEmpty) return true;
+    // a row with no readable date cannot sit inside a range
+    final date = _parseDateText(raw ?? '');
+    if (date == null) return false;
+    final from = _parseDateText(_dateFrom);
+    if (from != null && date.isBefore(from)) return false;
+    final to = _parseDateText(_dateTo);
+    if (to != null && date.isAfter(to)) return false;
+    return true;
+  }
+
+  bool _passes(Map<String, dynamic> row, {bool skipDates = false}) {
     if (_party != 'All' &&
         (row['to_location'] ?? '').toString() != _party) {
       return false;
@@ -384,14 +423,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     if (_kind != 'All' && _kindOf(row) != _kind) return false;
     if (_demo == 'Demo only' && row['is_demo'] != true) return false;
     if (_demo == 'Exclude demo' && row['is_demo'] == true) return false;
-    if (_dateFrom.isNotEmpty || _dateTo.isNotEmpty) {
-      // a row with no readable date cannot sit inside a range
-      final date = _parseDateText((row['movement_date'] ?? '').toString());
-      if (date == null) return false;
-      final from = _parseDateText(_dateFrom);
-      if (from != null && date.isBefore(from)) return false;
-      final to = _parseDateText(_dateTo);
-      if (to != null && date.isAfter(to)) return false;
+    if (!skipDates &&
+        !_passesDate((row['movement_date'] ?? '').toString())) {
+      return false;
     }
     return true;
   }

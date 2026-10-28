@@ -158,12 +158,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ('In repair', Icons.handyman_outlined, '$inRepair', 'repairs'),
     ];
 
-    final isAdmin = ref.watch(isAdminProvider);
-    final newPeople = ref.watch(recentPartiesProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <Map<String, dynamic>>[],
-        );
-
     // sends recorded without a dealer/customer name — mine only
     final missingMine = movementRows
         .where((row) =>
@@ -177,40 +171,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 .toString())
         .toSet()
         .length;
-
-    // who sent the most, inside the chosen period and batch
-    final byPerson = <String, Map<String, dynamic>>{};
-    for (final row in movementRows) {
-      if (row['machine_id'] == null) continue;
-      final kind = row['movement_type'];
-      if (!const {'Workshop', 'Branch', 'Dealer', 'Customer'}.contains(kind)) {
-        continue;
-      }
-      if (!dashInPeriod('${row['movement_date'] ?? ''}', _period)) continue;
-      if (_batch.isNotEmpty && itemBatchOf(row, batchByItem) != _batch) {
-        continue;
-      }
-      final actorId = (row['actor_id'] ?? '').toString();
-      if (actorId.isEmpty) continue;
-      final actor = row['profiles'];
-      final person = actor is Map
-          ? ((actor['display_name'] ?? actor['username'] ?? '').toString())
-          : '';
-      if (person.isEmpty) continue;
-      final entry = byPerson.putIfAbsent(actorId, () => {
-            'name': person,
-            'Workshop': 0,
-            'Branch': 0,
-            'Dealer': 0,
-            'Customer': 0,
-            'total': 0,
-          });
-      entry[kind] = (entry[kind] as int) + 1;
-      entry['total'] = (entry['total'] as int) + 1;
-    }
-    final ranking = byPerson.entries.toList()
-      ..sort((a, b) =>
-          (b.value['total'] as int).compareTo(a.value['total'] as int));
 
     final desktop = isDesktopLayout(context);
     final batchLabel = _batch.isEmpty
@@ -286,8 +246,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               _StatCard(
                 label: 'Returned',
-                value: '${stats.returnedItems}',
-                sub: 'items back',
+                value: '${stats.returnedBack}',
+                sub: stats.returnedItems == 1
+                    ? '1 return recorded'
+                    : '${stats.returnedItems} returns recorded',
                 icon: Icons.assignment_return_outlined,
                 onTap: () => ref.read(shellTabProvider.notifier).set(2),
               ),
@@ -421,135 +383,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           showAddPartySheet(context, ref, missingMine),
                       child: const Text('Add now'),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (isAdmin && newPeople.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            AppCard(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Recently added',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w800)),
-                    Text(
-                      'Customers and dealers anyone just added.',
-                      style: TextStyle(
-                          color: scheme.onSurfaceVariant, fontSize: 12.5),
-                    ),
-                    const SizedBox(height: 6),
-                    for (var i = 0; i < newPeople.length; i++) ...[
-                      if (i > 0) const Divider(height: 1),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.person_add_alt_outlined,
-                                size: 20, color: kAmber),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${newPeople[i]['name']}',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13.5)),
-                                  Text(
-                                    '${newPeople[i]['by']} added a '
-                                    '${newPeople[i]['kind']} · '
-                                    '${_shopDate(newPeople[i]['at'])}',
-                                    style: TextStyle(
-                                        color: scheme.onSurfaceVariant,
-                                        fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (ranking.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            AppCard(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Who sent the most?',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Machines out · ${_period.label}',
-                      style: TextStyle(
-                          color: scheme.onSurfaceVariant, fontSize: 12.5),
-                    ),
-                    const SizedBox(height: 10),
-                    for (var i = 0; i < ranking.length; i++) ...[
-                      if (i > 0) const Divider(height: 1),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 28,
-                              child: Text('#${i + 1}',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 13,
-                                      color: i == 0
-                                          ? context.colors.brandText
-                                          : scheme.outline)),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${ranking[i].value['name']}'
-                                    '${ranking[i].key == myId ? ' (you)' : ''}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5),
-                                  ),
-                                  Text(
-                                    'Dealer ${ranking[i].value['Dealer']} · '
-                                    'Customer ${ranking[i].value['Customer']} · '
-                                    'Workshop ${ranking[i].value['Workshop']}'
-                                    ' · Branch ${ranking[i].value['Branch']}',
-                                    style: TextStyle(
-                                        color: scheme.onSurfaceVariant,
-                                        fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (i == 0)
-                              const Padding(
-                                padding: EdgeInsets.only(right: 8),
-                                child: Icon(Icons.emoji_events_outlined,
-                                    color: kAmber, size: 20),
-                              ),
-                            Text('${ranking[i].value['total']}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w800, fontSize: 16)),
-                          ],
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -839,10 +672,4 @@ void openStat(WidgetRef ref, String target) {
   }
   ref.read(inventoryStatusFilterProvider.notifier).set(target);
   ref.read(shellTabProvider.notifier).set(1);
-}
-
-/// `2026-09-28T…` → `28-09-2026` (the shop's date format).
-String _shopDate(Object? iso) {
-  final parsed = DateTime.tryParse((iso ?? '').toString());
-  return parsed == null ? '' : DateField.format(parsed);
 }
