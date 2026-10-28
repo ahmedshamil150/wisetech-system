@@ -237,14 +237,45 @@ Future<bool> confirmDeleteOldSale(
   );
   if (confirmed != true) return false;
   try {
+    final lines = await db
+        .from('sale_items')
+        .select('item_type, machine_id, probe_id, printer_id')
+        .eq('sale_id', row['id']);
     // remove the line items first in case there is no cascade
     await db.from('sale_items').delete().eq('sale_id', row['id']);
     await db.from('sales').delete().eq('id', row['id']);
+    await _putBackUnsoldItems(lines);
     ref.invalidate(oldSalesProvider);
+    ref.invalidate(oldStockItemsProvider);
+    ref.invalidate(inventoryProvider);
     return true;
   } catch (error) {
     if (context.mounted) showSnack(context, errorMessage(error), error: true);
     return false;
+  }
+}
+
+/// Puts the items of a just-deleted sale back in stock. The old sell
+/// flow only changed status to Sold, so undoing the sale undoes exactly
+/// that — an item still named by another sale keeps its Sold status.
+Future<void> _putBackUnsoldItems(List<Map<String, dynamic>> lines) async {
+  for (final line in lines) {
+    final kind = '${line['item_type'] ?? ''}';
+    if (kind != 'machine' && kind != 'probe' && kind != 'printer') continue;
+    final id = line['${kind}_id'];
+    if (id is! int) continue;
+    final otherSale = await db
+        .from('sale_items')
+        .select('id')
+        .eq('${kind}_id', id)
+        .limit(1)
+        .maybeSingle();
+    if (otherSale != null) continue;
+    await db
+        .from('${kind}s')
+        .update({'status': defaultStatus(kind)})
+        .eq('id', id)
+        .eq('status', 'Sold');
   }
 }
 

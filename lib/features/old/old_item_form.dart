@@ -194,6 +194,7 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
     ref.invalidate(oldMachinesProvider);
     ref.invalidate(oldProbesProvider);
     ref.invalidate(oldPrintersProvider);
+    ref.invalidate(oldStockItemsProvider);
     ref.invalidate(inventoryProvider);
   }
 

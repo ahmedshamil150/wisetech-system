@@ -121,6 +121,18 @@ void main() {
       expect(dealers.map((row) => row['id']), [1]);
     });
 
+    test('keeps imported rows dated on or after the split', () {
+      final rows = [
+        _movement(1, type: 'Customer', date: '13-09-2026', oldSourceId: 1),
+        _movement(2, type: 'Customer', date: '14-09-2026', oldSourceId: 2),
+        _movement(3, type: 'Dealer', date: '29-09-2026', oldSourceId: 3),
+        _movement(4, type: 'Customer', date: null, oldSourceId: 4),
+      ];
+      final kept = filterMovementRows(rows,
+          kind: 'All', from: DateTime(2026, 9, 1), to: DateTime(2026, 9, 30));
+      expect(kept.map((row) => row['id']), [2, 3]);
+    });
+
     test('All keeps box moves out; Box moves keeps only them', () {
       final rows = [
         _movement(1, type: 'Dealer', date: '10-01-2026'),

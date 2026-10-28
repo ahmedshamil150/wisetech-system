@@ -226,6 +226,16 @@ bool isOldSideMovement(Map<String, dynamic> row) {
   return date != null && date.isBefore(kOldSideCutoff);
 }
 
+/// Whether a movement row came in with the old-system import and sits on
+/// the old side of the split. An imported row dated on/after the split
+/// is a current transaction — the last sales the old system recorded —
+/// and stays visible in Movements and reports.
+bool isOldSideImport(Map<String, dynamic> row) {
+  if (row['old_source_id'] == null) return false;
+  final date = _parseDate(row['movement_date']);
+  return date == null || date.isBefore(kOldSideCutoff);
+}
+
 /// Box placements and removals belong to an item's own history only —
 /// the Movements screen list hides them (they are not sends).
 bool isBoxMovement(Map<String, dynamic> row) {
@@ -596,16 +606,14 @@ final allMovementsProvider =
 });
 
 /// The movement list shown on the Movements screen: current-side sends
-/// and returns only. Imported old-side rows (they carry an
-/// [old_source_id]) live in the old-data side; box moves and the old
-/// part movements stay in item history but are not listed here.
+/// and returns only. Imported old-side rows live in the old-data side;
+/// box moves and the old part movements stay in item history but are
+/// not listed here.
 final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final rows = await ref.watch(allMovementsProvider.future);
   return [
     for (final row in rows)
-      if (row['old_source_id'] == null &&
-          !isOldSideMovement(row) &&
-          !isBoxMovement(row))
+      if (!isOldSideImport(row) && !isOldSideMovement(row) && !isBoxMovement(row))
         row
   ];
 });

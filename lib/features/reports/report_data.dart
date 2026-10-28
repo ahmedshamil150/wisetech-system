@@ -58,7 +58,7 @@ List<Map<String, dynamic>> filterMovementRows(
 }) {
   return [
     for (final row in rows)
-      if (row['old_source_id'] == null &&
+      if (!isOldSideImport(row) &&
           (row['movement_type'] ?? '').toString() != 'Legacy' &&
           switch (kind) {
             'All' => !isBoxMovement(row),
