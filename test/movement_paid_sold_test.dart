@@ -31,6 +31,24 @@ void main() {
     });
   });
 
+  group('sale amount / sold by', () {
+    test('amount reads off the column, blank type reads null', () {
+      expect(soldAmountOf({'sale_amount': 45000}), 45000);
+      expect(soldAmountOf({'sale_amount': null}), isNull);
+      expect(soldAmountOf(const {}), isNull);
+      expect(parseSaleAmount(' 45,000 '), 45000);
+      expect(parseSaleAmount(''), isNull);
+      expect(parseSaleAmount('abc'), isNull);
+    });
+
+    test('the person who sold it is trimmed, blank when not recorded', () {
+      expect(movementSoldBy({'sold_by': 'Usman Ali'}), 'Usman Ali');
+      expect(movementSoldBy({'sold_by': '  Usman  '}), 'Usman');
+      expect(movementSoldBy({'sold_by': null}), '');
+      expect(movementSoldBy(const {}), '');
+    });
+  });
+
   group('sendReason', () {
     test('mirrors the wording create_movement records', () {
       expect(sendReason('Workshop', demo: false), 'Sent to workshop');

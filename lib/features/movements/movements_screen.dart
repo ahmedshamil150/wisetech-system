@@ -603,7 +603,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                         'Back ${returnedOn[row['id'] as int]}',
                       if (movedOn.contains(row['id'] as int)) 'Moved on',
                       kind,
-                      if (movementSold(row)) 'Sold',
+                      if (movementSold(row))
+                        movementSoldBy(row).isEmpty
+                            ? 'Sold'
+                            : 'Sold by ${movementSoldBy(row)}',
                       if (isOutboundKind(kind))
                         movementPaid(row) ? 'Paid' : 'Unpaid',
                       if (isDemo) 'Demo',
@@ -1057,6 +1060,7 @@ class _MovementDetails extends ConsumerWidget {
     final kind = (first['movement_type'] ?? '').toString();
     final outbound = isOutboundKind(kind);
     final sold = rows.any(movementSold);
+    final soldBy = movementSoldBy(first);
     final paid = rows.any(movementPaid);
     final group = (first['group_ref'] ?? '').toString();
     final icon = switch (kind) {
@@ -1261,7 +1265,7 @@ class _MovementDetails extends ConsumerWidget {
             [
               first['movement_date'] ?? '',
               kind,
-              if (sold) 'Sold',
+              if (sold) soldBy.isEmpty ? 'Sold' : 'Sold by $soldBy',
               if (outbound) paid ? 'Paid' : 'Unpaid',
               if (first['is_demo'] == true) 'Demo',
               if (actorName.isNotEmpty) 'by $actorName',
@@ -1377,6 +1381,7 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
   late final TextEditingController _date;
   late final TextEditingController _notes;
   late final TextEditingController _amount;
+  late final TextEditingController _soldBy;
   late bool _paid;
   late bool _sold;
   bool _saving = false;
@@ -1398,13 +1403,14 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
             : amount == amount.roundToDouble()
                 ? amount.toStringAsFixed(0)
                 : '$amount');
+    _soldBy = TextEditingController(text: movementSoldBy(first));
     _paid = widget.rows.any(movementPaid);
     _sold = widget.rows.any(movementSold);
   }
 
   @override
   void dispose() {
-    for (final c in [_date, _notes, _amount]) {
+    for (final c in [_date, _notes, _amount, _soldBy]) {
       c.dispose();
     }
     super.dispose();
@@ -1430,12 +1436,17 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
       await setMovementDate([for (final row in rows) row['id'] as int], date);
       await setMovementNotes(rows, _notes.text.trim());
       if (_paid != rows.any(movementPaid)) await setSendPaid(rows, _paid);
-      // the sold mark carries the sale amount with it — typed or blank,
-      // whatever changed goes to every row of the send
+      // the sold mark carries the sale amount and the seller with it —
+      // typed or blank, whatever changed goes to every row of the send
       final wasSold = rows.any(movementSold);
       final amount = parseSaleAmount(_amount.text);
-      if (_sold != wasSold || (_sold && amount != soldAmountOf(rows.first))) {
-        await setSendSold(rows, _sold, amount: _sold ? amount : null);
+      final soldBy = _soldBy.text.trim();
+      if (_sold != wasSold ||
+          (_sold &&
+              (amount != soldAmountOf(rows.first) ||
+                  soldBy != movementSoldBy(rows.first)))) {
+        await setSendSold(rows, _sold,
+            amount: _sold ? amount : null, soldBy: soldBy);
       }
       ref.invalidate(allMovementsProvider);
       if (!mounted) return;
@@ -1559,6 +1570,14 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                       decoration: const InputDecoration(
                           labelText: 'Sale amount (optional)',
                           hintText: 'Blank is fine'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _soldBy,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                          labelText: 'Sold by (optional)',
+                          hintText: 'Name of the person who sold it'),
                     ),
                   ],
                 ],

@@ -267,6 +267,11 @@ bool movementSold(Map<String, dynamic> row) =>
 double? soldAmountOf(Map<String, dynamic> row) =>
     (row['sale_amount'] as num?)?.toDouble();
 
+/// The name typed into "Sold by" when the send was marked sold, '' when
+/// none was recorded (every send marked sold before that field existed).
+String movementSoldBy(Map<String, dynamic> row) =>
+    '${row['sold_by'] ?? ''}'.trim();
+
 /// A typed amount field as a number — blank or unreadable text reads as
 /// null (no amount recorded).
 double? parseSaleAmount(String text) {
@@ -610,7 +615,7 @@ final allMovementsProvider =
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
-        'reason, notes, reference, is_demo, paid, sale_amount, created_at, actor_id, machine_id, '
+        'reason, notes, reference, is_demo, paid, sale_amount, sold_by, created_at, actor_id, machine_id, '
         'probe_id, printer_id, part_id, dealer_id, customer_id, workshop_id, old_source_id, '
         'dealers(name), customers(name), '
         'workshops(name), profiles(display_name, username)',
@@ -687,17 +692,19 @@ Future<void> setSendPaid(List<Map<String, dynamic>> rows, bool paid) async {
 
 /// Flips the sold mark on a whole send: on, the reason reads 'Sold' and
 /// the item's history shows "Sold to X" — with [amount] as the sale
-/// amount when one was given; off, the original wording goes back and
-/// the amount is cleared. A label only — the items keep their status.
-/// Only admins may (enforced by RLS).
+/// amount and [soldBy] the person who sold it, when given; off, the
+/// original wording goes back and both are cleared. A label only — the
+/// items keep their status. Only admins may (enforced by RLS).
 Future<void> setSendSold(List<Map<String, dynamic>> rows, bool sold,
-    {double? amount}) async {
+    {double? amount, String? soldBy}) async {
   final first = rows.first;
   final kind = '${first['movement_type'] ?? ''}';
+  final seller = (soldBy ?? '').trim();
   await _updateSend(rows, {
     'reason':
         sold ? 'Sold' : sendReason(kind, demo: first['is_demo'] == true),
     'sale_amount': sold ? amount : null,
+    'sold_by': sold && seller.isNotEmpty ? seller : null,
   });
 }
 

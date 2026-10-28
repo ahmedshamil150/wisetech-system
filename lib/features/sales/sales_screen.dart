@@ -37,6 +37,7 @@ typedef SaleEntry = ({
   String buyerKind, // Customer | Dealer | Branch (best effort)
   String summary,
   double? total,
+  String soldBy, // who sold it, typed when a send is marked Sold
   bool paid,
   bool imported, // came in with the old-system import
   Map<String, dynamic> row,
@@ -98,6 +99,7 @@ List<SaleEntry> mergeSaleEntries({
       buyerKind: buyer.kind,
       summary: summary,
       total: price is num ? price.toDouble() : null,
+      soldBy: '',
       paid: true,
       imported: row['old_source_id'] != null,
       row: row,
@@ -137,6 +139,7 @@ List<SaleEntry> mergeSaleEntries({
       buyerKind: '${first['movement_type'] ?? ''}',
       summary: parts.join(' · '),
       total: soldAmountOf(first),
+      soldBy: movementSoldBy(first),
       paid: rows.any(movementPaid),
       imported: false,
       row: first,
@@ -207,8 +210,8 @@ List<SaleEntry> filterSaleEntries(
     final trno = (entry.row['old_trno'] ?? '').toString();
     final notes = (entry.row['notes'] ?? '').toString();
     final haystack =
-        '${entry.date} ${entry.buyer} ${entry.summary} $invoice $trno '
-                '$notes ${entry.total ?? ''}'
+        '${entry.date} ${entry.buyer} ${entry.summary} ${entry.soldBy} '
+                '$invoice $trno $notes ${entry.total ?? ''}'
             .toLowerCase();
     return haystack.contains(q);
   }).toList();
@@ -519,6 +522,13 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                     style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context).colorScheme.outline)),
+              if (isSend && entry.soldBy.isNotEmpty)
+                Text('Sold by ${entry.soldBy}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.outline)),
               Row(
                 children: [
                   if (showTotal)
@@ -732,6 +742,11 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                     value: saleAmountText(entry.total).isEmpty
                         ? 'Not recorded'
                         : saleAmountText(entry.total)),
+                KeyValue(
+                    label: 'Sold by',
+                    value: entry.soldBy.isEmpty
+                        ? 'Not recorded'
+                        : entry.soldBy),
                 KeyValue(label: 'Settled', value: entry.paid ? 'Paid' : 'Unpaid'),
                 if (actorName.isNotEmpty)
                   KeyValue(label: 'Recorded by', value: actorName),

@@ -35,6 +35,7 @@ Map<String, dynamic> _moveRow(
   bool paid = false,
   int? oldSourceId,
   Map<String, dynamic>? customer,
+  String? soldBy,
 }) {
   return {
     'id': id,
@@ -45,6 +46,7 @@ Map<String, dynamic> _moveRow(
     'reason': reason,
     'paid': paid,
     'sale_amount': amount,
+    'sold_by': soldBy,
     'old_source_id': oldSourceId,
     'machine_id': ?machineId,
     'probe_id': ?probeId,
@@ -158,6 +160,24 @@ void main() {
         labels: const {},
       );
       expect(entries.single.buyer, 'Dr Ali');
+    });
+
+    test('a sold send carries the name of the person who sold it', () {
+      final entries = mergeSaleEntries(
+        salesRows: const [],
+        movementRows: [_moveRow(1, machineId: 7, soldBy: 'Usman Ali')],
+        labels: const {},
+      );
+      expect(entries.single.soldBy, 'Usman Ali');
+    });
+
+    test('a send sold before the field existed reads no seller', () {
+      final entries = mergeSaleEntries(
+        salesRows: const [],
+        movementRows: [_moveRow(1, machineId: 7)],
+        labels: const {},
+      );
+      expect(entries.single.soldBy, '');
     });
 
     test('unreadable dates sort last instead of crashing', () {
