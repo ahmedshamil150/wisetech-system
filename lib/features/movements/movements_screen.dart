@@ -2087,6 +2087,22 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
 // new movement
 // ---------------------------------------------------------------------------
 
+/// One group of a new movement: a machine with its kit, or a few loose
+/// items. It is recorded as its own send on the same day for the same
+/// party, so it keeps its own sold, amount and paid marks.
+class _GroupDraft {
+  final List<InventoryItem> items = [];
+  bool sold = false;
+  bool paid = false;
+  final amount = TextEditingController();
+  final soldBy = TextEditingController();
+
+  void dispose() {
+    amount.dispose();
+    soldBy.dispose();
+  }
+}
+
 class _NewMovementForm extends ConsumerStatefulWidget {
   const _NewMovementForm();
 
@@ -2095,12 +2111,12 @@ class _NewMovementForm extends ConsumerStatefulWidget {
 }
 
 class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
-  /// Everything that leaves: the machine plus its probes and printer by
-  /// default — add or remove items before recording the movement.
-  final List<InventoryItem> _selection = [];
+  /// What leaves, group by group. The party, date and notes are typed
+  /// once; each group becomes its own send, so the card holds one
+  /// movement with a group per machine, sold and paid on their own.
+  final List<_GroupDraft> _groups = [_GroupDraft()];
   String _kind = 'Workshop';
   bool _demo = false;
-  bool _paid = false;
   final _target = TextEditingController();
   final _date = TextEditingController();
   final _notes = TextEditingController();
@@ -2117,28 +2133,51 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     for (final c in [_target, _date, _notes]) {
       c.dispose();
     }
+    for (final group in _groups) {
+      group.dispose();
+    }
     super.dispose();
   }
 
-  /// Picking a machine also brings its probes and printer along.
-  Future<void> _pickAndAdd(List<InventoryItem> available) async {
+  int get _itemCount =>
+      _groups.fold(0, (sum, group) => sum + group.items.length);
+
+  /// Picking a machine also brings its probes and printer along, into
+  /// the group it was picked for.
+  Future<void> _pickGroupItems(
+      _GroupDraft group, List<InventoryItem> items) async {
+    final chosen = {
+      for (final other in _groups)
+        for (final item in other.items) item.key
+    };
+    final offered = [
+      for (final item in items)
+        if (!chosen.contains(item.key)) item
+    ];
+    if (offered.isEmpty) {
+      showSnack(context, 'Every item is already in this movement.');
+      return;
+    }
     final picked = await showPickItem(
       context,
-      items: available,
-      selectedKey: _selection.isEmpty ? null : _selection.first.key,
+      items: offered,
+      selectedKey: group.items.isEmpty ? null : group.items.first.key,
     );
     if (picked == null) return;
     setState(() {
       final additions =
-          picked.kind == 'machine' ? kitFor(available, picked) : [picked];
-      final keys = _selection.map((item) => item.key).toSet();
+          picked.kind == 'machine' ? kitFor(items, picked) : [picked];
       for (final item in additions) {
-        if (!keys.contains(item.key)) {
-          _selection.add(item);
-          keys.add(item.key);
-        }
+        if (chosen.add(item.key)) group.items.add(item);
       }
     });
+  }
+
+  void _removeGroup(int index) {
+    final group = _groups[index];
+    setState(() => _groups.removeAt(index));
+    // its fields are still mounted for the rest of this frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => group.dispose());
   }
 
   /// Finds the party by name or adds it — any member may add a
@@ -2201,11 +2240,153 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     );
   }
 
+  /// One group's card in the new-movement form: its items, and the sold
+  /// and paid marks this send keeps on its own.
+  Widget _groupCard(
+    BuildContext context,
+    int index,
+    List<InventoryItem> items,
+    bool isAdmin, {
+    required bool soldKind,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final group = _groups[index];
+    final multi = _groups.length > 1;
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 4, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    multi ? 'Group ${index + 1}' : 'Items',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 14),
+                  ),
+                ),
+                if (multi)
+                  IconButton(
+                    tooltip: 'Remove this group',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => _removeGroup(index),
+                  ),
+              ],
+            ),
+          ),
+          if (group.items.isEmpty)
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.search),
+              title: Text('Choose an item',
+                  style: TextStyle(color: scheme.outline)),
+              subtitle: const Text(
+                  'Pick a machine and its probes and printer come with it'),
+              onTap: () => _pickGroupItems(group, items),
+            )
+          else ...[
+            for (final item in group.items)
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                title: Text('${item.code}  ${item.title}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13.5)),
+                subtitle: Text('${item.kindLabel} · ${item.status}'),
+                trailing: IconButton(
+                  tooltip: 'Remove',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => setState(() => group.items.remove(item)),
+                ),
+              ),
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              leading: const Icon(Icons.add, size: 20),
+              title: Text(
+                  multi ? 'Add another item to this group' : 'Add another item',
+                  style: const TextStyle(fontSize: 14)),
+              onTap: () => _pickGroupItems(group, items),
+            ),
+          ],
+          if (soldKind && isAdmin) ...[
+            const SizedBox(height: 6),
+            SwitchListTile.adaptive(
+              value: group.sold,
+              onChanged: (value) => setState(() => group.sold = value),
+              dense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+              title: const Text('Sold',
+                  style:
+                      TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              subtitle: const Text(
+                  'This group was sold — the sale shows on the Sales screen',
+                  style: TextStyle(fontSize: 12)),
+            ),
+            if (group.sold)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: group.amount,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'Sale amount (optional)',
+                          hintText: 'Blank is fine',
+                          isDense: true),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: group.soldBy,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                          labelText: 'Sold by (optional)',
+                          hintText: 'Name of the person who sold it',
+                          isDense: true),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          if (isOutboundKind(_kind))
+            SwitchListTile.adaptive(
+              value: group.paid,
+              onChanged: (value) => setState(() => group.paid = value),
+              dense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+              title: const Text('Paid',
+                  style:
+                      TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              subtitle: const Text(
+                  'This group is settled — it reads Paid on the card',
+                  style: TextStyle(fontSize: 12)),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
-    if (_selection.isEmpty) {
-      showSnack(context, 'Choose what you are sending.', error: true);
+    // empty group cards are left behind — a movement only records what
+    // it actually carries
+    final groups = [
+      for (final group in _groups)
+        if (group.items.isNotEmpty) group
+    ];
+    if (groups.isEmpty) {
+      showSnack(context, 'Choose at least one item to send.', error: true);
       return;
     }
+    final isAdmin = ref.read(isAdminProvider);
+    final soldKind = isSoldKind(_kind);
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -2226,22 +2407,44 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
         newParty = created;
       }
 
-      // one group for the whole send: one card in the list, one name
-      // to add later
-      final groupRef = _newGroupRef();
-
-      for (final item in _selection) {
-        await db.rpc('create_movement', params: {
-          'p_item_type': item.kind,
-          'p_item_id': item.id,
-          'p_kind': _kind,
-          ...destination,
-          if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
-          if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
-          'p_demo': _demo,
-          'p_paid': _paid,
-          'p_group_ref': groupRef,
-        });
+      // every group is one send: its own group_ref, so its items travel
+      // together and keep their own sold, amount and paid marks
+      var soldGroups = 0;
+      var paidGroups = 0;
+      for (final group in groups) {
+        final groupRef = _newGroupRef();
+        for (final item in group.items) {
+          await db.rpc('create_movement', params: {
+            'p_item_type': item.kind,
+            'p_item_id': item.id,
+            'p_kind': _kind,
+            ...destination,
+            if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
+            if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
+            'p_demo': _demo,
+            'p_paid': group.paid,
+            'p_group_ref': groupRef,
+          });
+        }
+        if (group.paid) paidGroups++;
+        // the sold mark is an admin-only write, so it is applied after
+        // the send exists. Other members record the send and an admin
+        // marks it sold later, the way Sales works everywhere else
+        if (soldKind && group.sold && isAdmin) {
+          await setSendSold(
+            [
+              {
+                'group_ref': groupRef,
+                'movement_type': _kind,
+                'is_demo': _demo,
+              }
+            ],
+            true,
+            amount: parseSaleAmount(group.amount.text),
+            soldBy: group.soldBy.text.trim(),
+          );
+          soldGroups++;
+        }
       }
 
       ref
@@ -2263,16 +2466,26 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                   ? (_kind == 'Dealer' ? 'a dealer' : 'a customer')
                   : target;
       final added = newParty ? ' — $target added to the records' : '';
-      final pending = target.isEmpty &&
-              _kind != 'Workshop' &&
-              _kind != 'Branch'
-          ? ' — add the name later'
-          : '';
+      final pending =
+          target.isEmpty && _kind != 'Workshop' && _kind != 'Branch'
+              ? ' — add the name later'
+              : '';
+      final groupText =
+          groups.length == 1 ? '' : ' in ${groups.length} groups';
+      final paidText = paidGroups == 0
+          ? ''
+          : paidGroups == groups.length
+              ? ' — paid'
+              : ' — $paidGroups of ${groups.length} paid';
+      final soldText = soldGroups == 0
+          ? ''
+          : soldGroups == groups.length
+              ? ' — sold'
+              : ' — $soldGroups of ${groups.length} sold';
       messenger.showSnackBar(SnackBar(
           content: Text(
-              '${_selection.length} item(s) sent to $where$added$pending'
-              '${_demo ? ' (demo)' : ''}'
-              '${_paid ? ' — paid' : ''}.')));
+              '$_itemCount item(s)$groupText sent to $where$added$pending'
+              '${_demo ? ' (demo)' : ''}$paidText$soldText.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -2289,6 +2502,9 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isAdmin = ref.watch(isAdminProvider);
+    final soldKind = isSoldKind(_kind);
     final items = ref.watch(allItemsProvider).maybeWhen(
           data: (rows) =>
               rows.where((i) => i.status != 'Sold' && i.status != 'Archived').toList(),
@@ -2328,49 +2544,27 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Items to send *',
-                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text('What is going out *',
+                      style: TextStyle(
+                          fontSize: 13, color: scheme.onSurfaceVariant)),
+                  const SizedBox(height: 2),
+                  Text(
+                      'Party, date and notes are typed once. Add a group for '
+                      'each machine — a group is one send, so it keeps its '
+                      'own sold and paid marks.',
+                      style: TextStyle(
+                          fontSize: 12, color: scheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
-                  AppCard(
-                    child: Column(
-                      children: [
-                        if (_selection.isEmpty)
-                          ListTile(
-                            leading: const Icon(Icons.search),
-                            title: Text('Choose an item',
-                                style: TextStyle(color: Theme.of(context).colorScheme.outline)),
-                            subtitle: const Text(
-                                'Pick a machine and its probes and printer '
-                                'come with it'),
-                            onTap: () => _pickAndAdd(items),
-                          )
-                        else ...[
-                          for (final item in _selection)
-                            ListTile(
-                              dense: true,
-                              title: Text('${item.code}  ${item.title}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13.5)),
-                              subtitle:
-                                  Text('${item.kindLabel} · ${item.status}'),
-                              trailing: IconButton(
-                                tooltip: 'Remove',
-                                icon: const Icon(Icons.close, size: 18),
-                                onPressed: () => setState(
-                                    () => _selection.remove(item)),
-                              ),
-                            ),
-                          ListTile(
-                            dense: true,
-                            leading: const Icon(Icons.add, size: 20),
-                            title: const Text('Add another item',
-                                style: TextStyle(fontSize: 14)),
-                            onTap: () => _pickAndAdd(items),
-                          ),
-                        ],
-                      ],
-                    ),
+                  for (var i = 0; i < _groups.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 8),
+                    _groupCard(context, i, items, isAdmin, soldKind: soldKind),
+                  ],
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        setState(() => _groups.add(_GroupDraft())),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add another group'),
                   ),
                   const SizedBox(height: 16),
                   Text('Sent to *',
@@ -2479,37 +2673,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     controller: _notes,
                     maxLines: 3,
                     decoration: const InputDecoration(labelText: 'Notes'),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: _paid
-                          ? context.colors.success.withValues(alpha: 0.07)
-                          : context.colors.quietFill,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: _paid
-                              ? context.colors.success
-                              : Theme.of(context).colorScheme.outlineVariant),
-                    ),
-                    child: SwitchListTile.adaptive(
-                      value: _paid,
-                      onChanged: (value) => setState(() => _paid = value),
-                      dense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 2),
-                      title: const Text('Mark as paid',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 14)),
-                      subtitle: Text(
-                          'The whole send is settled — it shows as Paid '
-                          'on the card',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant)),
-                    ),
                   ),
                 ],
               ),
