@@ -385,14 +385,51 @@ SendRowState sendRowState(
   return (out: out, back: back, movedOn: movedOn);
 }
 
-/// The green line under a card in the Returned tab: the whole send came
-/// back, or — when only part of it did — how many of its items did.
+/// The green line under a card in the Returned tab: the whole movement
+/// came back, or — when only part of it did — how many of its items did.
 /// [shown] is the number of returned rows on the card, [sendTotal] how
-/// many items the send had altogether.
+/// many items the movement had altogether.
 String returnedBannerText(int shown, int sendTotal) {
   if (shown >= sendTotal) return 'Back in inventory';
-  if (shown == 1) return 'Only this item came back from this send';
-  return '$shown of $sendTotal items came back from this send';
+  if (shown == 1) return 'Only this item came back from this movement';
+  return '$shown of $sendTotal items came back from this movement';
+}
+
+/// The one movement a row belongs to on screen: the same kind of send, on
+/// the same day, to the same party is one delivery however many sends it
+/// was recorded in. Rows with no readable date only group with the exact
+/// same text; a send with no party name never merges with another send.
+String movementCardKey(Map<String, dynamic> row) {
+  final kind = '${row['movement_type'] ?? ''}';
+  final date = _parseDate(row['movement_date']);
+  final day = date == null
+      ? '${row['movement_date'] ?? ''}'
+      : '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+          '${date.day.toString().padLeft(2, '0')}';
+  final to = '${row['to_location'] ?? ''}'.trim().toLowerCase();
+  return '$kind|$day|${to.isEmpty ? '#${movementSendKey(row)}' : to}';
+}
+
+/// The send a row was recorded with — its group_ref, or the row's own id
+/// for a row that travelled alone.
+String movementSendKey(Map<String, dynamic> row) {
+  final group = (row['group_ref'] ?? '').toString();
+  return group.isEmpty ? 'row:${row['id']}' : group;
+}
+
+/// One movement card's rows, split back into the sends they were recorded
+/// in. Order follows the rows given, so the list keeps its newest-first
+/// order; the caller puts each send's main item first.
+List<({String key, List<Map<String, dynamic>> rows})> groupSendRows(
+    List<Map<String, dynamic>> rows) {
+  final order = <String>[];
+  final groups = <String, List<Map<String, dynamic>>>{};
+  for (final row in rows) {
+    final key = movementSendKey(row);
+    if (!groups.containsKey(key)) order.add(key);
+    groups.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(row);
+  }
+  return [for (final key in order) (key: key, rows: groups[key]!)];
 }
 
 InventoryItem _item(String kind, Map<String, dynamic> row,

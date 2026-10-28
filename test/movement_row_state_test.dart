@@ -129,7 +129,7 @@ void main() {
       expect(parts.movedOn.map((r) => r['id']), [405]);
       expect(parts.out, isEmpty);
       expect(returnedBannerText(parts.back.length, 3),
-          '2 of 3 items came back from this send');
+          '2 of 3 items came back from this movement');
     });
   });
 
@@ -141,15 +141,70 @@ void main() {
 
     test('one returned item is called out on its own', () {
       expect(returnedBannerText(1, 3),
-          'Only this item came back from this send');
+          'Only this item came back from this movement');
     });
 
-    test('a partial return says how many of the send came back', () {
+    test('a partial return says how many of the movement came back', () {
       // 90T + its probe back, the 33T probe still with the customer:
       // regression — this once printed the raw row list instead of the
       // count ('$rows.length' interpolated the list, not its length)
       expect(returnedBannerText(2, 3),
-          '2 of 3 items came back from this send');
+          '2 of 3 items came back from this movement');
+    });
+  });
+
+  group('movementCardKey', () {
+    Map<String, dynamic> row(int id, String day, String party,
+            {String type = 'Dealer'}) =>
+        {
+          'id': id,
+          'movement_type': type,
+          'movement_date': day,
+          'to_location': party,
+        };
+
+    test('one party on one day is one card, however many sends', () {
+      expect(movementCardKey(row(1, '25-09-2026', 'jimmy sb')),
+          movementCardKey(row(2, '25-09-2026', 'Jimmy Sb')));
+    });
+
+    test('the same day and date parser, both date formats agree', () {
+      expect(movementCardKey(row(1, '25-09-2026', 'Jimmy Sb')),
+          movementCardKey(row(2, '2026-09-25', 'jimmy sb')));
+    });
+
+    test('a different day, party or kind is a different card', () {
+      final base = movementCardKey(row(1, '25-09-2026', 'Jimmy Sb'));
+      expect(movementCardKey(row(2, '26-09-2026', 'Jimmy Sb')), isNot(base));
+      expect(movementCardKey(row(3, '25-09-2026', 'Abid Sb')), isNot(base));
+      expect(
+          movementCardKey(row(4, '25-09-2026', 'Jimmy Sb', type: 'Customer')),
+          isNot(base));
+    });
+
+    test('a row without a party never merges with another', () {
+      expect(movementCardKey(row(7, '25-09-2026', '')),
+          isNot(movementCardKey(row(8, '25-09-2026', ''))));
+    });
+
+    test('an unnamed send keeps its own rows together', () {
+      expect(
+          movementCardKey(row(7, '25-09-2026', '')..['group_ref'] = 'g1'),
+          movementCardKey(row(8, '25-09-2026', '')..['group_ref'] = 'g1'));
+    });
+  });
+
+  group('groupSendRows', () {
+    test('splits a merged card back into its sends in row order', () {
+      final sends = groupSendRows([
+        _row(1, 'machine', 10, group: 'a'),
+        _row(2, 'probe', 11, group: 'a'),
+        _row(3, 'machine', 12, group: 'b'),
+        _row(4, 'machine', 13, group: ''),
+        _row(5, 'machine', 14, group: ''),
+      ]);
+      expect(sends.map((s) => s.key).toList(), ['a', 'b', 'row:4', 'row:5']);
+      expect(sends.first.rows.map((r) => r['id']), [1, 2]);
     });
   });
 }
