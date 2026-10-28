@@ -242,6 +242,19 @@ void main() {
       );
       expect(entries, hasLength(2));
     });
+
+    test('sales sharing the placeholder invoice 0 stay apart', () {
+      final entries = mergeSaleEntries(
+        salesRows: [
+          _saleRow(1, trno: '0', date: '2025-12-01'),
+          _saleRow(2, trno: '0', date: '2026-01-29'),
+          _saleRow(3, trno: '0', date: '2026-05-22'),
+        ],
+        movementRows: const [],
+        labels: const {},
+      );
+      expect(entries, hasLength(3));
+    });
   });
 
   group('filterSaleEntries', () {

@@ -84,14 +84,16 @@ List<SaleEntry> mergeSaleEntries({
   required Map<String, String> labels,
 }) {
   final entries = <SaleEntry>[];
-  // the old import ran twice for part of the history: 91 invoices sit in
+  // the old import ran twice for part of the history: 90 invoices sit in
   // `sales` as two identical rows (same old_trno). One real sale shows
   // once, so the list and the dashboard count each invoice a single time.
+  // '0' is the old system's "no invoice number" — 19 different sales
+  // share it, so it never groups.
   final seenInvoices = <String>{};
 
   for (final row in salesRows) {
     final trno = (row['old_trno'] ?? '').toString().trim();
-    if (trno.isNotEmpty && !seenInvoices.add(trno)) continue;
+    if (trno.isNotEmpty && trno != '0' && !seenInvoices.add(trno)) continue;
     final buyer = oldSaleBuyer(row);
     final lines = (row['sale_items'] as List?)?.cast<Map>() ?? [];
     final summary = lines

@@ -35512,7 +35512,7 @@ bev(b3,b4,b5){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3,a4,a5,a6,a7,
 for(s=J.ay(b5),r=t.f,q=t.kc,p=t.n4;s.t();){o=s.gK()
 n=o.h(0,"old_trno")
 m=B.n.P(J.S(n==null?"":n))
-if(m.length!==0&&!b2.C(0,m))continue
+if(m.length!==0&&m!=="0"&&!b2.C(0,m))continue
 l=A.bvv(o)
 n=q.a(o.h(0,"sale_items"))
 k=n==null?a8:J.j9(n,r)
