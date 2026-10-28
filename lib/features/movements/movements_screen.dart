@@ -970,35 +970,44 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// app's own create_movement, so it reads exactly like the rows the
   /// send was recorded with. A machine brings its probes and printer
   /// along, as in the new-movement form, minus what the send already
-  /// holds.
+  /// holds. A send recorded before groups existed (old imported rows)
+  /// takes the items under a fresh group of its own; its existing rows
+  /// are never rewritten.
   Future<void> _addToSend(List<Map<String, dynamic>> rows) async {
     final messenger = ScaffoldMessenger.of(context);
     final first = rows.first;
     final kind = (first['movement_type'] ?? '').toString();
-    final group = (first['group_ref'] ?? '').toString();
-    if (group.isEmpty) {
-      showSnack(context, 'This send travelled without a group — its rows '
-          'cannot be added to.', error: true);
-      return;
-    }
+    final recorded = (first['group_ref'] ?? '').toString();
+    final newGroup = recorded.isEmpty;
+    final group = newGroup ? _freshGroupRef() : recorded;
     final inSend = <String>{};
     for (final row in rows) {
       final key = movementItemKey(row);
       if (key != null) inSend.add('${key.key}:${key.value}');
     }
-    final available = ref.read(allItemsProvider).maybeWhen(
-          data: (items) => items
-              .where((i) =>
-                  i.status != 'Sold' &&
-                  i.status != 'Archived' &&
-                  !inSend.contains(i.key))
-              .toList(),
-          orElse: () => const <InventoryItem>[],
-        );
+    // await the list: the picker is opened from a sheet that does not
+    // watch the inventory, so a plain read would still be loading
+    final List<InventoryItem> available;
+    try {
+      final items = await ref.read(allItemsProvider.future);
+      available = [
+        for (final item in items)
+          if (item.status != 'Sold' &&
+              item.status != 'Archived' &&
+              !inSend.contains(item.key))
+            item
+      ];
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
+      return;
+    }
     if (available.isEmpty) {
+      if (!mounted) return;
       showSnack(context, 'Every item is already in this send.');
       return;
     }
+    if (!mounted) return;
     final picked = await showPickItem(context, items: available);
     if (picked == null) return;
     final additions =
@@ -1030,12 +1039,91 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       showSnack(
           context,
           '${additions.length} item${additions.length == 1 ? '' : 's'} '
-          'added to this send.');
+          '${newGroup ? 'added as a new group' : 'added to this send'}.');
     } catch (error) {
       if (!mounted) return;
       messenger
           .showSnackBar(SnackBar(content: Text(errorMessage(error))));
     }
+  }
+
+  /// One Add item action for every movement: a single send goes straight
+  /// to the picker, several sends ask which group the item belongs to.
+  Future<void> _addItemToMovement(
+      List<({String key, List<Map<String, dynamic>> rows})> sends) async {
+    if (sends.length == 1) {
+      await _addToSend(sends.first.rows);
+      return;
+    }
+    final labels = ref.read(itemLabelsProvider);
+    final picked = await showAppSheet<List<Map<String, dynamic>>>(
+      context: context,
+      title: 'Which group gets the item?',
+      heightFraction: 0.55,
+      builder: (sheetContext) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
+            child: Text('Which group gets the item?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          ),
+          for (final send in sends)
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.subdirectory_arrow_right, size: 20),
+              title: Text(_sendTitle(send.rows, labels),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 14)),
+              subtitle: Text(
+                  [
+                    '${send.rows.length} item'
+                        '${send.rows.length == 1 ? '' : 's'}',
+                    if (send.rows.any(movementSold)) 'Sold',
+                    if (isOutboundKind(
+                        '${send.rows.first['movement_type'] ?? ''}'))
+                      send.rows.any(movementPaid) ? 'Paid' : 'Unpaid',
+                  ].join(' · '),
+                  style: const TextStyle(fontSize: 12)),
+              onTap: () => Navigator.pop(sheetContext, send.rows),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    await _addToSend(picked);
+  }
+
+  /// Adds a group to an open movement: the new-movement form opens with
+  /// this card's kind, party, date and notes already filled in, and the
+  /// group is recorded as another send — same card, nothing retyped.
+  /// Changing the kind, party or date records it on another card instead.
+  Future<void> _addGroupToMovement(List<Map<String, dynamic>> rows) async {
+    final first = rows.first;
+    final kind = '${first['movement_type'] ?? ''}'.trim();
+    final party =
+        movementPartyMissing(first) ? '' : '${first['to_location'] ?? ''}'.trim();
+    final notes = rows
+        .map((row) => '${row['notes'] ?? ''}'.trim())
+        .firstWhere((note) => note.isNotEmpty, orElse: () => '');
+    await showAppSheet<void>(
+      context: context,
+      title: 'Add a group',
+      heightFraction: 0.85,
+      builder: (sheetContext) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        child: _NewMovementForm(
+          seedKind: kind.isEmpty ? null : kind,
+          seedParty: party,
+          seedDate: '${first['movement_date'] ?? ''}',
+          seedNotes: notes,
+        ),
+      ),
+    );
   }
 
   /// Opens the tick-list sheet for a multi-item send: the sender picks
@@ -1126,6 +1214,14 @@ Widget _menuRow(IconData icon, String label, {Color? color}) => Row(
       ],
     );
 
+/// A fresh send id, so every item of one group travels together and a
+/// group added later never collides with the ones already recorded.
+String _freshGroupRef() {
+  final time = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+  final salt = Random.secure().nextInt(0xFFFFFF).toRadixString(16);
+  return '$time$salt';
+}
+
 /// A sale amount as it reads on a card — whole numbers without '.0'.
 String _amountText(double? amount) {
   if (amount == null) return '';
@@ -1136,10 +1232,10 @@ String _amountText(double? amount) {
 
 /// One movement, opened from its card: every send to that party on that
 /// day. One compact action row on top — back to inventory, Edit, and a
-/// ⋮ for the missing name — and each send keeps its own edit, add,
-/// flag and delete menu next to its items. The rows are re-read from the
-/// provider on every change, so the sheet always shows what the last
-/// action did.
+/// ⋮ for the missing name — then Add item and Add group, and each send
+/// keeps its own edit, add, flag and delete menu next to its items. The
+/// rows are re-read from the provider on every change, so the sheet
+/// always shows what the last action did.
 class _MovementDetails extends ConsumerWidget {
   const _MovementDetails({
     required this.state,
@@ -1291,8 +1387,7 @@ class _MovementDetails extends ConsumerWidget {
             child: _menuRow(
                 Icons.edit_note, 'Add the ${kind.toLowerCase()} name')),
     ];
-    final hasActions =
-        (canManage && outRows.isNotEmpty) || isAdmin || topMenu.isNotEmpty;
+    final hasActions = canManage || isAdmin || topMenu.isNotEmpty;
 
     Widget itemTile(Map<String, dynamic> row) {
       final rowState = stateOf(row);
@@ -1405,14 +1500,13 @@ class _MovementDetails extends ConsumerWidget {
           isAdmin || full.any((r) => r['actor_id'] == myId);
       final sendFlags =
           flagBy[flagSendKey(sendFirst)] ?? const <Map<String, dynamic>>[];
-      final group = (sendFirst['group_ref'] ?? '').toString();
       final tags = sendTags(full);
       final sendMenu = <PopupMenuEntry<String>>[
         if (isAdmin)
           PopupMenuItem(
               value: 'edit',
               child: _menuRow(Icons.edit_outlined, 'Edit this send')),
-        if (canManageSend && group.isNotEmpty)
+        if (canManageSend)
           PopupMenuItem(
               value: 'add',
               child: _menuRow(Icons.add, 'Add item to this send')),
@@ -1612,6 +1706,34 @@ class _MovementDetails extends ConsumerWidget {
                 ),
             ],
           ),
+          // adding to the movement is its own row, out in the open —
+          // items into an existing group, or a whole new group
+          if (canManage) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await state._addItemToMovement(sends);
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add item'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await state._addGroupToMovement(rows);
+                    },
+                    icon: const Icon(Icons.playlist_add, size: 18),
+                    label: const Text('Add group'),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
         ],
         // each fate gets its own list: a single returned item leaves
@@ -2247,7 +2369,20 @@ class _GroupDraft {
 }
 
 class _NewMovementForm extends ConsumerStatefulWidget {
-  const _NewMovementForm();
+  const _NewMovementForm({
+    this.seedKind,
+    this.seedParty,
+    this.seedDate,
+    this.seedNotes,
+  });
+
+  /// Opened from a movement card: the send's own kind, party, date and
+  /// notes come prefilled, so the group lands on that card with
+  /// nothing retyped.
+  final String? seedKind;
+  final String? seedParty;
+  final String? seedDate;
+  final String? seedNotes;
 
   @override
   ConsumerState<_NewMovementForm> createState() => _NewMovementFormState();
@@ -2268,7 +2403,12 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
   @override
   void initState() {
     super.initState();
-    _date.text = DateField.format(DateTime.now());
+    final widget = this.widget;
+    if (widget.seedKind != null) _kind = widget.seedKind!;
+    if (widget.seedParty != null) _target.text = widget.seedParty!;
+    if (widget.seedNotes != null) _notes.text = widget.seedNotes!;
+    final date = widget.seedDate?.trim() ?? '';
+    _date.text = date.isNotEmpty ? date : DateField.format(DateTime.now());
   }
 
   @override
@@ -2495,7 +2635,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       var soldGroups = 0;
       var paidGroups = 0;
       for (final group in groups) {
-        final groupRef = _newGroupRef();
+        final groupRef = _freshGroupRef();
         for (final item in group.items) {
           await db.rpc('create_movement', params: {
             'p_item_type': item.kind,
@@ -2576,13 +2716,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     }
   }
 
-  /// One group per save loop, so every item of this send travels together.
-  String _newGroupRef() {
-    final time = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
-    final salt = Random.secure().nextInt(0xFFFFFF).toRadixString(16);
-    return '$time$salt';
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -2610,10 +2743,11 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text('New movement',
+              Expanded(
+                child: Text(
+                    widget.seedKind == null ? 'New movement' : 'Add a group',
                     style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                        const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
