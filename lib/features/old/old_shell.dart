@@ -5,13 +5,13 @@ import '../../core/layout.dart';
 import '../auth/auth_controller.dart';
 import 'data_side.dart';
 import 'old_movements_screen.dart';
-import 'old_sales_screen.dart';
 import 'old_stock_screen.dart';
 
-/// The shell shown when the app is on the old-data side: three simple tabs
-/// (Stock, Movements, Sales) over the imported legacy data. A banner at
-/// the top makes it obvious which dataset you are looking at, and the
-/// profile menu switches back to the current side.
+/// The shell shown when the app is on the old-data side: two simple tabs
+/// (Stock, Movements) over the imported legacy data. A banner at the
+/// top makes it obvious which dataset you are looking at, and the
+/// profile menu switches back to the current side. Sales live in the
+/// one Sales screen on the current side — old sales show there too.
 class OldShell extends ConsumerStatefulWidget {
   const OldShell({super.key});
 
@@ -20,17 +20,15 @@ class OldShell extends ConsumerStatefulWidget {
 }
 
 class _OldShellState extends ConsumerState<OldShell> {
-  static const _titles = ['Old stock', 'Old movements', 'Old sales'];
+  static const _titles = ['Old stock', 'Old movements'];
   static const _destinations = [
     (Icons.inventory_2_outlined, Icons.inventory_2, 'Stock'),
     (Icons.history_outlined, Icons.history, 'Movements'),
-    (Icons.receipt_long_outlined, Icons.receipt_long, 'Sales'),
   ];
 
   late final List<Widget> _pages = const [
     OldStockScreen(),
     OldMovementsScreen(),
-    OldSalesScreen(),
   ];
 
   int _index = 0;

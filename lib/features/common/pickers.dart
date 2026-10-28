@@ -24,6 +24,27 @@ int _scoreMatch(InventoryItem item, String q) {
 
 const _kindRank = {'machine': 0, 'printer': 1, 'probe': 2, 'part': 3};
 
+/// Amber pill marking an item that came from the old-data import, so a
+/// picker row makes the two sides obvious at a glance.
+class _OldDataBadge extends StatelessWidget {
+  const _OldDataBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFF9A5A00);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Text('old data',
+          style: TextStyle(
+              fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+}
+
 /// Full-height sheet listing inventory items with a search box.
 /// Returns the chosen item, or null when cancelled.
 Future<InventoryItem?> showPickItem(
@@ -109,9 +130,20 @@ Future<InventoryItem?> showPickItem(
                                 leading: Text(item.kindLabel,
                                     style: TextStyle(
                                         fontSize: 12, color: Theme.of(context).colorScheme.outline)),
-                                title: Text('${item.code}  ${item.title}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700, fontSize: 14)),
+                                title: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text('${item.code}  ${item.title}',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700, fontSize: 14)),
+                                    ),
+                                    if (item.batch == 'BATCH-OLD') ...[
+                                      const SizedBox(width: 6),
+                                      const _OldDataBadge(),
+                                    ],
+                                  ],
+                                ),
                                 subtitle: Text('${item.status} · ${item.location}'),
                                 trailing: isSelected
                                     ? Icon(Icons.check,

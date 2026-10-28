@@ -1672,7 +1672,9 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
   @override
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(isAdminProvider);
-    final items = ref.watch(inventoryProvider).maybeWhen(
+    // both sides share the box: an old probe boxed here disappears from
+    // the old stock list and shows again when it is taken out
+    final items = ref.watch(allItemsProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
@@ -1757,6 +1759,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                               try {
                                 await takeProbeOutOfBox(item);
                                 ref.invalidate(inventoryProvider);
+                                ref.invalidate(oldStockItemsProvider);
                               } catch (error) {
                                 if (!context.mounted) return;
                                 showSnack(context, errorMessage(error),
@@ -1781,6 +1784,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                     try {
                       await putProbeInBox(picked, box);
                       ref.invalidate(inventoryProvider);
+                      ref.invalidate(oldStockItemsProvider);
                     } catch (error) {
                       if (!context.mounted) return;
                       showSnack(context, errorMessage(error), error: true);

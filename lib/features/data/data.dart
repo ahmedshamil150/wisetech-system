@@ -32,6 +32,11 @@ String _currentBatchOrFilter(Set<int> batchIds) {
   return 'batch_id.is.null,batch_id.in.($ids)';
 }
 
+/// The id of the imported old stock batch (BATCH-OLD). It lives here so
+/// both sides of the app — pickers, labels, the old stock screens —
+/// read the same constant.
+const kOldBatchId = 30;
+
 String errorMessage(Object error) {
   if (error is PostgrestException) {
     if (error.code == '23505') return 'That record already exists.';
@@ -246,6 +251,19 @@ String movementTitle(Map<String, dynamic> row) {
 /// keep their status.
 bool movementSold(Map<String, dynamic> row) =>
     '${row['reason'] ?? ''}'.contains('Sold');
+
+/// The sale amount written when the send was marked sold, if one was
+/// typed — blank is fine, so null is a normal state.
+double? soldAmountOf(Map<String, dynamic> row) =>
+    (row['sale_amount'] as num?)?.toDouble();
+
+/// A typed amount field as a number — blank or unreadable text reads as
+/// null (no amount recorded).
+double? parseSaleAmount(String text) {
+  final cleaned = text.trim().replaceAll(',', '');
+  if (cleaned.isEmpty) return null;
+  return double.tryParse(cleaned);
+}
 
 /// Whether a send has been settled. Rows written before the paid flag
 /// existed simply read as unpaid.
@@ -468,17 +486,85 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
   return items;
 });
 
+/// The imported old stock as items, so the movement picker, item
+/// labels, box sheet and returns cover both sides with one list. Only
+/// the display fields a movement needs are loaded — thousands of rows
+/// come in with the import, so the query stays light.
+final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
+  final machines = await _db
+      .from('machines')
+      .select(
+          'id, machine_id, model, serial_number, status, current_location')
+      .eq('batch_id', kOldBatchId)
+      .order('id', ascending: false);
+  final probes = await _db
+      .from('probes')
+      .select('id, internal_id, model, serial_number, status, '
+          'current_location, box_id')
+      .eq('batch_id', kOldBatchId)
+      .order('id', ascending: false);
+  final printers = await _db
+      .from('printers')
+      .select(
+          'id, internal_id, name_model, serial_number, status, current_location')
+      .eq('batch_id', kOldBatchId)
+      .order('id', ascending: false);
+  InventoryItem oldItem(String kind, Map<String, dynamic> row,
+      {required String codeField, required String nameField}) {
+    return InventoryItem(
+      kind: kind,
+      id: row['id'] as int,
+      code: '${row[codeField] ?? ''}',
+      name: '${row[nameField] ?? ''}',
+      serial: row['serial_number'] as String?,
+      status: '${row['status'] ?? ''}',
+      location: '${row['current_location'] ?? ''}',
+      batch: 'BATCH-OLD',
+      boxId: kind == 'probe' ? row['box_id'] as int? : null,
+    );
+  }
+
+  return [
+    for (final row in machines)
+      oldItem('machine', row, codeField: 'machine_id', nameField: 'model'),
+    for (final row in probes)
+      oldItem('probe', row, codeField: 'internal_id', nameField: 'model'),
+    for (final row in printers)
+      oldItem('printer', row, codeField: 'internal_id', nameField: 'name_model'),
+  ];
+});
+
+/// Every item a movement can touch — current stock plus the imported
+/// old stock — so pickers, labels, returns and detail sheets cover both
+/// sides with one list. Old rows failing to load never breaks the new
+/// side: it just narrows to current stock.
+final allItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
+  final current = await ref.watch(inventoryProvider.future);
+  List<InventoryItem> old;
+  try {
+    old = await ref.watch(oldStockItemsProvider.future);
+  } catch (_) {
+    old = const <InventoryItem>[];
+  }
+  return [...current, ...old];
+});
+
 /// `machine:12` -> label used by the movement list
 final itemLabelsProvider = Provider<Map<String, String>>((ref) {
-  final items = ref.watch(inventoryProvider).maybeWhen(
+  final items = ref.watch(allItemsProvider).maybeWhen(
         data: (rows) => rows,
         orElse: () => const <InventoryItem>[],
       );
-  return {
-    for (final item in items)
-      item.key: '${item.code}  ${item.title}',
-  };
+  return labelsForItems(items);
 });
+
+/// The `kind:id` -> "CODE  name" map the movement list and the sales
+/// screen read item names from.
+Map<String, String> labelsForItems(List<InventoryItem> items) {
+  return {
+    for (final item in items) item.key: '${item.code}  ${item.title}',
+  };
+}
 
 // ---------------------------------------------------------------------------
 // movements + sales
@@ -494,8 +580,8 @@ final allMovementsProvider =
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
-        'reason, notes, reference, is_demo, paid, created_at, actor_id, machine_id, '
-        'probe_id, printer_id, part_id, dealer_id, customer_id, workshop_id, '
+        'reason, notes, reference, is_demo, paid, sale_amount, created_at, actor_id, machine_id, '
+        'probe_id, printer_id, part_id, dealer_id, customer_id, workshop_id, old_source_id, '
         'dealers(name), customers(name), '
         'workshops(name), profiles(display_name, username)',
       )
@@ -509,15 +595,18 @@ final allMovementsProvider =
   return rows;
 });
 
-/// The movement list shown on the Movements screen: every current
-/// movement except part movements that belong to the old side (before
-/// 14-9-2026) — those are visible in item history but listed under the
-/// old-data side of the app.
+/// The movement list shown on the Movements screen: current-side sends
+/// and returns only. Imported old-side rows (they carry an
+/// [old_source_id]) live in the old-data side; box moves and the old
+/// part movements stay in item history but are not listed here.
 final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final rows = await ref.watch(allMovementsProvider.future);
   return [
     for (final row in rows)
-      if (!isOldSideMovement(row) && !isBoxMovement(row)) row
+      if (row['old_source_id'] == null &&
+          !isOldSideMovement(row) &&
+          !isBoxMovement(row))
+        row
   ];
 });
 
@@ -569,15 +658,18 @@ Future<void> setSendPaid(List<Map<String, dynamic>> rows, bool paid) async {
 }
 
 /// Flips the sold mark on a whole send: on, the reason reads 'Sold' and
-/// the item's history shows "Sold to X"; off, the original wording goes
-/// back. A label only — the items keep their status. Only admins may
-/// (enforced by RLS).
-Future<void> setSendSold(List<Map<String, dynamic>> rows, bool sold) async {
+/// the item's history shows "Sold to X" — with [amount] as the sale
+/// amount when one was given; off, the original wording goes back and
+/// the amount is cleared. A label only — the items keep their status.
+/// Only admins may (enforced by RLS).
+Future<void> setSendSold(List<Map<String, dynamic>> rows, bool sold,
+    {double? amount}) async {
   final first = rows.first;
   final kind = '${first['movement_type'] ?? ''}';
   await _updateSend(rows, {
     'reason':
         sold ? 'Sold' : sendReason(kind, demo: first['is_demo'] == true),
+    'sale_amount': sold ? amount : null,
   });
 }
 

@@ -45,7 +45,8 @@ List<InventoryItem> filterStockItems(
   ];
 }
 
-/// Movement rows for the report: the imported legacy rows never count,
+/// Movement rows for the report: the imported old-side rows never count
+/// (they carry an [old_source_id] and belong to the old-data side),
 /// [kind] narrows the type — 'All' means every send and return except
 /// the box moves (those have their own report), 'Box moves' means only
 /// them — and the movement date must sit inside the range.
@@ -57,7 +58,8 @@ List<Map<String, dynamic>> filterMovementRows(
 }) {
   return [
     for (final row in rows)
-      if ((row['movement_type'] ?? '').toString() != 'Legacy' &&
+      if (row['old_source_id'] == null &&
+          (row['movement_type'] ?? '').toString() != 'Legacy' &&
           switch (kind) {
             'All' => !isBoxMovement(row),
             'Box moves' => isBoxMovement(row),

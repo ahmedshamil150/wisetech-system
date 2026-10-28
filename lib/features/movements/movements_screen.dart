@@ -693,7 +693,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   void _openItem(Map<String, dynamic> row) {
     final key = movementItemKey(row);
     if (key == null) return;
-    final items = ref.read(inventoryProvider).maybeWhen(
+    final items = ref.read(allItemsProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
@@ -753,6 +753,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       await deleteMovementRow(row['id'] as int);
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
+      ref.invalidate(oldStockItemsProvider);
       messenger
           .showSnackBar(const SnackBar(content: Text('Movement deleted.')));
     } catch (error) {
@@ -766,7 +767,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   Future<void> _returnGroup(List<Map<String, dynamic>> rows) async {
     final allMovements = ref.read(allMovementsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final items = ref.read(inventoryProvider).maybeWhen(
+    final items = ref.read(allItemsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <InventoryItem>[]);
     final groupIds = {for (final row in rows) row['id'] as int};
 
@@ -804,6 +805,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     } finally {
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
+      ref.invalidate(oldStockItemsProvider);
     }
     if (!mounted) return;
     showSnack(
@@ -836,7 +838,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       final key = movementItemKey(row);
       if (key != null) inSend.add('${key.key}:${key.value}');
     }
-    final available = ref.read(inventoryProvider).maybeWhen(
+    final available = ref.read(allItemsProvider).maybeWhen(
           data: (items) => items
               .where((i) =>
                   i.status != 'Sold' &&
@@ -875,6 +877,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       }
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
+      ref.invalidate(oldStockItemsProvider);
       if (!mounted) return;
       showSnack(
           context,
@@ -933,6 +936,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       await deleteMovement(rows.first['id'] as int);
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
+      ref.invalidate(oldStockItemsProvider);
       ref.invalidate(customersProvider);
       ref.invalidate(dealersProvider);
       ref.invalidate(recentPartiesProvider);
@@ -1372,6 +1376,7 @@ class _EditSendSheet extends ConsumerStatefulWidget {
 class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
   late final TextEditingController _date;
   late final TextEditingController _notes;
+  late final TextEditingController _amount;
   late bool _paid;
   late bool _sold;
   bool _saving = false;
@@ -1386,13 +1391,20 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
     if (iso != null) date = DateField.format(iso);
     _date = TextEditingController(text: date);
     _notes = TextEditingController(text: (first['notes'] ?? '').toString());
+    final amount = soldAmountOf(first);
+    _amount = TextEditingController(
+        text: amount == null
+            ? ''
+            : amount == amount.roundToDouble()
+                ? amount.toStringAsFixed(0)
+                : '$amount');
     _paid = widget.rows.any(movementPaid);
     _sold = widget.rows.any(movementSold);
   }
 
   @override
   void dispose() {
-    for (final c in [_date, _notes]) {
+    for (final c in [_date, _notes, _amount]) {
       c.dispose();
     }
     super.dispose();
@@ -1418,7 +1430,13 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
       await setMovementDate([for (final row in rows) row['id'] as int], date);
       await setMovementNotes(rows, _notes.text.trim());
       if (_paid != rows.any(movementPaid)) await setSendPaid(rows, _paid);
-      if (_sold != rows.any(movementSold)) await setSendSold(rows, _sold);
+      // the sold mark carries the sale amount with it — typed or blank,
+      // whatever changed goes to every row of the send
+      final wasSold = rows.any(movementSold);
+      final amount = parseSaleAmount(_amount.text);
+      if (_sold != wasSold || (_sold && amount != soldAmountOf(rows.first))) {
+        await setSendSold(rows, _sold, amount: _sold ? amount : null);
+      }
       ref.invalidate(allMovementsProvider);
       if (!mounted) return;
       Navigator.pop(context);
@@ -1524,11 +1542,23 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                                 fontWeight: FontWeight.w700, fontSize: 14)),
                         subtitle: Text(
                             'The equipment was sold to them, not just sent '
-                            'out — the history then reads "Sold to X". A '
-                            'label only; item statuses do not change.',
+                            'out — the history then reads "Sold to X" and '
+                            'the sale shows on the Sales screen. A label '
+                            'only; item statuses do not change.',
                             style: TextStyle(
                                 fontSize: 12, color: scheme.onSurfaceVariant)),
                       ),
+                    ),
+                  ],
+                  if (soldKind && _sold) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _amount,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'Sale amount (optional)',
+                          hintText: 'Blank is fine'),
                     ),
                   ],
                 ],
@@ -1622,6 +1652,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     } finally {
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
+      ref.invalidate(oldStockItemsProvider);
     }
     if (!mounted) return;
     Navigator.pop(context);
@@ -1632,7 +1663,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final items = ref.watch(inventoryProvider).maybeWhen(
+    final items = ref.watch(allItemsProvider).maybeWhen(
           data: (value) => value,
           orElse: () => const <InventoryItem>[],
         );
@@ -1912,7 +1943,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
 
       ref
         ..invalidate(allMovementsProvider)
-        ..invalidate(inventoryProvider);
+        ..invalidate(inventoryProvider)
+        ..invalidate(oldStockItemsProvider);
       if (newParty) {
         ref
           ..invalidate(_kind == 'Dealer' ? dealersProvider : customersProvider)
@@ -1954,7 +1986,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
 
   @override
   Widget build(BuildContext context) {
-    final items = ref.watch(inventoryProvider).maybeWhen(
+    final items = ref.watch(allItemsProvider).maybeWhen(
           data: (rows) =>
               rows.where((i) => i.status != 'Sold' && i.status != 'Archived').toList(),
           orElse: () => const <InventoryItem>[],
@@ -2376,7 +2408,8 @@ Future<void> showAddPartySheet(
                                 }
                                 ref
                                   ..invalidate(allMovementsProvider)
-                                  ..invalidate(inventoryProvider);
+                                  ..invalidate(inventoryProvider)
+                                  ..invalidate(oldStockItemsProvider);
                                 if (!sheetContext.mounted) return;
                                 if (failure != null) {
                                   showSnack(sheetContext, failure,

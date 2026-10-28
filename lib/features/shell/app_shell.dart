@@ -8,8 +8,8 @@ import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
 import '../old/data_side.dart';
 import '../old/old_shell.dart';
-import '../records/records_screen.dart';
 import '../repairs/repairs_screen.dart';
+import '../sales/sales_screen.dart';
 import 'dashboard_screen.dart';
 import 'navigation_providers.dart';
 import 'profile_screen.dart';
@@ -38,7 +38,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     'Dashboard',
     'Inventory',
     'Movements',
-    'Records',
+    'Sales',
     'Repairs',
   ];
 
@@ -46,7 +46,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     (Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
     (Icons.inventory_2_outlined, Icons.inventory_2, 'Inventory'),
     (Icons.swap_horiz_outlined, Icons.swap_horiz, 'Movements'),
-    (Icons.folder_outlined, Icons.folder, 'Records'),
+    (Icons.receipt_long_outlined, Icons.receipt_long, 'Sales'),
     (Icons.build_outlined, Icons.build, 'Repairs'),
   ];
 
@@ -54,7 +54,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     const DashboardScreen(),
     const InventoryScreen(),
     const MovementsScreen(),
-    const RecordsScreen(),
+    const SalesScreen(),
     const RepairsScreen(),
   ];
 

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ultrasound_inventory/features/old/old_data.dart';
-import 'package:ultrasound_inventory/features/old/old_sales_screen.dart';
+import 'package:ultrasound_inventory/features/sales/sales_screen.dart';
 
 void main() {
   group('oldSalePartyNote', () {

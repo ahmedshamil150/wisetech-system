@@ -32,6 +32,7 @@ Map<String, dynamic> _movement(
   String type = 'Dealer',
   String? date,
   int? probeId,
+  int? oldSourceId,
 }) {
   return {
     'id': id,
@@ -43,6 +44,7 @@ Map<String, dynamic> _movement(
     'notes': null,
     'reference': null,
     'is_demo': false,
+    'old_source_id': oldSourceId,
     'machine_id': null,
     'probe_id': probeId,
     'printer_id': null,
@@ -101,7 +103,7 @@ void main() {
   });
 
   group('filterMovementRows', () {
-    test('drops legacy, other kinds and rows outside the range', () {
+    test('drops legacy, old-side imports, other kinds and rows outside the range', () {
       final rows = [
         _movement(1, type: 'Dealer', date: '10-01-2026'),
         _movement(2, type: 'Workshop', date: '10-01-2026'),
@@ -109,6 +111,7 @@ void main() {
         _movement(4, type: 'Dealer', date: '10-03-2026'),
         _movement(5, type: 'Dealer', date: null),
         _movement(6, type: 'Return', date: '10-01-2026'),
+        _movement(7, type: 'Customer', date: '10-01-2026', oldSourceId: 9001),
       ];
       final all = filterMovementRows(rows,
           kind: 'All', from: from, to: to);

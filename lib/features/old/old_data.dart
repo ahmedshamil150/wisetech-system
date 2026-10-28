@@ -1,10 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-SupabaseClient get _db => Supabase.instance.client;
+import '../data/data.dart' show kOldBatchId;
 
-/// The id of the imported old stock batch (BATCH-OLD).
-const kOldBatchId = 30;
+export '../data/data.dart' show kOldBatchId;
+
+SupabaseClient get _db => Supabase.instance.client;
 
 /// Rows for one page plus the total matching count, so the list can show
 /// "50 of 2449" and page through thousands of imported rows.
@@ -72,7 +73,10 @@ final oldProbesProvider =
       PostgrestFilterBuilder<PostgrestList> query = _db.from('probes')
           .select(
               'id, internal_id, model, serial_number, status, current_location, notes')
-          .eq('batch_id', kOldBatchId);
+          .eq('batch_id', kOldBatchId)
+          // a probe sitting in a box belongs to the box sheet, not the
+          // stock list — unboxing puts it back here
+          .isFilter('box_id', null);
       if (args.status != 'All') {
         query = query.eq('status', args.status);
       }
@@ -89,6 +93,7 @@ final oldProbesProvider =
           .from('probes')
           .select('id')
           .eq('batch_id', kOldBatchId)
+          .isFilter('box_id', null)
           .count(CountOption.exact);
       return res.count;
     },
