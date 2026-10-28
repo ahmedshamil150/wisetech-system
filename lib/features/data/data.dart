@@ -754,6 +754,42 @@ Future<void> setMovementNotes(
   await _updateSend(rows, {'notes': notes.isEmpty ? null : notes});
 }
 
+/// Corrects where a send went: its kind and party, for every row of the
+/// send. The items' status and current location follow as if the send
+/// had been recorded right the first time — but only while this send is
+/// still the item's latest movement, and never over a Sold or Archived
+/// item. Only admins may (enforced by the RPC).
+Future<void> setSendDestination(
+  List<Map<String, dynamic>> rows, {
+  required String kind,
+  int? partyId,
+  required bool demo,
+}) async {
+  await _db.rpc('set_send_destination', params: {
+    'p_movement_ids': [for (final row in rows) row['id'] as int],
+    'p_kind': kind,
+    if (kind == 'Dealer') 'p_dealer_id': partyId,
+    if (kind == 'Customer') 'p_customer_id': partyId,
+    'p_demo': demo,
+  });
+}
+
+/// Finds a dealer/customer by name or adds it — any member may add one
+/// (see 0011_party_add_and_audit.sql). Returns the id and whether this
+/// call created the record.
+Future<(int, bool)> findOrCreateParty(String table, String name) async {
+  final rows = await _db
+      .from(table)
+      .select('id')
+      .eq('name', name)
+      .order('id')
+      .limit(1);
+  if (rows.isNotEmpty) return (rows.first['id'] as int, false);
+  final inserted =
+      await _db.from(table).insert({'name': name}).select('id').single();
+  return (inserted['id'] as int, true);
+}
+
 /// One update for the whole send: by group when the rows share one
 /// (Return rows carry their own group, box rows have none, so neither
 /// is ever caught here), row by row for the ungrouped legacy rows.

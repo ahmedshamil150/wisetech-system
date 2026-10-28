@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/data.dart';
 import '../../core/layout.dart';
+import '../../core/palette.dart';
 
 export '../../core/palette.dart';
 
@@ -68,6 +69,97 @@ class AppFab extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One tile of the "Sent to" grid, and the grid itself: Workshop /
+/// Branch / Dealer / Customer, two per row — four side by side is too
+/// tight on a phone.
+class SendKindTile extends StatelessWidget {
+  const SendKindTile({
+    super.key,
+    required this.value,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String value;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? scheme.primary : context.colors.quietFill,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: selected ? scheme.primary : scheme.outlineVariant),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  size: 18,
+                  color: selected ? scheme.onPrimary : scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? scheme.onPrimary : scheme.onSurface)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SendKindGrid extends StatelessWidget {
+  const SendKindGrid(
+      {super.key, required this.selected, required this.onSelected});
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tile(String value, IconData icon) => SendKindTile(
+          value: value,
+          icon: icon,
+          selected: selected == value,
+          onTap: () => onSelected(value),
+        );
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: tile('Workshop', Icons.build_outlined)),
+            const SizedBox(width: 10),
+            Expanded(child: tile('Branch', Icons.storefront_outlined)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(child: tile('Dealer', Icons.handshake_outlined)),
+            const SizedBox(width: 10),
+            Expanded(child: tile('Customer', Icons.person_outline)),
+          ],
+        ),
+      ],
     );
   }
 }

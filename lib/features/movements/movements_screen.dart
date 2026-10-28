@@ -1658,6 +1658,9 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
   late final TextEditingController _notes;
   late final TextEditingController _amount;
   late final TextEditingController _soldBy;
+  late final TextEditingController _target;
+  late String _kind;
+  late bool _demo;
   late bool _paid;
   late bool _sold;
   // what the sheet opened with — a save only writes the sold fields when
@@ -1667,6 +1670,9 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
   late final bool _initialSold;
   late final double? _initialAmount;
   late final String _initialSoldBy;
+  late final String _initialKind;
+  late final String _initialParty;
+  late final bool _initialDemo;
   bool _saving = false;
 
   @override
@@ -1679,6 +1685,15 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
     if (iso != null) date = DateField.format(iso);
     _date = TextEditingController(text: date);
     _notes = TextEditingController(text: (first['notes'] ?? '').toString());
+    // where it went: the party name as the send reads it; an unnamed
+    // send starts blank so a name can be typed now
+    _kind = '${first['movement_type'] ?? ''}';
+    _initialKind = _kind;
+    _initialDemo = first['is_demo'] == true;
+    _demo = _initialDemo;
+    _initialParty =
+        movementPartyMissing(first) ? '' : '${first['to_location'] ?? ''}'.trim();
+    _target = TextEditingController(text: _initialParty);
     // a mixed movement opens on a sold send's figures, so the fields read
     // what the sold part of the movement carries
     final soldRow = widget.rows.firstWhere(movementSold,
@@ -1701,7 +1716,7 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
 
   @override
   void dispose() {
-    for (final c in [_date, _notes, _amount, _soldBy]) {
+    for (final c in [_date, _notes, _amount, _soldBy, _target]) {
       c.dispose();
     }
     super.dispose();
@@ -1722,6 +1737,37 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _saving = true);
     try {
+      // where it went, when that is what changed: the kind and the party
+      // are corrected send by send, and the items follow in the database
+      // while this send is still the last thing that happened to them
+      final partyName = _target.text.trim();
+      final kindChanged = _kind != _initialKind;
+      final partyChanged = partyName != _initialParty;
+      final destinationChanged =
+          kindChanged || partyChanged || _demo != _initialDemo;
+      var newParty = false;
+      if (destinationChanged) {
+        int? partyId;
+        final named = _kind == 'Dealer' || _kind == 'Customer';
+        if (named && partyName.isNotEmpty) {
+          if (!kindChanged && !partyChanged) {
+            // only the demo mark moved — the party record on the send
+            // stays the one it already points at
+            partyId = widget.rows.first[
+                    _kind == 'Dealer' ? 'dealer_id' : 'customer_id']
+                as int?;
+          } else {
+            final (id, created) = await findOrCreateParty(
+                _kind == 'Dealer' ? 'dealers' : 'customers', partyName);
+            partyId = id;
+            newParty = created;
+          }
+        }
+        for (final send in groupSendRows(rows)) {
+          await setSendDestination(send.rows,
+              kind: _kind, partyId: partyId, demo: _demo);
+        }
+      }
       // date and notes are the whole movement's — every row takes them,
       // the way the new-movement form writes one date and one note
       await setMovementDate([for (final row in rows) row['id'] as int], date);
@@ -1748,7 +1794,15 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
               amount: amount, soldBy: soldBy);
         }
       }
-      ref.invalidate(allMovementsProvider);
+      ref
+        ..invalidate(allMovementsProvider)
+        ..invalidate(inventoryProvider)
+        ..invalidate(oldStockItemsProvider);
+      if (newParty) {
+        ref
+          ..invalidate(_kind == 'Dealer' ? dealersProvider : customersProvider)
+          ..invalidate(recentPartiesProvider);
+      }
       if (!mounted) return;
       Navigator.pop(context);
       messenger.showSnackBar(const SnackBar(content: Text('Send updated.')));
@@ -1767,6 +1821,14 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
     final soldKind = isSoldKind(kind);
     final noun =
         groupSendRows(widget.rows).length > 1 ? 'movement' : 'send';
+    final dealerNames = ref.watch(dealersProvider).maybeWhen(
+          data: (rows) => rows.map((r) => r['name'].toString()).toList(),
+          orElse: () => const <String>[],
+        );
+    final customerNames = ref.watch(customersProvider).maybeWhen(
+          data: (rows) => rows.map((r) => r['name'].toString()).toList(),
+          orElse: () => const <String>[],
+        );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
@@ -1792,6 +1854,69 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Text('Sent to',
+                      style: TextStyle(
+                          fontSize: 13, color: scheme.onSurfaceVariant)),
+                  const SizedBox(height: 6),
+                  SendKindGrid(
+                    selected: _kind,
+                    onSelected: (value) {
+                      if (value == _kind) return;
+                      // a dealer name is not a customer record, so the
+                      // party starts blank and is picked again
+                      setState(() {
+                        _kind = value;
+                        _target.clear();
+                        _demo = false;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  if (_kind == 'Dealer' || _kind == 'Customer') ...[
+                    PickyField(
+                      controller: _target,
+                      label: _kind == 'Dealer' ? 'Dealer' : 'Customer',
+                      hint: 'Optional — search, or type a name to add it',
+                      options:
+                          _kind == 'Dealer' ? dealerNames : customerNames,
+                      pickTitle: _kind == 'Dealer' ? 'dealers' : 'customers',
+                    ),
+                    SwitchListTile.adaptive(
+                      value: _demo,
+                      onChanged: (value) => setState(() => _demo = value),
+                      dense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12),
+                      title: const Text('Send as demo',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 13.5)),
+                      subtitle: const Text(
+                          'Stays company stock — record a return when it '
+                          'comes back',
+                          style: TextStyle(fontSize: 12)),
+                    ),
+                  ] else
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(2, 2, 2, 6),
+                      child: Text(
+                          _kind == 'Workshop'
+                              ? 'The company workshop (single location).'
+                              : 'The Lahore branch — the company\'s own '
+                                  'location. Items sent there show as With '
+                                  'Branch.',
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              color: scheme.onSurfaceVariant)),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
+                    child: Text(
+                        'Changing this corrects the $noun in place: the '
+                        'items move to the new place while they are still '
+                        'with this send.',
+                        style: TextStyle(
+                            fontSize: 11.5, color: scheme.outline)),
+                  ),
                   DateField(controller: _date, label: 'Date'),
                   const SizedBox(height: 12),
                   TextField(
@@ -2198,66 +2323,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     WidgetsBinding.instance.addPostFrameCallback((_) => group.dispose());
   }
 
-  /// Finds the party by name or adds it — any member may add a
-  /// customer/dealer (see 0011_party_add_and_audit.sql). Returns the id
-  /// and whether this call created the record.
-  Future<(int id, bool created)> _findOrCreate(
-      String table, String name) async {
-    final rows = await db
-        .from(table)
-        .select('id')
-        .eq('name', name)
-        .order('id')
-        .limit(1);
-    if (rows.isNotEmpty) return (rows.first['id'] as int, false);
-    final inserted =
-        await db.from(table).insert({'name': name}).select('id').single();
-    return (inserted['id'] as int, true);
-  }
-
-  /// One selectable tile in the 2x2 "Sent to" grid.
-  Widget _kindTile(BuildContext context, String value, IconData icon) {
-    final scheme = Theme.of(context).colorScheme;
-    final selected = _kind == value;
-    return Material(
-      color: selected
-          ? scheme.primary
-          : context.colors.quietFill,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => setState(() {
-          _kind = value;
-          _target.clear();
-          _demo = false;
-        }),
-        child: Container(
-          height: 46,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: selected ? scheme.primary : scheme.outlineVariant),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: 18,
-                  color: selected ? scheme.onPrimary : scheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? scheme.onPrimary : scheme.onSurface)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   /// One group's card in the new-movement form: its items, and the sold
   /// and paid marks this send keeps on its own.
   Widget _groupCard(
@@ -2416,11 +2481,11 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       final destination = <String, dynamic>{};
       var newParty = false;
       if (_kind == 'Dealer' && target.isNotEmpty) {
-        final (id, created) = await _findOrCreate('dealers', target);
+        final (id, created) = await findOrCreateParty('dealers', target);
         destination['p_dealer_id'] = id;
         newParty = created;
       } else if (_kind == 'Customer' && target.isNotEmpty) {
-        final (id, created) = await _findOrCreate('customers', target);
+        final (id, created) = await findOrCreateParty('customers', target);
         destination['p_customer_id'] = id;
         newParty = created;
       }
@@ -2590,33 +2655,13 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                           fontSize: 13,
                           color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
-                  // Two per row — four side by side is too tight on a phone.
-                  Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                              child: _kindTile(context, 'Workshop',
-                                  Icons.build_outlined)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: _kindTile(
-                                  context, 'Branch', Icons.storefront_outlined)),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                              child: _kindTile(
-                                  context, 'Dealer', Icons.handshake_outlined)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: _kindTile(
-                                  context, 'Customer', Icons.person_outline)),
-                        ],
-                      ),
-                    ],
+                  SendKindGrid(
+                    selected: _kind,
+                    onSelected: (value) => setState(() {
+                      _kind = value;
+                      _target.clear();
+                      _demo = false;
+                    }),
                   ),
                   if (_kind == 'Dealer' || _kind == 'Customer') ...[
                     const SizedBox(height: 8),
