@@ -25,6 +25,7 @@ SaleEntry _entry({
   String source = 'send',
   String date = '15-10-2026',
   double? total = 1000,
+  bool imported = false,
   Map<String, dynamic> row = const {},
   List<Map<String, dynamic>> rows = const [],
 }) {
@@ -37,7 +38,7 @@ SaleEntry _entry({
     total: total,
     soldBy: '',
     paid: false,
-    imported: false,
+    imported: imported,
     row: row,
     rows: rows,
   );
@@ -185,6 +186,41 @@ void main() {
       );
       expect(stats.salesCount, 2);
       expect(stats.salesAmount, 3500.5);
+      expect(stats.salesPriced, 2);
+    });
+
+    test('a sale without a recorded amount counts, but adds nothing', () {
+      final stats = computeDashStats(
+        movementRows: const [],
+        saleEntries: [
+          _entry(total: null),
+          _entry(date: '2026-10-02', total: 700),
+        ],
+        repairRows: const [],
+        batchByItem: _batches,
+        period: october,
+      );
+      expect(stats.salesCount, 2);
+      expect(stats.salesPriced, 1);
+      expect(stats.salesAmount, 700);
+      expect(stats.salesUnpricedImported, 0);
+    });
+
+    test('unpriced import rows are told apart from unpriced sends', () {
+      final stats = computeDashStats(
+        movementRows: const [],
+        saleEntries: [
+          _entry(total: null, imported: true),
+          _entry(total: null, imported: true),
+          _entry(total: null),
+        ],
+        repairRows: const [],
+        batchByItem: _batches,
+        period: october,
+      );
+      expect(stats.salesCount, 3);
+      expect(stats.salesPriced, 0);
+      expect(stats.salesUnpricedImported, 2);
     });
 
     test('a batch keeps only sales made entirely of its items', () {
@@ -246,8 +282,31 @@ void main() {
         period: october,
       );
       expect(stats.repairsReceived, 2);
+      expect(stats.repairsReturnedOfReceived, 1);
       expect(stats.repairsBack, 1);
       expect(stats.repairsMoney, 4000);
+    });
+
+    test('a repair received earlier and given back now counts only as back',
+        () {
+      final stats = computeDashStats(
+        movementRows: const [],
+        saleEntries: const [],
+        repairRows: [
+          {
+            'received_at': '20-09-2026',
+            'returned_at': '04-10-2026',
+            'money_received': 1500,
+            'status': 'Returned',
+          },
+        ],
+        batchByItem: _batches,
+        period: october,
+      );
+      expect(stats.repairsReceived, 0);
+      expect(stats.repairsReturnedOfReceived, 0);
+      expect(stats.repairsBack, 1);
+      expect(stats.repairsMoney, 1500);
     });
 
     test('a batch view leaves repairs out', () {

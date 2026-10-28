@@ -257,14 +257,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 _StatCard(
                   label: 'Repairs in',
                   value: '${stats.repairsReceived}',
-                  sub: stats.repairsBack == 1
-                      ? '1 sent back'
-                      : '${stats.repairsBack} sent back',
+                  sub: stats.repairsReceived == 0
+                      ? 'None received'
+                      : '${stats.repairsReturnedOfReceived} back · '
+                          '${stats.repairsReceived - stats.repairsReturnedOfReceived} '
+                          'still here',
                   icon: Icons.handyman_outlined,
                   onTap: () => ref.read(shellTabProvider.notifier).set(4),
                 ),
             ],
           ),
+          if (stats.salesCount > 0 && stats.salesPriced < stats.salesCount) ...[
+            const SizedBox(height: 8),
+            Text(
+              _salesAmountNote(stats),
+              style: TextStyle(fontSize: 11.5, color: scheme.outline),
+            ),
+          ],
           if (_batch.isEmpty) ...[
             const SizedBox(height: 10),
             Wrap(
@@ -282,6 +291,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       label: kind,
                       value: '${stats.sendsByKind[kind]}',
                     ),
+                if (stats.repairsBack > 0)
+                  _CountChip(
+                    label: 'Repairs given back',
+                    value: '${stats.repairsBack}',
+                  ),
                 if (stats.repairsMoney > 0)
                   _CountChip(
                     label: 'Repair money',
@@ -408,6 +422,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ),
     );
   }
+}
+
+String _salesAmountNote(DashStats stats) {
+  final unpriced = stats.salesCount - stats.salesPriced;
+  final allOld = stats.salesUnpricedImported == unpriced;
+  if (stats.salesPriced == 0) {
+    return allOld
+        ? 'No sale amounts were recorded in this period — the old import '
+            'saved no prices.'
+        : 'No sale amounts were recorded for these sales.';
+  }
+  return allOld
+      ? 'Amount recorded on ${stats.salesPriced} of ${stats.salesCount} '
+          'sales — the old import saved no prices for the rest.'
+      : 'Amount recorded on ${stats.salesPriced} of ${stats.salesCount} '
+          'sales.';
 }
 
 String _batchShortLabel(

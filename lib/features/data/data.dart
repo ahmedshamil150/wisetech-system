@@ -505,7 +505,7 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
 /// rows per request, and the imported old stock is several times that —
 /// a plain select silently drops every item past the first page, which
 /// made their movements, pickers and repairs read "Unknown item".
-Future<List<Map<String, dynamic>>> _fetchAllPages(
+Future<List<Map<String, dynamic>>> fetchAllPages(
     PostgrestTransformBuilder<PostgrestList> Function() build) async {
   const pageSize = 1000;
   final rows = <Map<String, dynamic>>[];
@@ -522,19 +522,19 @@ Future<List<Map<String, dynamic>>> _fetchAllPages(
 /// come in with the import, so the query stays light.
 final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
   final pages = await Future.wait([
-    _fetchAllPages(() => _db
+    fetchAllPages(() => _db
         .from('machines')
         .select(
             'id, machine_id, model, serial_number, status, current_location')
         .eq('batch_id', kOldBatchId)
         .order('id', ascending: false)),
-    _fetchAllPages(() => _db
+    fetchAllPages(() => _db
         .from('probes')
         .select('id, internal_id, model, serial_number, status, '
             'current_location, box_id')
         .eq('batch_id', kOldBatchId)
         .order('id', ascending: false)),
-    _fetchAllPages(() => _db
+    fetchAllPages(() => _db
         .from('printers')
         .select(
             'id, internal_id, name_model, serial_number, status, current_location')
@@ -611,7 +611,8 @@ Map<String, String> labelsForItems(List<InventoryItem> items) {
 /// derives from it for display.
 final allMovementsProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final rows = await _db
+  // past 1,000 rows PostgREST would truncate the list silently
+  final rows = await fetchAllPages(() => _db
       .from('movements')
       .select(
         'id, group_ref, movement_type, movement_date, to_location, from_location, '
@@ -621,7 +622,7 @@ final allMovementsProvider =
         'workshops(name), profiles(display_name, username)',
       )
       .neq('movement_type', 'Legacy')
-      .order('id', ascending: false);
+      .order('id', ascending: false));
   rows.sort((a, b) {
     final byDate = (_parseDate(b['movement_date']) ?? DateTime(0))
         .compareTo(_parseDate(a['movement_date']) ?? DateTime(0));

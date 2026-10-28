@@ -129,12 +129,15 @@ bool dashEntryMatchesBatch(
 typedef DashStats = ({
   int salesCount,
   double salesAmount,
+  int salesPriced, // sales that carry a recorded amount
+  int salesUnpricedImported, // of the rest, rows from the old import
   int sendCount,
   int itemCount,
   Map<String, int> sendsByKind,
   int returnedItems,
   int returnedBack,
   int repairsReceived,
+  int repairsReturnedOfReceived, // of those, already given back
   int repairsBack,
   double repairsMoney,
 });
@@ -189,20 +192,32 @@ DashStats computeDashStats({
 
   var salesCount = 0;
   var salesAmount = 0.0;
+  var salesPriced = 0;
+  var salesUnpricedImported = 0;
   for (final entry in saleEntries) {
     if (!dashInPeriod(entry.date, period)) continue;
     if (!dashEntryMatchesBatch(entry, batch, batchByItem)) continue;
     salesCount++;
-    salesAmount += entry.total ?? 0;
+    // the old import saved no amounts — count only the ones that have one
+    if (entry.total != null) {
+      salesPriced++;
+      salesAmount += entry.total!;
+    } else if (entry.imported) {
+      salesUnpricedImported++;
+    }
   }
 
   var repairsReceived = 0;
+  var repairsReturnedOfReceived = 0;
   var repairsBack = 0;
   var repairsMoney = 0.0;
   if (includeRepairs) {
     for (final job in repairRows) {
       if (dashInPeriod('${job['received_at'] ?? ''}', period)) {
         repairsReceived++;
+        if ('${job['returned_at'] ?? ''}'.trim().isNotEmpty) {
+          repairsReturnedOfReceived++;
+        }
       }
       if (dashInPeriod('${job['returned_at'] ?? ''}', period)) {
         repairsBack++;
@@ -214,12 +229,15 @@ DashStats computeDashStats({
   return (
     salesCount: salesCount,
     salesAmount: salesAmount,
+    salesPriced: salesPriced,
+    salesUnpricedImported: salesUnpricedImported,
     sendCount: sendCount,
     itemCount: itemCount,
     sendsByKind: sendsByKind,
     returnedItems: returned,
     returnedBack: returnedBack,
     repairsReceived: repairsReceived,
+    repairsReturnedOfReceived: repairsReturnedOfReceived,
     repairsBack: repairsBack,
     repairsMoney: repairsMoney,
   );

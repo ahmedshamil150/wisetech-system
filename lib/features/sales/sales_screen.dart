@@ -13,14 +13,15 @@ import '../old/old_table.dart';
 /// nothing is ever written here.
 final allSalesProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final rows = await db
+  // past 1,000 rows PostgREST would truncate the sales list silently
+  final rows = await fetchAllPages(() => db
       .from('sales')
       .select(
           'id, sale_date, invoice_reference, sale_price, notes, old_trno, '
           'old_source_id, customer_id, customers(name), '
           'sale_items(item_description, item_serial, item_price, item_type, '
           'is_main_item, machine_id, probe_id, printer_id, part_id)')
-      .order('sale_date', ascending: false);
+      .order('id', ascending: false));
   return rows;
 });
 
@@ -83,8 +84,14 @@ List<SaleEntry> mergeSaleEntries({
   required Map<String, String> labels,
 }) {
   final entries = <SaleEntry>[];
+  // the old import ran twice for part of the history: 91 invoices sit in
+  // `sales` as two identical rows (same old_trno). One real sale shows
+  // once, so the list and the dashboard count each invoice a single time.
+  final seenInvoices = <String>{};
 
   for (final row in salesRows) {
+    final trno = (row['old_trno'] ?? '').toString().trim();
+    if (trno.isNotEmpty && !seenInvoices.add(trno)) continue;
     final buyer = oldSaleBuyer(row);
     final lines = (row['sale_items'] as List?)?.cast<Map>() ?? [];
     final summary = lines
@@ -92,13 +99,26 @@ List<SaleEntry> mergeSaleEntries({
         .where((s) => s.isNotEmpty)
         .join(' · ');
     final price = row['sale_price'];
+    // the legacy system saved no invoice totals — its line prices are
+    // the only amount left. A sale with neither reads as "not recorded".
+    double? total;
+    if (price is num && price != 0) {
+      total = price.toDouble();
+    } else {
+      for (final line in lines) {
+        final linePrice = line['item_price'];
+        if (linePrice is num && linePrice != 0) {
+          total = (total ?? 0) + linePrice.toDouble();
+        }
+      }
+    }
     entries.add((
       source: 'sale',
       date: (row['sale_date'] ?? '').toString(),
       buyer: buyer.name,
       buyerKind: buyer.kind,
       summary: summary,
-      total: price is num ? price.toDouble() : null,
+      total: total,
       soldBy: '',
       paid: true,
       imported: row['old_source_id'] != null,

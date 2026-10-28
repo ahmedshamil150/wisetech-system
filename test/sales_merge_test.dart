@@ -9,6 +9,7 @@ Map<String, dynamic> _saleRow(
   String notes = '',
   dynamic price = 100,
   bool imported = false,
+  String? trno,
   List<Map<String, dynamic>> lines = const [],
 }) {
   return {
@@ -16,6 +17,7 @@ Map<String, dynamic> _saleRow(
     'sale_date': date,
     'sale_price': price,
     'notes': notes,
+    'old_trno': trno,
     'old_source_id': imported ? id : null,
     'customers': null,
     'sale_items': lines,
@@ -198,6 +200,47 @@ void main() {
       );
       expect(entries, hasLength(2));
       expect(entries.every((e) => e.source == 'sale'), isTrue);
+    });
+
+    test('a sale without a sale price reads its line prices', () {
+      final entries = mergeSaleEntries(
+        salesRows: [
+          _saleRow(1, price: 0, imported: true, lines: [
+            {'item_price': 500},
+            {'item_price': 250},
+          ]),
+        ],
+        movementRows: const [],
+        labels: const {},
+      );
+      expect(entries.single.total, 750);
+    });
+
+    test('a sale with no price anywhere reads no amount', () {
+      final entries = mergeSaleEntries(
+        salesRows: [
+          _saleRow(1, price: 0, imported: true, lines: [
+            {'item_price': 0},
+            {'item_price': null},
+          ]),
+        ],
+        movementRows: const [],
+        labels: const {},
+      );
+      expect(entries.single.total, isNull);
+    });
+
+    test('the same old invoice imported twice shows once', () {
+      final entries = mergeSaleEntries(
+        salesRows: [
+          _saleRow(1, trno: '19822900', price: 0),
+          _saleRow(2, trno: '19822900', price: 0),
+          _saleRow(3, trno: '19822901', price: 0),
+        ],
+        movementRows: const [],
+        labels: const {},
+      );
+      expect(entries, hasLength(2));
     });
   });
 
