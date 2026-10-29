@@ -243,7 +243,9 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
     final customer =
         ((job['customers'] as Map?)?['name'] ?? '').toString().trim();
     final items = repairJobItems(job);
-    final money = repairMoneyText(job);
+    final cost = _amountText(job['final_cost']);
+    final estimate = _amountText(job['estimated_cost']);
+    final received = _amountText(job['money_received']);
     final color = switch (state) {
       'In repair' => context.colors.warning,
       'Sent back' => context.colors.success,
@@ -330,9 +332,19 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
                     text: '${items.length} item'
                         '${items.length == 1 ? '' : 's'}',
                   ),
-                  if (money.isNotEmpty)
+                  // what the repair was charged: the final cost once it
+                  // is agreed, the estimate until then
+                  if (cost.isNotEmpty)
                     _InfoTag(
-                        icon: Icons.payments_outlined, text: money),
+                        icon: Icons.request_quote_outlined, text: 'Cost $cost')
+                  else if (estimate.isNotEmpty)
+                    _InfoTag(
+                        icon: Icons.request_quote_outlined,
+                        text: 'Est. $estimate'),
+                  if (received.isNotEmpty)
+                    _InfoTag(
+                        icon: Icons.payments_outlined,
+                        text: 'Received $received'),
                 ],
               ),
               if (models.isNotEmpty) ...[
@@ -350,6 +362,13 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
       ),
     );
   }
+}
+
+/// "5000" for whole amounts, "5000.5" for the rest, '' for nothing.
+String _amountText(Object? raw) {
+  final value = raw == null ? null : double.tryParse('$raw');
+  if (value == null) return '';
+  return value == value.roundToDouble() ? value.toInt().toString() : '$value';
 }
 
 class _InfoTag extends StatelessWidget {
@@ -746,7 +765,9 @@ class _RepairDetails extends ConsumerWidget {
             ),
           ),
         ],
-        if (job['estimated_cost'] != null || job['final_cost'] != null) ...[
+        if (job['estimated_cost'] != null ||
+            job['final_cost'] != null ||
+            repairMoneyText(job).isNotEmpty) ...[
           const _SectionTitle('Cost'),
           AppCard(
             padding: const EdgeInsets.all(14),
@@ -759,6 +780,9 @@ class _RepairDetails extends ConsumerWidget {
                 if (job['final_cost'] != null)
                   KeyValue(
                       label: 'Final cost', value: '${job['final_cost']}'),
+                if (repairMoneyText(job).isNotEmpty)
+                  KeyValue(
+                      label: 'Money received', value: repairMoneyText(job)),
               ],
             ),
           ),
@@ -784,9 +808,6 @@ class _RepairDetails extends ConsumerWidget {
                   KeyValue(
                       label: 'Collected by',
                       value: '${job['collected_by']}'),
-                if (repairMoneyText(job).isNotEmpty)
-                  KeyValue(
-                      label: 'Money received', value: repairMoneyText(job)),
                 if ('${job['return_notes'] ?? ''}'.isNotEmpty)
                   KeyValue(
                       label: 'Return notes',

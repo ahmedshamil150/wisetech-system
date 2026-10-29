@@ -14,6 +14,10 @@ Map<String, dynamic> _job(
   String receivedAt = '10-01-2026',
   String? returnedAt,
   String model = 'Mindray DC-40',
+  num? estimatedCost,
+  num? finalCost,
+  num? moneyReceived,
+  String? moneyReceivedBy,
 }) =>
     {
       'id': id,
@@ -23,6 +27,10 @@ Map<String, dynamic> _job(
       'returned_at': returnedAt,
       'customer_contact': '0300-1234567',
       'customers': {'name': customer},
+      'estimated_cost': estimatedCost,
+      'final_cost': finalCost,
+      'money_received': moneyReceived,
+      'money_received_by': moneyReceivedBy,
       'repair_items': [
         {
           'id': id * 10,
@@ -35,7 +43,7 @@ Map<String, dynamic> _job(
     };
 
 final _jobs = [
-  _job(1, jobNumber: 'JOB-1', customer: 'Ali Traders'),
+  _job(1, jobNumber: 'JOB-1', customer: 'Ali Traders', estimatedCost: 5000),
   _job(
     2,
     jobNumber: 'JOB-2',
@@ -49,6 +57,9 @@ final _jobs = [
     customer: 'Chand Clinic',
     status: 'Returned',
     returnedAt: '20-01-2026',
+    finalCost: 20000,
+    moneyReceived: 15000,
+    moneyReceivedBy: 'Ahmed',
   ),
 ];
 
@@ -144,6 +155,20 @@ void main() {
     await tester.tap(find.text('Cancel').last);
     await _pumpFrames(tester);
     expect(find.text('Save repair'), findsNothing);
+  });
+
+  testWidgets('the card carries the money of the repair', (tester) async {
+    await pumpScreen(tester);
+    // the agreed charge and what was taken show on the returned job
+    expect(find.text('Cost 20000'), findsOneWidget);
+    expect(find.text('Received 15000'), findsOneWidget);
+    // an open job shows its estimate until a final cost is agreed
+    expect(find.text('Est. 5000'), findsOneWidget);
+
+    await tester.tap(find.text('JOB-3'));
+    await _pumpFrames(tester);
+    expect(find.text('Money received'), findsOneWidget);
+    expect(find.text('15000 — received by Ahmed'), findsOneWidget);
   });
 
   testWidgets('details sheet opens from a job', (tester) async {
