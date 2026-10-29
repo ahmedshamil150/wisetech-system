@@ -58,11 +58,22 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     const RepairsScreen(),
   ];
 
+  /// Pages build the first time their tab is opened and stay alive
+  /// after that, so start-up does not pay for all five at once.
+  final Set<int> _visited = {0};
+
   @override
   Widget build(BuildContext context) {
     final index = ref.watch(shellTabProvider);
+    _visited.add(index);
     final desktop = isDesktopLayout(context);
-    final body = IndexedStack(index: index, children: _pages);
+    final body = IndexedStack(
+      index: index,
+      children: [
+        for (var i = 0; i < _pages.length; i++)
+          if (_visited.contains(i)) _pages[i] else const SizedBox.shrink(),
+      ],
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(_titles[index]),

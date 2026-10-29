@@ -104,12 +104,16 @@ final probeBoxesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) asyn
 /// The batch new items are entered into (set when a batch is created).
 /// Vendor and date of every item come from it, so the add form stays short.
 final currentBatchProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
-  final batches = await ref.watch(batchesProvider.future);
-  final setting = await _db
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'current_batch_id')
-      .limit(1);
+  final results = await Future.wait([
+    ref.watch(batchesProvider.future),
+    _db
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'current_batch_id')
+        .limit(1),
+  ]);
+  final batches = results[0];
+  final setting = results[1];
   if (setting.isEmpty) return null;
   final id = int.tryParse('${setting.first['value']}');
   if (id == null) return null;
@@ -499,27 +503,33 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
   final batchIds = await _currentBatchIds();
   final batchFilter = _currentBatchOrFilter(batchIds);
 
-  final machines = await _db
-      .from('machines')
-      .select('$fields, machine_id, model')
-      .or(batchFilter)
-      .order('id', ascending: false);
-  final probes = await _db
-      .from('probes')
-      .select(
-          '$fields, $linked box_id, needs_review, review_kind, catalog_products(probe_type), internal_id, model')
-      .or(batchFilter)
-      .order('id', ascending: false);
-  final printers = await _db
-      .from('printers')
-      .select('$fields, $linked internal_id, name_model')
-      .or(batchFilter)
-      .order('id', ascending: false);
-  // Parts are not batch-filtered — they live in BATCH-PARTS.
-  final parts = await _db
-      .from('parts')
-      .select('$fields, $linked internal_id, name_model')
-      .order('id', ascending: false);
+  final pages = await Future.wait([
+    _db
+        .from('machines')
+        .select('$fields, machine_id, model')
+        .or(batchFilter)
+        .order('id', ascending: false),
+    _db
+        .from('probes')
+        .select(
+            '$fields, $linked box_id, needs_review, review_kind, catalog_products(probe_type), internal_id, model')
+        .or(batchFilter)
+        .order('id', ascending: false),
+    _db
+        .from('printers')
+        .select('$fields, $linked internal_id, name_model')
+        .or(batchFilter)
+        .order('id', ascending: false),
+    // Parts are not batch-filtered — they live in BATCH-PARTS.
+    _db
+        .from('parts')
+        .select('$fields, $linked internal_id, name_model')
+        .order('id', ascending: false),
+  ]);
+  final machines = pages[0];
+  final probes = pages[1];
+  final printers = pages[2];
+  final parts = pages[3];
 
   final items = <InventoryItem>[
     for (final row in machines)
@@ -545,11 +555,32 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
 Future<List<Map<String, dynamic>>> fetchAllPages(
     PostgrestTransformBuilder<PostgrestList> Function() build) async {
   const pageSize = 1000;
+  const window = 4;
   final rows = <Map<String, dynamic>>[];
-  for (var from = 0;; from += pageSize) {
-    final page = await build().range(from, from + pageSize - 1);
-    rows.addAll(page.cast<Map<String, dynamic>>());
-    if (page.length < pageSize) return rows;
+
+  Future<List<Map<String, dynamic>>> page(int index) async {
+    final result = await build()
+        .range(index * pageSize, index * pageSize + pageSize - 1);
+    return result.cast<Map<String, dynamic>>();
+  }
+
+  // First page tells us whether there is more; the rest come four at
+  // a time so a several-thousand-row table costs two round trips, not
+  // one per page.
+  final first = await page(0);
+  rows.addAll(first);
+  if (first.length < pageSize) return rows;
+
+  for (var start = 1;; start += window) {
+    final pages = await Future.wait([
+      for (var index = start; index < start + window; index++) page(index),
+    ]);
+    var done = false;
+    for (final batch in pages) {
+      rows.addAll(batch);
+      if (batch.length < pageSize) done = true;
+    }
+    if (done) return rows;
   }
 }
 
@@ -611,14 +642,13 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
 /// sides with one list. Old rows failing to load never breaks the new
 /// side: it just narrows to current stock.
 final allItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
-  final current = await ref.watch(inventoryProvider.future);
-  List<InventoryItem> old;
-  try {
-    old = await ref.watch(oldStockItemsProvider.future);
-  } catch (_) {
-    old = const <InventoryItem>[];
-  }
-  return [...current, ...old];
+  final currentFuture = ref.watch(inventoryProvider.future);
+  final oldFuture = ref.watch(oldStockItemsProvider.future).then(
+        (value) => value,
+        onError: (_) => <InventoryItem>[],
+      );
+  final results = await Future.wait([currentFuture, oldFuture]);
+  return [...results[0], ...results[1]];
 });
 
 /// `machine:12` -> label used by the movement list
@@ -1039,9 +1069,13 @@ final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>(
     ];
   }
 
+  final parties = await Future.wait([
+    fetch('customers', 'customer'),
+    fetch('dealers', 'dealer'),
+  ]);
   final rows = [
-    ...await fetch('customers', 'customer'),
-    ...await fetch('dealers', 'dealer'),
+    ...parties[0],
+    ...parties[1],
   ]..sort((a, b) =>
       (b['at'] ?? '').toString().compareTo((a['at'] ?? '').toString()));
   return rows.take(8).toList();

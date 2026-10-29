@@ -311,6 +311,30 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   String _dateFrom = '';
   String _dateTo = '';
 
+  // The merged list is rebuilt only when the rows or labels behind it
+  // change — typing in the search box filters it, it does not re-merge.
+  List<Map<String, dynamic>>? _entriesSalesSource;
+  List<Map<String, dynamic>>? _entriesMovementsSource;
+  Map<String, String>? _entriesLabelsSource;
+  List<SaleEntry>? _entriesCache;
+
+  List<SaleEntry> _entriesFor(List<Map<String, dynamic>> salesRows,
+      List<Map<String, dynamic>> movementRows, Map<String, String> labels) {
+    if (identical(salesRows, _entriesSalesSource) &&
+        identical(movementRows, _entriesMovementsSource) &&
+        identical(labels, _entriesLabelsSource)) {
+      return _entriesCache!;
+    }
+    _entriesSalesSource = salesRows;
+    _entriesMovementsSource = movementRows;
+    _entriesLabelsSource = labels;
+    return _entriesCache = mergeSaleEntries(
+      salesRows: salesRows,
+      movementRows: movementRows,
+      labels: labels,
+    );
+  }
+
   int get _activeFilterCount {
     var n = 0;
     if (_source != 'All') n++;
@@ -431,10 +455,8 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             error: (error, _) => EmptyState(
                 icon: Icons.error_outline, message: errorMessage(error)),
             data: (saleRows) {
-              final entries = mergeSaleEntries(
-                  salesRows: saleRows,
-                  movementRows: movements,
-                  labels: labels);
+              final entries =
+                  _entriesFor(saleRows, movements, labels);
               final filtered = _applyFilters(entries);
               if (filtered.isEmpty) {
                 return EmptyState(

@@ -24,6 +24,79 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   DashPeriod _period = dashThisMonth();
   String _batch = '';
 
+  // Derived maps are rebuilt only when the data behind them changes,
+  // so a tab switch or a scroll does not redo the whole join.
+  List<InventoryItem>? _batchSource;
+  Map<String, String> _batchByItemCache = const {};
+  List<Map<String, dynamic>>? _entriesSalesSource;
+  List<Map<String, dynamic>>? _entriesMovementsSource;
+  Map<String, String>? _entriesLabelsSource;
+  List<SaleEntry>? _entriesCache;
+
+  List<Map<String, dynamic>>? _statsMovementsSource;
+  List<SaleEntry>? _statsEntriesSource;
+  List<Map<String, dynamic>>? _statsRepairsSource;
+  Map<String, String>? _statsBatchSource;
+  String _statsKey = '';
+  DashStats? _statsCache;
+
+  Map<String, String> _batchByItemFor(List<InventoryItem> items) {
+    if (!identical(items, _batchSource)) {
+      _batchSource = items;
+      _batchByItemCache = {
+        for (final item in items) item.key: item.batch ?? '',
+      };
+    }
+    return _batchByItemCache;
+  }
+
+  List<SaleEntry> _entriesFor(List<Map<String, dynamic>> salesRows,
+      List<Map<String, dynamic>> movementRows, Map<String, String> labels) {
+    if (identical(salesRows, _entriesSalesSource) &&
+        identical(movementRows, _entriesMovementsSource) &&
+        identical(labels, _entriesLabelsSource)) {
+      return _entriesCache!;
+    }
+    _entriesSalesSource = salesRows;
+    _entriesMovementsSource = movementRows;
+    _entriesLabelsSource = labels;
+    return _entriesCache = mergeSaleEntries(
+      salesRows: salesRows,
+      movementRows: movementRows,
+      labels: labels,
+    );
+  }
+
+  DashStats _statsFor(
+      {required List<Map<String, dynamic>> movementRows,
+      required List<SaleEntry> saleEntries,
+      required List<Map<String, dynamic>> repairRows,
+      required Map<String, String> batchByItem}) {
+    final key = '${_period.from?.toIso8601String()}|'
+        '${_period.to?.toIso8601String()}|$_batch';
+    if (identical(movementRows, _statsMovementsSource) &&
+        identical(saleEntries, _statsEntriesSource) &&
+        identical(repairRows, _statsRepairsSource) &&
+        identical(batchByItem, _statsBatchSource) &&
+        key == _statsKey) {
+      return _statsCache!;
+    }
+    _statsMovementsSource = movementRows;
+    _statsEntriesSource = saleEntries;
+    _statsRepairsSource = repairRows;
+    _statsBatchSource = batchByItem;
+    _statsKey = key;
+    return _statsCache = computeDashStats(
+      movementRows: movementRows,
+      saleEntries: saleEntries,
+      repairRows: repairRows,
+      batchByItem: batchByItem,
+      period: _period,
+      batch: _batch,
+      includeRepairs: _batch.isEmpty,
+    );
+  }
+
   Future<void> _pickPeriod() async {
     final picked = await showAppSheet<DashPeriod>(
       context: context,
@@ -62,9 +135,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           data: (rows) => rows,
           orElse: () => inventoryItems,
         );
-    final batchByItem = {
-      for (final item in allItems) item.key: item.batch ?? '',
-    };
+    final batchByItem = _batchByItemFor(allItems);
     final batchRows = ref.watch(batchesProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
@@ -94,24 +165,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
-    final saleEntries = mergeSaleEntries(
-      salesRows: salesRows,
-      movementRows: allMovementRows,
-      labels: labels,
-    );
+    final saleEntries =
+        _entriesFor(salesRows, allMovementRows, labels);
     final repairRows = ref.watch(repairsProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
 
-    final stats = computeDashStats(
+    final stats = _statsFor(
       movementRows: movementRows,
       saleEntries: saleEntries,
       repairRows: repairRows,
       batchByItem: batchByItem,
-      period: _period,
-      batch: _batch,
-      includeRepairs: _batch.isEmpty,
     );
 
     // stock is a snapshot of now — the period never narrows it

@@ -243,10 +243,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return tallied;
   }
 
+  List<Map<String, dynamic>>? _flagSource;
+  Map<String, List<Map<String, dynamic>>> _flagCache = const {};
+
   Map<String, List<Map<String, dynamic>>> _flagIndex() {
     final flags = ref.read(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    return flagIndex(flags);
+    if (!identical(flags, _flagSource)) {
+      _flagSource = flags;
+      _flagCache = flagIndex(flags);
+    }
+    return _flagCache;
   }
 
   /// The admin-flag filter: any flag, one saved description, or one

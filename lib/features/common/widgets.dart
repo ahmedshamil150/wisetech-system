@@ -191,7 +191,7 @@ class EmptyState extends StatelessWidget {
   }
 }
 
-class SearchField extends StatelessWidget {
+class SearchField extends StatefulWidget {
   const SearchField(
       {super.key, required this.onChanged, this.hint = 'Search', this.controller});
 
@@ -200,13 +200,36 @@ class SearchField extends StatelessWidget {
   final TextEditingController? controller;
 
   @override
+  State<SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<SearchField> {
+  /// Typing pauses this long before the lists re-filter, so a word is
+  /// one pass over the rows instead of one per letter.
+  static const _delay = Duration(milliseconds: 250);
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _timer?.cancel();
+    _timer = Timer(_delay, () {
+      if (mounted) widget.onChanged(value);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
-      onChanged: onChanged,
+      controller: widget.controller,
+      onChanged: _onChanged,
       autocorrect: false,
       decoration: InputDecoration(
-        hintText: hint,
+        hintText: widget.hint,
         prefixIcon: const Icon(Icons.search, size: 20),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),

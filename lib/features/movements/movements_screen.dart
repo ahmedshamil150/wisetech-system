@@ -34,6 +34,35 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _demo = 'All'; // 'All' / 'Exclude demo' / 'Demo only'
   final _search = TextEditingController();
 
+  // The counts and the latest-movement map are rebuilt only when their
+  // inputs change, not on every frame of a scroll or a chip tap.
+  List<Map<String, dynamic>>? _latestSource;
+  Map<String, Map<String, dynamic>>? _latestCache;
+  List<Map<String, dynamic>>? _countsRows;
+  List<Map<String, dynamic>>? _countsHistory;
+  Map<String, String>? _countsLabels;
+  String _countsKey = '';
+  Map<String, int> _countsCache = const {};
+
+  Map<String, Map<String, dynamic>> _latestFor(
+      List<Map<String, dynamic>> fullHistory) {
+    if (!identical(fullHistory, _latestSource)) {
+      _latestSource = fullHistory;
+      _latestCache = latestMovementByItem(fullHistory);
+    }
+    return _latestCache!;
+  }
+
+  String get _countsInputKey => [
+        _party,
+        _actor,
+        _kind,
+        _dateFrom,
+        _dateTo,
+        _demo,
+        _query,
+      ].join('\u0000');
+
   @override
   void dispose() {
     _search.dispose();
@@ -194,7 +223,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   .maybeWhen(
                       data: (value) => value,
                       orElse: () => const <Map<String, dynamic>>[]);
-              final latest = latestMovementByItem(fullHistory);
+              final latest = _latestFor(fullHistory);
 
               // Return rows are history, not cards — they show in the
               // item details instead. The date range is applied per card
@@ -341,7 +370,23 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// latest-movement check behind "Returned" is correct.
   Map<String, int> _groupCounts(List<Map<String, dynamic>> allRows,
       List<Map<String, dynamic>> fullHistory, Map<String, String> labels) {
-    final latest = latestMovementByItem(fullHistory);
+    final key = _countsInputKey;
+    if (identical(allRows, _countsRows) &&
+        identical(fullHistory, _countsHistory) &&
+        identical(labels, _countsLabels) &&
+        key == _countsKey) {
+      return _countsCache;
+    }
+    _countsRows = allRows;
+    _countsHistory = fullHistory;
+    _countsLabels = labels;
+    _countsKey = key;
+    return _countsCache = _computeGroupCounts(allRows, fullHistory, labels);
+  }
+
+  Map<String, int> _computeGroupCounts(List<Map<String, dynamic>> allRows,
+      List<Map<String, dynamic>> fullHistory, Map<String, String> labels) {
+    final latest = _latestFor(fullHistory);
 
     // one card per movement, exactly as in the list
     final entries = <List<Map<String, dynamic>>>[];
@@ -568,6 +613,18 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return labels['${key.key}:${key.value}'] ?? 'Unknown item';
   }
 
+  List<Map<String, dynamic>>? _flagSource;
+  Map<String, List<Map<String, dynamic>>> _flagCache = const {};
+
+  Map<String, List<Map<String, dynamic>>> _flagBy(
+      List<Map<String, dynamic>> flags) {
+    if (!identical(flags, _flagSource)) {
+      _flagSource = flags;
+      _flagCache = flagIndex(flags);
+    }
+    return _flagCache;
+  }
+
   Widget _tile(BuildContext context, List<Map<String, dynamic>> rows,
       Map<String, String> labels,
       {required bool back,
@@ -608,7 +665,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     // the card shows the first target that has one
     final flagRows = ref.watch(flagsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final flagBy = flagIndex(flagRows);
+    final flagBy = _flagBy(flagRows);
     List<Map<String, dynamic>> cardFlags = const [];
     for (final r in rows) {
       cardFlags = flagBy[flagRowKey(r['id'] as int)] ?? const [];
