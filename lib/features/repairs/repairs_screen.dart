@@ -1229,7 +1229,6 @@ class _RepairLineCard extends ConsumerWidget {
             PickyField(
               controller: line.model,
               label: 'Model *',
-              hint: 'Start typing — suggestions appear',
               options: models,
               pickTitle: 'models',
             ),
@@ -1409,8 +1408,7 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
                     controller: _problem,
                     maxLines: 3,
                     decoration: const InputDecoration(
-                        labelText: 'Problem (optional)',
-                        hintText: 'What did the customer report?'),
+                        labelText: 'Problem (optional)'),
                   ),
                   const _SectionTitle('Items *'),
                   Row(
@@ -1441,8 +1439,7 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
                   if (_lines.isEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                      child: Text(
-                          'Add the machine — plus its probes and printer.',
+                      child: Text('No items yet.',
                           style: TextStyle(
                               color: scheme.outline, fontSize: 13)),
                     )
@@ -1685,8 +1682,6 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete ${widget.job['job_number']}?'),
-        content: const Text(
-            'This removes the repair job and its items. This cannot be undone.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -1951,8 +1946,7 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
                   if (_lines.isEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                      child: Text(
-                          'A repair needs at least one item — add it back.',
+                      child: Text('No items yet.',
                           style: TextStyle(
                               color: scheme.outline, fontSize: 13)),
                     )

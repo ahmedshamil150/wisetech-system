@@ -464,7 +464,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
         PickyField(
           controller: line.model,
           label: 'Model *',
-          hint: 'Start typing — suggestions appear',
           options: productNames,
           pickTitle: 'models',
         ),
@@ -474,7 +473,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
           autocorrect: false,
           decoration: const InputDecoration(
             labelText: 'Serial number',
-            hintText: 'Empty → system number (WT-…)',
+            hintText: 'Auto if empty',
           ),
         ),
         const SizedBox(height: 12),
@@ -523,7 +522,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
         PickyField(
           controller: line.model,
           label: 'Name *',
-          hint: 'e.g. CB board, power supply — suggestions appear',
+          hint: 'e.g. CB board',
           options: partNames,
           pickTitle: 'part names',
         ),
@@ -623,7 +622,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                     controller: _seller,
                     decoration: const InputDecoration(
                       labelText: 'Seller name *',
-                      hintText: 'Person you bought the equipment from',
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -632,7 +630,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                     keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(
                       labelText: 'Seller phone',
-                      hintText: 'Optional',
                     ),
                   ),
                   if (_withMachine) ...[
@@ -642,7 +639,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                     PickyField(
                       controller: _machineModel,
                       label: 'Model *',
-                      hint: 'Start typing — suggestions appear',
                       options: productNames,
                       pickTitle: 'models',
                     ),
@@ -652,7 +648,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                       autocorrect: false,
                       decoration: const InputDecoration(
                         labelText: 'Serial number',
-                        hintText: 'Empty → system number (WT-…)',
+                        hintText: 'Auto if empty',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -668,7 +664,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                       readOnly: true,
                       decoration: InputDecoration(
                         labelText: 'ID (generated)',
-                        hintText: 'BATCH-LOCAL machines are numbered 1L, 2L ...',
+                        hintText: 'e.g. 1L, 2L',
                         suffixIcon: _loadingId
                             ? const Padding(
                                 padding: EdgeInsets.all(12),
@@ -732,7 +728,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                     PickyField(
                       controller: _printerModel,
                       label: 'Model *',
-                      hint: 'Start typing — suggestions appear',
                       options: productNames,
                       pickTitle: 'models',
                     ),
@@ -742,7 +737,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                       autocorrect: false,
                       decoration: const InputDecoration(
                         labelText: 'Serial number',
-                        hintText: 'Empty → system number (WT-…)',
+                        hintText: 'Auto if empty',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -756,17 +751,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                   if (_withPart) ...[
                     const SizedBox(height: 16),
                     _sectionTitle(_partLines.length > 1 ? 'Parts' : 'Part'),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2, bottom: 8),
-                      child: Text(
-                        'Each line becomes its own part in stock, bought '
-                        'from this seller.',
-                        style: TextStyle(
-                            fontSize: 12.5,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant),
-                      ),
-                    ),
+                    const SizedBox(height: 8),
                     for (var i = 0; i < _partLines.length; i++)
                       _partLine(context, i, partNames),
                     const SizedBox(height: 12),
@@ -789,7 +774,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                               decimal: true),
                           decoration: const InputDecoration(
                             labelText: 'Price paid',
-                            hintText: 'Optional — what we paid',
                           ),
                         ),
                       ),
@@ -800,7 +784,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                     controller: _notes,
                     decoration: const InputDecoration(
                       labelText: 'Notes',
-                      hintText: 'Optional',
                     ),
                   ),
                 ],

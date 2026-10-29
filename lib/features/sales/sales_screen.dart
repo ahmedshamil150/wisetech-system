@@ -865,10 +865,6 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Not a sale anymore?'),
-        content: const Text(
-            'The send stays in Movements with all its items and history — '
-            'only the sold mark and the amount are removed. You can mark '
-            'it sold again later.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),

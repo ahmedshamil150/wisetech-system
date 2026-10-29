@@ -152,10 +152,6 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete $code?'),
-        content: Text(
-            'This removes the $code ${kindLabel(widget.kind).toLowerCase()} '
-            'from the old stock. Its movement history rows will be removed '
-            'too. This cannot be undone.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),

@@ -105,8 +105,7 @@ void main() {
     await tester.tap(find.text('Branch').last);
     await _pumpFrames(tester);
     expect(find.text('Send as demo'), findsNothing);
-    expect(
-        find.textContaining('The Lahore branch'), findsOneWidget);
+    expect(find.text('Branch'), findsWidgets);
 
     // and on to a dealer, where a party and the demo mark come back
     await tester.tap(find.text('Dealer').last);

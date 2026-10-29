@@ -93,8 +93,7 @@ void main() {
     expect(find.byTooltip('Add brand'), findsOneWidget);
   });
 
-  testWidgets('reports page lists the sales reports and explains them',
-      (tester) async {
+  testWidgets('reports page lists the sales reports', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -105,9 +104,10 @@ void main() {
     await tester.tap(find.text('Sold sends'));
     await _pumpFrames(tester);
 
-    expect(find.textContaining('Only sends marked Sold'), findsOneWidget);
     expect(find.text('Recorded sales'), findsOneWidget);
     expect(find.text('All sales'), findsOneWidget);
+    expect(find.text('From'), findsOneWidget);
+    expect(find.text('To'), findsOneWidget);
     expect(find.text('Download PDF'), findsOneWidget);
   });
 }

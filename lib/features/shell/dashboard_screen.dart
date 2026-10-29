@@ -186,11 +186,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             name.isEmpty ? 'Welcome' : 'Welcome, $name',
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Here is your activity with the team inventory.',
-            style: TextStyle(color: scheme.onSurfaceVariant),
-          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -267,13 +262,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
             ],
           ),
-          if (stats.salesCount > 0 && stats.salesPriced < stats.salesCount) ...[
-            const SizedBox(height: 8),
-            Text(
-              _salesAmountNote(stats),
-              style: TextStyle(fontSize: 11.5, color: scheme.outline),
-            ),
-          ],
           if (_batch.isEmpty) ...[
             const SizedBox(height: 10),
             Wrap(
@@ -303,25 +291,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
               ],
             ),
-          ] else ...[
-            const SizedBox(height: 10),
-            Text(
-              'Batch view counts stock, sends, returns and sales whose items '
-              'are all in this batch. Repairs and mixed-batch sales stay '
-              'under All batches.',
-              style: TextStyle(fontSize: 12, color: scheme.outline),
-            ),
           ],
           const SizedBox(height: 20),
           const Text('Right now',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(
-            _batch.isEmpty
-                ? 'Where the stock stands today.'
-                : 'Where the stock in $batchLabel stands today.',
-            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
-          ),
           const SizedBox(height: 10),
           GridView.count(
             crossAxisCount: desktop ? 4 : 2,
@@ -384,13 +357,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'You recorded these without the dealer or customer '
-                      'name. Add it whenever you know it.',
-                      style: TextStyle(
-                          color: scheme.onSurfaceVariant, fontSize: 13),
-                    ),
                     const SizedBox(height: 10),
                     FilledButton.tonal(
                       onPressed: () =>
@@ -402,42 +368,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          Card(
-            elevation: 0,
-            color: context.colors.tintBlue,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Send an item to the workshop or a dealer on the Movements '
-                'page, or record a sale — the numbers above update right away.',
-                style: TextStyle(color: context.colors.brandText),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
-}
-
-String _salesAmountNote(DashStats stats) {
-  final unpriced = stats.salesCount - stats.salesPriced;
-  final allOld = stats.salesUnpricedImported == unpriced;
-  if (stats.salesPriced == 0) {
-    return allOld
-        ? 'No sale amounts were recorded in this period — the old import '
-            'saved no prices.'
-        : 'No sale amounts were recorded for these sales.';
-  }
-  return allOld
-      ? 'Amount recorded on ${stats.salesPriced} of ${stats.salesCount} '
-          'sales — the old import saved no prices for the rest.'
-      : 'Amount recorded on ${stats.salesPriced} of ${stats.salesCount} '
-          'sales.';
 }
 
 String _batchShortLabel(

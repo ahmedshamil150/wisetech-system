@@ -881,9 +881,6 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete this movement?'),
-        content: const Text(
-            'The item returns to inventory. The other movements of this '
-            'send are not touched.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1151,10 +1148,6 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete this send?'),
-        content: const Text(
-            'The movement is erased from the history and the items stay '
-            'in the inventory. A customer or dealer added with this send '
-            'is deleted too when nothing else uses it.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -2016,7 +2009,7 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                     PickyField(
                       controller: _target,
                       label: _kind == 'Dealer' ? 'Dealer' : 'Customer',
-                      hint: 'Optional — search, or type a name to add it',
+                      hint: 'Optional',
                       options:
                           _kind == 'Dealer' ? dealerNames : customerNames,
                       pickTitle: _kind == 'Dealer' ? 'dealers' : 'customers',
@@ -2030,41 +2023,14 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                       title: const Text('Send as demo',
                           style: TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 13.5)),
-                      subtitle: const Text(
-                          'Stays company stock — record a return when it '
-                          'comes back',
-                          style: TextStyle(fontSize: 12)),
                     ),
-                  ] else
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(2, 2, 2, 6),
-                      child: Text(
-                          _kind == 'Workshop'
-                              ? 'The company workshop (single location).'
-                              : 'The Lahore branch — the company\'s own '
-                                  'location. Items sent there show as With '
-                                  'Branch.',
-                          style: TextStyle(
-                              fontSize: 12.5,
-                              color: scheme.onSurfaceVariant)),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
-                    child: Text(
-                        'Changing this corrects the $noun in place: the '
-                        'items move to the new place while they are still '
-                        'with this send.',
-                        style: TextStyle(
-                            fontSize: 11.5, color: scheme.outline)),
-                  ),
+                  ],
                   DateField(controller: _date, label: 'Date'),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _notes,
                     maxLines: 3,
-                    decoration: InputDecoration(
-                        labelText: 'Notes',
-                        helperText: 'One note for the whole $noun'),
+                    decoration: const InputDecoration(labelText: 'Notes'),
                   ),
                   if (outbound) ...[
                     const SizedBox(height: 12),
@@ -2088,12 +2054,6 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                         title: const Text('Paid',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 14)),
-                        subtitle: Text(
-                            'The customer or dealer has settled this send, so '
-                            'the card reads Paid instead of Unpaid. A record '
-                            'for your books — stock does not change.',
-                            style: TextStyle(
-                                fontSize: 12, color: scheme.onSurfaceVariant)),
                       ),
                     ),
                   ],
@@ -2118,13 +2078,6 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                         title: const Text('Sold',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 14)),
-                        subtitle: Text(
-                            'The equipment was sold to them, not just sent '
-                            'out — the history then reads "Sold to X" and '
-                            'the sale shows on the Sales screen. A label '
-                            'only; item statuses do not change.',
-                            style: TextStyle(
-                                fontSize: 12, color: scheme.onSurfaceVariant)),
                       ),
                     ),
                   ],
@@ -2135,16 +2088,14 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
-                          labelText: 'Sale amount (optional)',
-                          hintText: 'Blank is fine'),
+                          labelText: 'Sale amount (optional)'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _soldBy,
                       textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
-                          labelText: 'Sold by (optional)',
-                          hintText: 'Name of the person who sold it'),
+                          labelText: 'Sold by (optional)'),
                     ),
                   ],
                 ],
@@ -2335,11 +2286,6 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-                'Tick a whole send, or single items of it — whatever came '
-                'back. The rest stays out.',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
             const SizedBox(height: 8),
             // a tick on the send's line takes all of it back at once;
             // single items still tick on their own underneath
@@ -2572,8 +2518,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               leading: const Icon(Icons.search),
               title: Text('Choose an item',
                   style: TextStyle(color: scheme.outline)),
-              subtitle: const Text(
-                  'Pick a machine and its probes and printer come with it'),
               onTap: () => _pickGroupItems(group, items),
             )
           else ...[
@@ -2612,9 +2556,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               title: const Text('Sold',
                   style:
                       TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: const Text(
-                  'This group was sold — the sale shows on the Sales screen',
-                  style: TextStyle(fontSize: 12)),
             ),
             if (group.sold)
               Padding(
@@ -2627,7 +2568,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                           decimal: true),
                       decoration: const InputDecoration(
                           labelText: 'Sale amount (optional)',
-                          hintText: 'Blank is fine',
                           isDense: true),
                     ),
                     const SizedBox(height: 10),
@@ -2636,7 +2576,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                       textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
                           labelText: 'Sold by (optional)',
-                          hintText: 'Name of the person who sold it',
                           isDense: true),
                     ),
                   ],
@@ -2653,9 +2592,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               title: const Text('Paid',
                   style:
                       TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: const Text(
-                  'This group is settled — it reads Paid on the card',
-                  style: TextStyle(fontSize: 12)),
             ),
         ],
       ),
@@ -2829,13 +2765,6 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                   Text('What is going out *',
                       style: TextStyle(
                           fontSize: 13, color: scheme.onSurfaceVariant)),
-                  const SizedBox(height: 2),
-                  Text(
-                      'Party, date and notes are typed once. Add a group for '
-                      'each machine — a group is one send, so it keeps its '
-                      'own sold and paid marks.',
-                      style: TextStyle(
-                          fontSize: 12, color: scheme.onSurfaceVariant)),
                   const SizedBox(height: 6),
                   for (var i = 0; i < _groups.length; i++) ...[
                     if (i > 0) const SizedBox(height: 8),
@@ -2888,43 +2817,23 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                         title: const Text('Send as demo',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 14)),
-                        subtitle: Text(
-                            'Stays company stock — record a return when '
-                            'it comes back',
-                            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ),
                     ),
                   ],
                   const SizedBox(height: 16),
-                  if (_kind == 'Workshop')
-                    AppCard(
-                      padding: EdgeInsets.all(14),
-                      child: Text('The company workshop (single location).',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
-                    )
-                  else if (_kind == 'Branch')
-                    AppCard(
-                      padding: EdgeInsets.all(14),
-                      child: Text(
-                          'The Lahore branch — the company\'s own location. '
-                          'Items sent there show as With Branch.',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
-                    )
-                  else if (_kind == 'Dealer')
+                  if (_kind == 'Dealer')
                     PickyField(
                       controller: _target,
                       label: 'Dealer',
-                      hint:
-                          'Optional — search, or type a name to add it',
+                      hint: 'Optional',
                       options: dealerNames,
                       pickTitle: 'dealers',
                     )
-                  else
+                  else if (_kind == 'Customer')
                     PickyField(
                       controller: _target,
                       label: 'Customer',
-                      hint:
-                          'Optional — search, or type a name to add it',
+                      hint: 'Optional',
                       options: customerNames,
                       pickTitle: 'customers',
                     ),
@@ -3011,14 +2920,6 @@ Future<void> showAddPartySheet(
                         child: const Text('Close'),
                       ),
                     ],
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Text(
-                    'These sends went out without a dealer or customer '
-                    'name — pick it now and the items follow.',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                   ),
                 ),
                 Expanded(

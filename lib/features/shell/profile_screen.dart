@@ -5,6 +5,7 @@ import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../records/records_screen.dart';
 import '../reports/reports_screen.dart';
+import 'manual_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -91,10 +92,14 @@ class ProfileScreen extends ConsumerWidget {
                       ? Icons.verified_user_outlined
                       : Icons.visibility_outlined),
                   title: Text(isAdmin ? 'Administrator' : 'Viewer'),
-                  subtitle: Text(isAdmin
-                      ? 'Can add and edit products, records and sales.'
-                      : 'Read-only access. You can still record movements.'),
                 ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ManualScreen())),
+                icon: const Icon(Icons.menu_book_outlined),
+                label: const Text('Manual'),
               ),
               const SizedBox(height: 8),
               if (isAdmin) ...[

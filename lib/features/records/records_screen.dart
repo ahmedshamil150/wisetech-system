@@ -245,9 +245,6 @@ class _ProductsPane extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete $name?'),
-        content: const Text(
-            'It disappears from the product list. Items already using '
-            'it keep their model name.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -350,9 +347,6 @@ class _BrandsPane extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete $name?'),
-        content: const Text(
-            'It disappears from the brand list. Products already using it '
-            'must pick another brand first.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -489,11 +483,6 @@ class _PeoplePane extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete $name?'),
-        content: Text(isParty
-            ? 'It disappears from the list, and the sends recorded only '
-                'for it are removed with it.'
-            : 'It disappears from the $table list. Records that still '
-                'point at it will keep the app from deleting it.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -678,7 +667,7 @@ class _BatchesPane extends ConsumerWidget {
         if (filtered.isEmpty) {
           return const EmptyState(
               icon: Icons.inventory_outlined,
-              message: 'No batches yet. Create one so you can enter stock.');
+              message: 'No batches yet.');
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -762,9 +751,6 @@ class _BatchesPane extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete batch $letter?'),
-        content: const Text(
-            'It disappears from the list. Machines that still belong to it '
-            'must be moved or deleted first.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -821,7 +807,7 @@ class _BoxesPane extends ConsumerWidget {
         if (filtered.isEmpty) {
           return const EmptyState(
               icon: Icons.inbox_outlined,
-              message: 'No boxes yet. Make one for each probe type.');
+              message: 'No boxes yet.');
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -884,21 +870,11 @@ class _BoxesPane extends ConsumerWidget {
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref,
       Map<String, dynamic> box) async {
-    final items = ref.read(inventoryProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <InventoryItem>[],
-        );
-    final count = items
-        .where((item) => item.kind == 'probe' && item.boxId == box['id'])
-        .length;
     final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete ${box['name']}?'),
-        content: Text(count == 0
-            ? 'The box will be removed.'
-            : 'The $count probe(s) inside go back to company stock.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -954,8 +930,7 @@ class _FlagsPane extends ConsumerWidget {
           return EmptyState(
               icon: Icons.flag_outlined,
               message: query.isEmpty
-                  ? 'No saved flags yet. Add one — then use it on any item, '
-                      'movement or repair.'
+                  ? 'No saved flags yet.'
                   : 'No flags match this search.');
         }
         return ListView.builder(
@@ -1020,9 +995,6 @@ class _FlagsPane extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete ${row['name']}?'),
-        content: const Text(
-            'The flag disappears from this list. Flags already applied '
-            'to items, movements or repairs keep their color and text.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1267,8 +1239,7 @@ class _BatchFormState extends ConsumerState<_BatchForm> {
       if (!mounted) return;
       Navigator.pop(context);
       messenger.showSnackBar(SnackBar(
-          content: Text(
-              'Batch $letter created — new stock goes into it.')));
+          content: Text('Batch $letter created.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);

@@ -764,7 +764,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           return EmptyState(
               icon: Icons.inbox_outlined,
               message: _query.isEmpty
-                  ? 'No boxes yet. The admin adds them under Records.'
+                  ? 'No boxes yet.'
                   : 'No boxes or probes match this search.');
         }
         return AppRefresh(
@@ -1251,15 +1251,6 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        Text(
-            isBox
-                ? 'Type the box names you can see — one per line.'
-                : 'Pick what you are counting, then type the IDs you see — '
-                    'one per line, or separated by spaces or commas. '
-                    'The last 4–5 digits of a serial work too, and a typo '
-                    'gets a "did you mean" suggestion.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -1339,7 +1330,7 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                 ? 'T14\nT11 (2)\nH5'
                 : _kind == 'machine'
                     ? '23T\n60T\n71T'
-                    : 'Serial or WT number\none per line\nlast 4 digits work',
+                    : 'Serial or WT number',
           ),
         ),
         const SizedBox(height: 16),
@@ -1359,8 +1350,7 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
         ),
         const SizedBox(height: 16),
         if (entered.isEmpty)
-          Text(
-              'Type what you see — the items you missed are listed here.',
+          Text('Nothing typed yet.',
               style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: 13))
         else if (isBox) ...[
           Text(
@@ -1588,8 +1578,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
             title: const Text('Probe already in inventory'),
             content: Text(
                 'Serial $serial is already ${found['status'] == 'With Machine' ? 'on a machine' : 'in stock'} '
-                '(${found['internal_id'] ?? found['model']}). '
-                'Add that probe to this box instead of creating a new one?'),
+                '(${found['internal_id'] ?? found['model']}).'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
@@ -1809,7 +1798,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                  'No probe is free to box right now — add a new one below.',
+                  'No probe free to box.',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5)),
             ),
           const SizedBox(height: 8),
@@ -1835,7 +1824,6 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                   PickyField(
                     controller: _model,
                     label: 'Model *',
-                    hint: 'Start typing — suggestions appear',
                     options: productNames,
                     pickTitle: 'models',
                   ),
@@ -1845,7 +1833,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                     autocorrect: false,
                     decoration: const InputDecoration(
                         labelText: 'Serial number (optional)',
-                        hintText: 'Empty → system number (WT-…)'),
+                        hintText: 'Auto if empty'),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -2192,9 +2180,6 @@ class _ItemDetails extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Return to inventory?'),
-        content: Text(
-            '${item.code} will go back to stock and a Return movement '
-            'will be recorded in its history.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -2231,9 +2216,6 @@ class _ItemDetails extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete this movement?'),
-        content: const Text(
-            'The item returns to inventory. The other movements of this '
-            'send are not touched.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -2269,9 +2251,6 @@ class _ItemDetails extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Delete ${item.code}?'),
-        content: const Text(
-            'It disappears from inventory. If anything still points at it, '
-            'the app will show why it cannot be deleted.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -2443,7 +2422,7 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                     autocorrect: false,
                     decoration: const InputDecoration(
                         labelText: 'Serial number',
-                        hintText: 'Empty → new system number (WT-…)'),
+                        hintText: 'Auto if empty'),
                   ),
                   const SizedBox(height: 12),
                   Text('Status',
@@ -2814,7 +2793,7 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                              'No batch yet. Create one so stock can be entered.',
+                              'No batch yet.',
                               style:
                                   TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
                           const SizedBox(height: 8),
@@ -2846,20 +2825,18 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                       onChanged: (value) => setState(() => _batchId = value),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      batch == null
-                          ? 'Vendor and date are taken from this batch.'
-                          : 'Vendor: '
-                              '${((batch['vendors'] as Map?)?['name'] ?? '').toString().isEmpty ? '—' : ((batch['vendors'] as Map?)?['name'] ?? '')}  ·  '
-                              'Arrived: ${batch['arrival_date'] ?? '—'}',
-                      style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    ),
+                    if (batch != null)
+                      Text(
+                        'Vendor: '
+                            '${((batch['vendors'] as Map?)?['name'] ?? '').toString().isEmpty ? '—' : ((batch['vendors'] as Map?)?['name'] ?? '')}  ·  '
+                            'Arrived: ${batch['arrival_date'] ?? '—'}',
+                        style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
                   ],
                   const SizedBox(height: 16),
                   PickyField(
                     controller: _product,
                     label: 'Model *',
-                    hint: 'Start typing — suggestions appear',
                     options: productNames,
                     pickTitle: 'models',
                   ),
@@ -2869,9 +2846,7 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                     autocorrect: false,
                     decoration: InputDecoration(
                       labelText: 'Serial number',
-                      hintText: _kind == 'part'
-                          ? null
-                          : 'Empty → system number (WT-…)',
+                      hintText: _kind == 'part' ? null : 'Auto if empty',
                     ),
                   ),
                   if (_needsMachineLink) ...[
@@ -2879,7 +2854,7 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                     PickyField(
                       controller: _machineCode,
                       label: 'Belongs to machine (optional)',
-                      hint: 'e.g. 12T — the id becomes the machine id',
+                      hint: 'e.g. 12T',
                       options: [
                         for (final item in machines) item.code,
                       ],

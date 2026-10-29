@@ -365,7 +365,7 @@ class PickyField extends StatefulWidget {
   const PickyField({
     super.key,
     required this.controller,
-    required this.hint,
+    this.hint = '',
     required this.options,
     required this.pickTitle,
     this.label,

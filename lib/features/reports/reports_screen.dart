@@ -289,7 +289,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final isAdmin = ref.watch(isAdminProvider);
     final inventory = ref.watch(inventoryProvider);
     final movements = ref.watch(allMovementsProvider);
@@ -370,47 +369,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   child: DateField(controller: _to, label: 'To'),
                 ),
               ],
-            )
-          else
-            Text(
-              'Every box is listed with the probes inside it right now — '
-              'dates do not apply.',
-              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
-          const SizedBox(height: 8),
-          Text(
-            _kind == 'Boxes'
-                ? 'One table: box name, probe type, how many probes sit '
-                    'inside, their serials and notes.'
-                : _kStock.contains(_kind)
-                    ? 'Current stock whose bought date falls inside the '
-                        'range — sold items are left out.'
-                    : _kRepairs.contains(_kind)
-                        ? 'Repair jobs whose received date falls inside the '
-                            'range — status, return details and costs as '
-                            'they stand today.'
-                        : _kind == 'Box movements'
-                            ? 'Only the box and unbox moves dated inside the '
-                                'range — they are kept out of the '
-                                'all-movements report.'
-                            : _kSales.contains(_kind)
-                                ? _kind == 'Recorded sales'
-                                    ? 'Only the sales saved in the sales '
-                                        'records, imported history included, '
-                                        'with the amount and invoice.'
-                                    : _kind == 'Sold sends'
-                                        ? 'Only sends marked Sold — the items '
-                                            'on that send, the amount and the '
-                                            'seller typed with the mark.'
-                                        : 'Every sale dated inside the range: '
-                                            'the imported history, the sales '
-                                            'recorded since and every send '
-                                            'marked Sold.'
-                                : 'Every send, return and branch move dated '
-                                    'inside the range, one row per send - '
-                                    'box moves have their own report.',
-            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
-          ),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: _busy || stillLoading ? null : _download,

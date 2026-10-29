@@ -87,8 +87,6 @@ class _OldMovementFormState extends ConsumerState<_OldMovementForm> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete this movement?'),
-        content: const Text(
-            'This removes the legacy movement row. This cannot be undone.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -220,8 +218,6 @@ Future<bool> confirmDeleteOldSale(
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('Delete this sale?'),
-      content: const Text(
-          'This removes the sale and its line items. This cannot be undone.'),
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(ctx, false),

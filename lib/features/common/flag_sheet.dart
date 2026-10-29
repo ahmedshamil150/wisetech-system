@@ -346,7 +346,6 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
             },
             decoration: const InputDecoration(
               labelText: 'Detail (optional)',
-              hintText: 'What is the special case?',
             ),
           ),
           const SizedBox(height: 16),
