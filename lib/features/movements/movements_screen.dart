@@ -1126,12 +1126,12 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     );
   }
 
-  /// Opens the tick-list sheet for a multi-item send: the sender picks
-  /// which of the items actually came back; the rest stay out.
+  /// Opens the tick-list sheet for what came back: whole sends tick
+  /// with their line, single items tick on their own. The rest stays out.
   void _showReturnSheet(List<Map<String, dynamic>> rows) {
     showAppSheet<void>(
       context: context,
-      title: 'Return from send',
+      title: 'Back to inventory',
       heightFraction: 0.8,
       builder: (sheetContext) => Padding(
         padding:
@@ -1210,7 +1210,7 @@ Widget _menuRow(IconData icon, String label, {Color? color}) => Row(
       children: [
         Icon(icon, size: 18, color: color),
         const SizedBox(width: 10),
-        Text(label),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
       ],
     );
 
@@ -1498,6 +1498,10 @@ class _MovementDetails extends ConsumerWidget {
       final sendFirst = full.first;
       final canManageSend =
           isAdmin || full.any((r) => r['actor_id'] == myId);
+      final sendOut = [
+        for (final row in full)
+          if (stateOf(row) == SendRowState.out) row,
+      ];
       final sendFlags =
           flagBy[flagSendKey(sendFirst)] ?? const <Map<String, dynamic>>[];
       final tags = sendTags(full);
@@ -1510,6 +1514,11 @@ class _MovementDetails extends ConsumerWidget {
           PopupMenuItem(
               value: 'add',
               child: _menuRow(Icons.add, 'Add item to this send')),
+        if (canManageSend && sendOut.isNotEmpty)
+          PopupMenuItem(
+              value: 'return',
+              child: _menuRow(Icons.login_outlined, 'Back to inventory',
+                  color: scheme.primary)),
         if (isAdmin)
           PopupMenuItem(
               value: 'flag',
@@ -1565,6 +1574,15 @@ class _MovementDetails extends ConsumerWidget {
                             await showEditSendSheet(context, full);
                           } else if (value == 'add') {
                             await state._addToSend(full);
+                          } else if (value == 'return') {
+                            // one whole send back: a single item returns
+                            // straight away, a send of several opens the
+                            // tick list with all of it already ticked
+                            if (sendOut.length > 1) {
+                              state._showReturnSheet(sendOut);
+                            } else {
+                              await state._returnGroup(sendOut);
+                            }
                           } else if (value == 'flag') {
                             showFlagSheet(context, ref,
                                 target: {
@@ -2229,6 +2247,46 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
             '$count item${count == 1 ? '' : 's'} back in inventory.')));
   }
 
+  /// The tick line above a send's items: one tap marks the whole send
+  /// for return, another leaves all of it out.
+  Widget _sendTickHeader(
+    int index,
+    List<Map<String, dynamic>> sendRows,
+    String Function(Map<String, dynamic>) labelOf, {
+    required bool onlySend,
+  }) {
+    final ids = [for (final row in sendRows) row['id'] as int];
+    final ticked = ids.where(_selected.contains).length;
+    return CheckboxListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      value: ticked == ids.length,
+      onChanged: _saving
+          ? null
+          : (value) => setState(() {
+                if (value == true) {
+                  _selected.addAll(ids);
+                } else {
+                  _selected.removeAll(ids);
+                }
+              }),
+      title: Text(
+        sendRows.length == 1
+            ? labelOf(sendRows.first)
+            : onlySend
+                ? 'This send · ${sendRows.length} items'
+                : 'Send ${index + 1} · ${sendRows.length} items',
+        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
+      ),
+      subtitle: Text(
+        '$ticked of ${ids.length} ticked',
+        style: TextStyle(
+            fontSize: 12, color: Theme.of(context).colorScheme.outline),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = ref.watch(allItemsProvider).maybeWhen(
@@ -2249,6 +2307,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
         sendRowState(row, latest);
     final outRows =
         widget.rows.where((r) => stateOf(r) == SendRowState.out).toList();
+    final sendGroups = groupSendRows(outRows);
     final backRows =
         widget.rows.where((r) => stateOf(r) == SendRowState.back).toList();
     final movedRows = widget.rows
@@ -2278,26 +2337,32 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-                'Tick the items that came back — the rest of the send stays '
-                'out with them.',
+                'Tick a whole send, or single items of it — whatever came '
+                'back. The rest stays out.',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
             const SizedBox(height: 8),
-            for (final row in outRows)
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                value: _selected.contains(row['id'] as int),
-                onChanged: _saving
-                    ? null
-                    : (_) => setState(() {
-                          final id = row['id'] as int;
-                          if (!_selected.remove(id)) _selected.add(id);
-                        }),
-                title: Text(labelOf(row),
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
+            // a tick on the send's line takes all of it back at once;
+            // single items still tick on their own underneath
+            for (final (index, send) in sendGroups.indexed) ...[
+              _sendTickHeader(index, send.rows, labelOf,
+                  onlySend: sendGroups.length == 1),
+              for (final row in send.rows)
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.only(left: 36),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _selected.contains(row['id'] as int),
+                  onChanged: _saving
+                      ? null
+                      : (_) => setState(() {
+                            final id = row['id'] as int;
+                            if (!_selected.remove(id)) _selected.add(id);
+                          }),
+                  title: Text(labelOf(row),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+            ],
             for (final row in backRows)
               ListTile(
                 dense: true,
