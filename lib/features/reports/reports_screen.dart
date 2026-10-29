@@ -6,12 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import '../sales/sales_screen.dart';
 import 'pdf_download.dart';
 import 'report_data.dart';
 import 'report_pdf.dart';
 
 /// The report types the admin picks from — stock views, movement
-/// views and the repair jobs.
+/// views, sales and the repair jobs.
 const _kStock = ['All stock', 'Machines', 'Probes', 'Boxes'];
 const _kMovements = [
   'All movements',
@@ -21,6 +22,7 @@ const _kMovements = [
   'Customer movements',
   'Box movements',
 ];
+const _kSales = ['All sales', 'Recorded sales', 'Sold sends'];
 const _kRepairs = ['Repairs'];
 
 String _titleOf(String kind) => switch (kind) {
@@ -33,6 +35,9 @@ String _titleOf(String kind) => switch (kind) {
       'Branch movements' => 'Movements report — branch',
       'Dealer movements' => 'Movements report — dealer',
       'Customer movements' => 'Movements report — customer',
+      'All sales' => 'Sales report — all sales',
+      'Recorded sales' => 'Sales report — recorded sales',
+      'Sold sends' => 'Sales report — sold sends',
       'Repairs' => 'Repairs report — received in range',
       _ => 'Movements report — box moves',
     };
@@ -47,6 +52,9 @@ String _fileOf(String kind) => switch (kind) {
       'Branch movements' => 'movements-branch',
       'Dealer movements' => 'movements-dealer',
       'Customer movements' => 'movements-customer',
+      'All sales' => 'sales-all',
+      'Recorded sales' => 'sales-recorded',
+      'Sold sends' => 'sales-sends',
       'Repairs' => 'repairs',
       _ => 'movements-box',
     };
@@ -57,6 +65,12 @@ String _movementKindOf(String kind) => switch (kind) {
       'Dealer movements' => 'Dealer',
       'Customer movements' => 'Customer',
       'Box movements' => 'Box moves',
+      _ => 'All',
+    };
+
+String _salesSourceOf(String kind) => switch (kind) {
+      'Recorded sales' => 'Sales',
+      'Sold sends' => 'From sends',
       _ => 'All',
     };
 
@@ -162,16 +176,60 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       } else if (_kMovements.contains(_kind)) {
         final filtered = filterMovementRows(movementRows,
             kind: _movementKindOf(_kind), from: from!, to: to!);
+        // one row per send, the way the app records and reads them —
+        // a machine and its probes travel on one row, not three
+        final sends = reportSendGroups(filtered);
         final data = [
-          for (final row in filtered) movementReportRow(row, labels: labels),
+          for (final send in sends) movementReportRow(send, labels: labels),
         ];
-        subtitle = 'From ${_from.text} to ${_to.text}';
+        subtitle = 'From ${_from.text} to ${_to.text} · one row per send';
         bytes = await buildReportPdf(
           title: _titleOf(_kind),
           subtitle: subtitle,
           columns: kMovementColumns,
           data: data,
           generatedBy: by,
+          summary: [
+            '${sends.length} send${sends.length == 1 ? '' : 's'} · '
+                '${filtered.length} movement row'
+                '${filtered.length == 1 ? '' : 's'}',
+          ],
+        );
+        filename =
+            '${_fileOf(_kind)}_${_from.text}_${_to.text}.pdf';
+      } else if (_kSales.contains(_kind)) {
+        final saleRows = await ref.read(allSalesProvider.future);
+        final entries = filterSaleEntries(
+          mergeSaleEntries(
+              salesRows: saleRows,
+              movementRows: movementRows,
+              labels: labels),
+          source: _salesSourceOf(_kind),
+          dateFrom: _from.text,
+          dateTo: _to.text,
+        );
+        final data = [for (final entry in entries) salesReportRow(entry)];
+        final withAmount = entries.where((entry) => entry.total != null);
+        final total = withAmount.fold<double>(
+            0, (sum, entry) => sum + (entry.total ?? 0));
+        final missing = entries.length - withAmount.length;
+        subtitle =
+            'From ${_from.text} to ${_to.text} · by the date of the sale';
+        bytes = await buildReportPdf(
+          title: _titleOf(_kind),
+          subtitle: subtitle,
+          columns: kSalesColumns,
+          data: data,
+          generatedBy: by,
+          summary: [
+            '${entries.length} sale${entries.length == 1 ? '' : 's'} · '
+                '${withAmount.length} with a recorded amount · '
+                '$missing without',
+            'Recorded total: ${reportMoney(total)}',
+            if (missing > 0)
+              'Only amounts actually recorded are counted - imported '
+                  'sales often carried none.',
+          ],
         );
         filename =
             '${_fileOf(_kind)}_${_from.text}_${_to.text}.pdf';
@@ -235,12 +293,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final isAdmin = ref.watch(isAdminProvider);
     final inventory = ref.watch(inventoryProvider);
     final movements = ref.watch(allMovementsProvider);
+    final sales = ref.watch(allSalesProvider);
     final boxes = ref.watch(probeBoxesProvider);
     final vendors = ref.watch(vendorsProvider);
     final repairs = ref.watch(repairsProvider);
     final stillLoading = [
       inventory,
       movements,
+      sales,
       boxes,
       vendors,
       repairs,
@@ -277,6 +337,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [for (final kind in _kMovements) _chip(kind)],
+          ),
+          const SizedBox(height: 16),
+          Text('Sales',
+              style:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [for (final kind in _kSales) _chip(kind)],
           ),
           const SizedBox(height: 16),
           Text('Repairs',
@@ -323,9 +393,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             ? 'Only the box and unbox moves dated inside the '
                                 'range — they are kept out of the '
                                 'all-movements report.'
-                            : 'Every send, return and branch move dated '
-                                'inside the range — box moves have their own '
-                                'report.',
+                            : _kSales.contains(_kind)
+                                ? _kind == 'Recorded sales'
+                                    ? 'Only the sales saved in the sales '
+                                        'records, imported history included, '
+                                        'with the amount and invoice.'
+                                    : _kind == 'Sold sends'
+                                        ? 'Only sends marked Sold — the items '
+                                            'on that send, the amount and the '
+                                            'seller typed with the mark.'
+                                        : 'Every sale dated inside the range: '
+                                            'the imported history, the sales '
+                                            'recorded since and every send '
+                                            'marked Sold.'
+                                : 'Every send, return and branch move dated '
+                                    'inside the range, one row per send - '
+                                    'box moves have their own report.',
             style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 20),

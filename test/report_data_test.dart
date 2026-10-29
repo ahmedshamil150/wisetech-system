@@ -33,6 +33,11 @@ Map<String, dynamic> _movement(
   String? date,
   int? probeId,
   int? oldSourceId,
+  String group = '',
+  bool paid = false,
+  String? reason,
+  double? saleAmount,
+  String soldBy = '',
 }) {
   return {
     'id': id,
@@ -40,7 +45,11 @@ Map<String, dynamic> _movement(
     'movement_date': date,
     'from_location': 'Company',
     'to_location': 'Customer X',
-    'reason': null,
+    'group_ref': group,
+    'paid': paid,
+    'sale_amount': saleAmount,
+    'sold_by': soldBy,
+    'reason': reason,
     'notes': null,
     'reference': null,
     'is_demo': false,
@@ -67,6 +76,14 @@ void main() {
       expect(reportDate('Unknown'), isNull);
       expect(reportDate(''), isNull);
       expect(reportDate(null), isNull);
+    });
+
+    test('reportDateText writes every shape as dd-MM-yyyy', () {
+      expect(reportDateText('14-09-2026'), '14-09-2026');
+      expect(reportDateText('2026-09-14'), '14-09-2026');
+      expect(reportDateText('2026-09-14T10:30:00'), '14-09-2026');
+      expect(reportDateText('Unknown'), 'Unknown');
+      expect(reportDateText(null), '');
     });
   });
 
@@ -175,18 +192,131 @@ void main() {
   });
 
   group('report rows', () {
-    test('movementReportRow fills party, actor and item labels', () {
+    test('movementReportRow reads one send, party, actor and sold marks',
+        () {
       final cells = movementReportRow(
-        _movement(9,
-            type: 'Dealer', date: '10-01-2026', probeId: 5),
+        [
+          _movement(9,
+              type: 'Dealer', date: '10-01-2026', probeId: 5),
+        ],
         labels: {'probe:5': 'P5  Probe 5'},
       );
       expect(cells[0], '10-01-2026');
       expect(cells[1], 'Dealer');
-      expect(cells[2], 'P5  Probe 5');
-      expect(cells[5], 'ABC');
-      expect(cells[6], 'Ahmed');
-      expect(cells[10], '');
+      expect(cells[2], 'ABC');
+      expect(cells[3], 'P5  Probe 5');
+      expect(cells[4], 'Company');
+      expect(cells[5], 'Customer X');
+      expect(cells[6], '');
+      expect(cells[7], '');
+      expect(cells[10], 'Ahmed');
+      expect(cells[13], '');
+    });
+
+    test('a sold send carries its amount, seller and paid flag', () {
+      final cells = movementReportRow(
+        [
+          _movement(1,
+              type: 'Customer',
+              date: '10-01-2026',
+              group: 'g1',
+              paid: true,
+              reason: 'Sold',
+              saleAmount: 45000,
+              soldBy: 'Sami'),
+          _movement(2,
+              type: 'Customer',
+              date: '10-01-2026',
+              probeId: 5,
+              group: 'g1',
+              paid: true,
+              reason: 'Sold',
+              saleAmount: 45000,
+              soldBy: 'Sami'),
+        ],
+        labels: {'probe:5': 'P5  Probe 5'},
+      );
+      expect(cells[2], 'XYZ');
+      expect(cells[3], 'P5  Probe 5');
+      expect(cells[6], 'Sold');
+      expect(cells[7], '45,000');
+      expect(cells[8], 'Sami');
+      expect(cells[9], 'Paid');
+    });
+
+    test('reportSendGroups keeps a group together and a lone row alone', () {
+      final groups = reportSendGroups([
+        _movement(1, group: 'g1'),
+        _movement(2, group: ''),
+        _movement(3, group: 'g1'),
+      ]);
+      expect(groups.map((g) => g.map((r) => r['id']).toList()), [
+        [1, 3],
+        [2],
+      ]);
+    });
+
+    test('reportMoney groups thousands and drops the whole tail', () {
+      expect(reportMoney(null), '');
+      expect(reportMoney(45000), '45,000');
+      expect(reportMoney(1234567.5), '1,234,567.50');
+      expect(reportMoney(-500), '-500');
+    });
+
+    test('salesReportRow fills buyer, amount, source and invoice', () {
+      final cells = salesReportRow((
+        source: 'sale',
+        date: '10-01-2026',
+        buyer: 'XYZ',
+        buyerKind: 'Customer',
+        summary: 'Mindray DP',
+        total: 45000,
+        soldBy: '',
+        paid: true,
+        imported: true,
+        row: {
+          'invoice_reference': 'INV-1',
+          'old_trno': '',
+          'notes': 'party:customer:XYZ\nPaid in full',
+        },
+        rows: const <Map<String, dynamic>>[],
+      ));
+      expect(cells[0], '10-01-2026');
+      expect(cells[1], 'XYZ');
+      expect(cells[4], '45,000');
+      expect(cells[6], 'Paid');
+      expect(cells[7], 'Imported sale');
+      expect(cells[8], 'INV-1');
+      expect(cells[9], 'Paid in full');
+    });
+
+    test('a sold send with no amount reads as unrecorded and unpaid', () {
+      final cells = salesReportRow((
+        source: 'send',
+        date: '2026-01-11',
+        buyer: 'ABC',
+        buyerKind: 'Dealer',
+        summary: 'NEMIO 1',
+        total: null,
+        soldBy: 'Sami',
+        paid: false,
+        imported: false,
+        row: const <String, dynamic>{},
+        rows: const <Map<String, dynamic>>[],
+      ));
+      expect(cells[0], '11-01-2026'); // ISO date reads the shop way
+      expect(cells[4], '');
+      expect(cells[5], 'Sami');
+      expect(cells[6], 'Unpaid');
+      expect(cells[7], 'Sold send');
+    });
+
+    test('saleReportNotes drops the import party tags', () {
+      expect(
+          saleReportNotes({
+            'notes': 'party:dealer:ABC\nUnknown legacy customer\nDelivered',
+          }),
+          'Delivered');
     });
 
     test('boxReportRow counts the probes inside right now', () {

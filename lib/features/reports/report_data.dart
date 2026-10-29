@@ -1,4 +1,5 @@
 import '../data/data.dart';
+import '../sales/sales_screen.dart';
 
 /// Parses a stored date — `dd-MM-yyyy` (the shop's format) or ISO —
 /// into a date-only [DateTime], or null for empty or junk.
@@ -14,6 +15,14 @@ DateTime? reportDate(String? raw) {
   final year = int.tryParse(parts[2]);
   if (day == null || month == null || year == null) return null;
   return DateTime(year, month, day);
+}
+
+/// A date as the shop writes it, whatever shape it was stored in.
+String reportDateText(String? raw) {
+  final date = reportDate(raw);
+  if (date == null) return (raw ?? '').trim();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(date.day)}-${two(date.month)}-${date.year}';
 }
 
 /// Whether a stored date sits inside [from]..[to], both ends included.
@@ -108,6 +117,39 @@ String pdfText(String text) {
   return buffer.toString();
 }
 
+/// One send per report row: rows recorded together share their group,
+/// and a row with no group (old imports) is a send of its own. Order
+/// follows the rows given.
+List<List<Map<String, dynamic>>> reportSendGroups(
+    List<Map<String, dynamic>> rows) {
+  final order = <String>[];
+  final byKey = <String, List<Map<String, dynamic>>>{};
+  for (final row in rows) {
+    final key = movementSendKey(row);
+    if (!byKey.containsKey(key)) order.add(key);
+    byKey.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(row);
+  }
+  return [for (final key in order) byKey[key]!];
+}
+
+/// An amount with thousands separators; whole amounts lose the '.0'.
+String reportMoney(double? amount) {
+  if (amount == null) return '';
+  final whole = amount == amount.roundToDouble();
+  final text = whole ? amount.toStringAsFixed(0) : amount.toStringAsFixed(2);
+  final negative = text.startsWith('-');
+  final digits = negative ? text.substring(1) : text;
+  final dot = digits.indexOf('.');
+  final intPart = dot < 0 ? digits : digits.substring(0, dot);
+  final rest = dot < 0 ? '' : digits.substring(dot);
+  final buffer = StringBuffer();
+  for (var i = 0; i < intPart.length; i++) {
+    if (i > 0 && (intPart.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(intPart[i]);
+  }
+  return '${negative ? '-' : ''}$buffer$rest';
+}
+
 String _joinName(Object? join) =>
     join is Map ? '${join['name'] ?? ''}' : '';
 
@@ -167,37 +209,93 @@ List<String> boxReportRow(
   ];
 }
 
-/// One movement table row — every field the movement carries, with the
-/// party (dealer / customer / workshop), the person who recorded it and
-/// the item labels filled in from their joins.
+/// One movement table row per send — the unit the app writes and reads
+/// in. Every item of the send shares the row, with the party, the
+/// person who recorded it, the sold mark (amount and seller included),
+/// the paid flag and the demo mark spelled out.
 List<String> movementReportRow(
-  Map<String, dynamic> row, {
+  List<Map<String, dynamic>> sendRows, {
   required Map<String, String> labels,
 }) {
-  final type = (row['movement_type'] ?? '').toString();
-  final items = [
-    for (final field in ['machine', 'probe', 'printer', 'part'])
-      if (row['${field}_id'] != null)
-        labels['$field:${row['${field}_id']}'] ?? '$field #${row['${field}_id']}',
-  ];
+  final first = sendRows.first;
+  final type = (first['movement_type'] ?? '').toString();
+  final items = <String>[];
+  for (final row in sendRows) {
+    final key = movementItemKey(row);
+    if (key == null) continue;
+    final label = labels['${key.key}:${key.value}'];
+    if (label != null && label.isNotEmpty) items.add(label);
+  }
   final party = switch (type) {
-    'Dealer' => _joinName(row['dealers']),
-    'Customer' => _joinName(row['customers']),
-    'Workshop' => _joinName(row['workshops']),
+    'Dealer' => _joinName(first['dealers']),
+    'Customer' => _joinName(first['customers']),
+    'Workshop' => _joinName(first['workshops']),
     _ => '',
   };
+  final sold = sendRows.any(movementSold);
+  final notes = sendRows
+      .map((row) => '${row['notes'] ?? ''}'.trim())
+      .firstWhere((note) => note.isNotEmpty, orElse: () => '');
+  final reference = sendRows
+      .map((row) => '${row['reference'] ?? ''}'.trim())
+      .firstWhere((ref) => ref.isNotEmpty, orElse: () => '');
   return [
-    '${row['movement_date'] ?? ''}',
+    reportDateText('${first['movement_date'] ?? ''}'),
     type,
+    party.isEmpty ? '${first['to_location'] ?? ''}' : party,
     items.join('; '),
-    '${row['from_location'] ?? ''}',
-    '${row['to_location'] ?? ''}',
-    party,
-    _actorName(row['profiles']),
-    '${row['reason'] ?? ''}',
-    '${row['reference'] ?? ''}',
-    '${row['notes'] ?? ''}',
-    row['is_demo'] == true ? 'Yes' : '',
+    '${first['from_location'] ?? ''}',
+    '${first['to_location'] ?? ''}',
+    sold ? 'Sold' : '',
+    sold ? reportMoney(soldAmountOf(first)) : '',
+    sold ? movementSoldBy(first) : '',
+    isOutboundKind(type) ? (sendRows.any(movementPaid) ? 'Paid' : 'Unpaid') : '',
+    _actorName(first['profiles']),
+    reference,
+    notes,
+    sendRows.any((row) => row['is_demo'] == true) ? 'Yes' : '',
+  ];
+}
+
+/// The notes of a recorded sale without the import's own party tags —
+/// they describe the buyer, and the Buyer column already says it.
+String saleReportNotes(Map<String, dynamic> row) {
+  final kept = <String>[];
+  for (final line in '${row['notes'] ?? ''}'.split('\n')) {
+    final text = line.trim();
+    if (text.isEmpty) continue;
+    if (text.startsWith('party:')) continue;
+    if (text.contains('Unknown legacy customer')) continue;
+    kept.add(text);
+  }
+  return kept.join(' · ');
+}
+
+/// One sales table row: a recorded sale (imported or not) or a send
+/// marked Sold, with the amount it actually carries — old imported
+/// sales only have line prices, and an empty amount means nothing was
+/// recorded.
+List<String> salesReportRow(SaleEntry entry) {
+  final invoice = [
+    '${entry.row['invoice_reference'] ?? ''}'.trim(),
+    '${entry.row['old_trno'] ?? ''}'.trim(),
+  ].firstWhere((value) => value.isNotEmpty, orElse: () => '');
+  final note = entry.source == 'sale' ? saleReportNotes(entry.row) : '';
+  return [
+    reportDateText(entry.date),
+    entry.buyer,
+    entry.buyerKind,
+    entry.summary,
+    reportMoney(entry.total),
+    entry.soldBy,
+    entry.source == 'sale'
+        ? 'Paid'
+        : (entry.paid ? 'Paid' : 'Unpaid'),
+    entry.source == 'sale'
+        ? (entry.imported ? 'Imported sale' : 'Sale')
+        : 'Sold send',
+    invoice,
+    note,
   ];
 }
 
@@ -244,8 +342,13 @@ const kStockColumnsSingle = [
 ];
 
 const kMovementColumns = [
-  'Date', 'Type', 'Item(s)', 'From', 'To', 'Party', 'By', 'Reason',
-  'Reference', 'Notes', 'Demo',
+  'Date', 'Type', 'Party', 'Item(s)', 'From', 'To', 'Sold', 'Amount',
+  'Sold by', 'Paid', 'By', 'Reference', 'Notes', 'Demo',
+];
+
+const kSalesColumns = [
+  'Date', 'Buyer', 'Buyer type', 'Items', 'Amount', 'Sold by', 'Paid',
+  'Source', 'Invoice', 'Notes',
 ];
 
 const kBoxColumns = [

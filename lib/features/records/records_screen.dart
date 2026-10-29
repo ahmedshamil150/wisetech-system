@@ -51,59 +51,71 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen>
   @override
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(isAdminProvider);
-    return Column(
-      children: [
-        Material(
-          color: Theme.of(context).colorScheme.surface,
-          child: TabBar(
-            controller: _tab,
-            isScrollable: true,
-            labelStyle: const TextStyle(fontWeight: FontWeight.w700),
-            tabs: const [
-              Tab(text: 'Products'),
-              Tab(text: 'Brands'),
-              Tab(text: 'Customers'),
-              Tab(text: 'Dealers'),
-              Tab(text: 'Batches'),
-              Tab(text: 'Boxes'),
-              Tab(text: 'Flags'),
-            ],
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Records'),
+        bottom: TabBar(
+          controller: _tab,
+          isScrollable: true,
+          labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+          tabs: const [
+            Tab(text: 'Products'),
+            Tab(text: 'Brands'),
+            Tab(text: 'Customers'),
+            Tab(text: 'Dealers'),
+            Tab(text: 'Batches'),
+            Tab(text: 'Boxes'),
+            Tab(text: 'Flags'),
+          ],
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: SearchField(
-            hint: 'Search records',
-            onChanged: (value) =>
-                setState(() => _query = value.trim().toLowerCase()),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: SearchField(
+              hint: 'Search records',
+              onChanged: (value) =>
+                  setState(() => _query = value.trim().toLowerCase()),
+            ),
           ),
-        ),
-        Expanded(
-          child: AppRefresh(
-            child: TabBarView(
-              controller: _tab,
+          Expanded(
+            child: Stack(
               children: [
-                _ProductsPane(query: _query),
-                _BrandsPane(query: _query),
-                _PeoplePane(table: 'customers', query: _query),
-                _PeoplePane(table: 'dealers', query: _query),
-                _BatchesPane(query: _query),
-                _BoxesPane(query: _query),
-                _FlagsPane(query: _query),
+                Positioned.fill(
+                  child: AppRefresh(
+                    child: TabBarView(
+                      controller: _tab,
+                      children: [
+                        _ProductsPane(query: _query),
+                        _BrandsPane(query: _query),
+                        _PeoplePane(table: 'customers', query: _query),
+                        _PeoplePane(table: 'dealers', query: _query),
+                        _BatchesPane(query: _query),
+                        _BoxesPane(query: _query),
+                        _FlagsPane(query: _query),
+                      ],
+                    ),
+                  ),
+                ),
+                // the page's round add button, the same one Inventory,
+                // Movements and Repairs carry; it adds the record of the
+                // tab you are looking at
+                if (isAdmin)
+                  Positioned(
+                    right: 16,
+                    bottom: 16,
+                    child: AppFab(
+                      tooltip: _addLabels[_tab.index],
+                      onPressed: () =>
+                          showRecordForm(context, _sections[_tab.index]),
+                    ),
+                  ),
               ],
             ),
           ),
-        ),
-        if (isAdmin)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: FilledButton.icon(
-              onPressed: () => showRecordForm(context, _sections[_tab.index]),
-              icon: const Icon(Icons.add),
-              label: Text(_addLabels[_tab.index]),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -164,7 +176,7 @@ class _ProductsPane extends ConsumerWidget {
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 84),
           itemCount: filtered.length,
           itemBuilder: (context, index) =>
               _productTile(context, ref, filtered[index], isAdmin: isAdmin),
@@ -285,7 +297,7 @@ class _BrandsPane extends ConsumerWidget {
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 84),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
             final row = filtered[index];
@@ -402,7 +414,7 @@ class _PeoplePane extends ConsumerWidget {
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 84),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
             final row = filtered[index];
@@ -670,7 +682,7 @@ class _BatchesPane extends ConsumerWidget {
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 84),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
             final row = filtered[index];
@@ -813,7 +825,7 @@ class _BoxesPane extends ConsumerWidget {
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 84),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
             final row = filtered[index];
@@ -948,7 +960,7 @@ class _FlagsPane extends ConsumerWidget {
         }
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 84),
           itemCount: filtered.length,
           itemBuilder: (context, index) {
             final row = filtered[index];

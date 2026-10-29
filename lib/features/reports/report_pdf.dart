@@ -15,6 +15,7 @@ Future<Uint8List> buildReportPdf({
   required List<String> columns,
   required List<List<String>> data,
   required String generatedBy,
+  List<String> summary = const [],
 }) async {
   final doc = pw.Document();
   final now = DateTime.now();
@@ -22,6 +23,7 @@ Future<Uint8List> buildReportPdf({
   final stamp =
       '${two(now.day)}-${two(now.month)}-${now.year} ${two(now.hour)}:${two(now.minute)}';
   final safeColumns = [for (final c in columns) pdfText(c)];
+  final safeSummary = [for (final line in summary) pdfText(line)];
   final safeData = [
     for (final row in data) [for (final cell in row) pdfText(cell)],
   ];
@@ -75,6 +77,24 @@ Future<Uint8List> buildReportPdf({
           ),
         ),
         pw.SizedBox(height: 10),
+        if (safeSummary.isNotEmpty) ...[
+          pw.Container(
+            width: double.infinity,
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                for (final line in safeSummary)
+                  pw.Text(line,
+                      style: pw.TextStyle(
+                          fontSize: 9, color: PdfColors.grey800)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 8),
+        ],
         if (safeData.isEmpty)
           pw.Padding(
             padding: const pw.EdgeInsets.only(top: 24),
