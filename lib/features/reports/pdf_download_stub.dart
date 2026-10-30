@@ -1,5 +1,9 @@
 import 'dart:typed_data';
 
-/// Only compiled off the web — reports currently ship on the web app.
-void savePdfDownload(Uint8List bytes, String filename) =>
-    throw UnsupportedError('PDF downloads only work in the web app.');
+import 'package:printing/printing.dart';
+
+/// Phone and desktop: open the system share sheet with the PDF, so it
+/// can be saved to Files, Drive or sent on. (The web build uses the
+/// browser download instead.)
+Future<void> savePdfDownload(Uint8List bytes, String filename) =>
+    Printing.sharePdf(bytes: bytes, filename: filename);

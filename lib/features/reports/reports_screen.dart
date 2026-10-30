@@ -155,7 +155,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         for (final box in boxRows)
           if (box['id'] != null) box['id'] as int: '${box['name'] ?? ''}',
       };
-      final labels = ref.read(itemLabelsProvider);
+      // Reports write items name-first with their serial, whatever the
+      // screen shows elsewhere.
+      final labels = {
+        for (final item in inventory)
+          item.key: (item.serial == null || item.serial!.isEmpty)
+              ? item.name
+              : '${item.name} (${item.serial})',
+      };
 
       final Uint8List bytes;
       final String filename;
@@ -208,7 +215,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           dateFrom: _from.text,
           dateTo: _to.text,
         );
-        final data = [for (final entry in entries) salesReportRow(entry)];
+        final data = [
+          for (final entry in entries) salesReportRow(entry, labels: labels),
+        ];
         final withAmount = entries.where((entry) => entry.total != null);
         final total = withAmount.fold<double>(
             0, (sum, entry) => sum + (entry.total ?? 0));
@@ -276,12 +285,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         filename =
             '${_fileOf(_kind)}_${_from.text}_${_to.text}.pdf';
       }
-      downloadPdf(bytes, filename);
+      await downloadPdf(bytes, filename);
       messenger
-          .showSnackBar(SnackBar(content: Text('Downloaded $filename')));
-    } catch (error) {
-      messenger.showSnackBar(
-          SnackBar(content: Text('Could not build the report: $error')));
+          .showSnackBar(SnackBar(content: Text('Report ready: $filename')));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text(
+              'Could not build the report. Try a narrower date range.')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

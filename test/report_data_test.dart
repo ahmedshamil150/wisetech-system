@@ -192,28 +192,35 @@ void main() {
   });
 
   group('report rows', () {
-    test('movementReportRow reads one send, party, actor and sold marks',
-        () {
+    test('movementReportRow reads one send: items, destination, actor', () {
       final cells = movementReportRow(
         [
           _movement(9,
               type: 'Dealer', date: '10-01-2026', probeId: 5),
         ],
-        labels: {'probe:5': 'P5  Probe 5'},
+        labels: {'probe:5': 'Probe 5 (SN-5)'},
       );
+      expect(cells, hasLength(9));
       expect(cells[0], '10-01-2026');
       expect(cells[1], 'Dealer');
-      expect(cells[2], 'ABC');
-      expect(cells[3], 'P5  Probe 5');
-      expect(cells[4], 'Company');
-      expect(cells[5], 'Customer X');
-      expect(cells[6], '');
-      expect(cells[7], '');
-      expect(cells[10], 'Ahmed');
-      expect(cells[13], '');
+      expect(cells[2], 'Probe 5 (SN-5)');
+      expect(cells[3], 'Customer X');
+      expect(cells[4], '');
+      expect(cells[5], '');
+      expect(cells[6], 'Unpaid');
+      expect(cells[7], 'Ahmed');
+      // the party is not a column of its own any more
+      expect(cells, isNot(contains('ABC')));
     });
 
-    test('a sold send carries its amount, seller and paid flag', () {
+    test('a blank destination falls back to the party name', () {
+      final row = _movement(10, type: 'Dealer', date: '10-01-2026');
+      row['to_location'] = '';
+      final cells = movementReportRow([row], labels: const {});
+      expect(cells[3], 'ABC');
+    });
+
+    test('a sold send carries its amount and paid flag', () {
       final cells = movementReportRow(
         [
           _movement(1,
@@ -234,14 +241,13 @@ void main() {
               saleAmount: 45000,
               soldBy: 'Sami'),
         ],
-        labels: {'probe:5': 'P5  Probe 5'},
+        labels: {'probe:5': 'Probe 5 (SN-5)'},
       );
-      expect(cells[2], 'XYZ');
-      expect(cells[3], 'P5  Probe 5');
-      expect(cells[6], 'Sold');
-      expect(cells[7], '45,000');
-      expect(cells[8], 'Sami');
-      expect(cells[9], 'Paid');
+      expect(cells[2], 'Probe 5 (SN-5)');
+      expect(cells[4], 'Sold');
+      expect(cells[5], '45,000');
+      expect(cells[6], 'Paid');
+      expect(cells[7], 'Ahmed');
     });
 
     test('reportSendGroups keeps a group together and a lone row alone', () {
@@ -263,7 +269,7 @@ void main() {
       expect(reportMoney(-500), '-500');
     });
 
-    test('salesReportRow fills buyer, amount, source and invoice', () {
+    test('salesReportRow fills buyer, amount and invoice', () {
       final cells = salesReportRow((
         source: 'sale',
         date: '10-01-2026',
@@ -281,13 +287,49 @@ void main() {
         },
         rows: const <Map<String, dynamic>>[],
       ));
+      expect(cells, hasLength(8));
       expect(cells[0], '10-01-2026');
       expect(cells[1], 'XYZ');
-      expect(cells[4], '45,000');
-      expect(cells[6], 'Paid');
-      expect(cells[7], 'Imported sale');
-      expect(cells[8], 'INV-1');
-      expect(cells[9], 'Paid in full');
+      expect(cells[3], '45,000');
+      expect(cells[5], 'Paid');
+      expect(cells[6], 'INV-1');
+      expect(cells[7], 'Paid in full');
+    });
+
+    test('recorded sale items read name-first with their serial', () {
+      final cells = salesReportRow(
+        (
+          source: 'sale',
+          date: '10-01-2026',
+          buyer: 'XYZ',
+          buyerKind: 'Customer',
+          summary: '',
+          total: 45000,
+          soldBy: '',
+          paid: true,
+          imported: true,
+          row: {
+            'invoice_reference': 'INV-1',
+            'old_trno': '',
+            'notes': '',
+            'sale_items': [
+              {
+                'machine_id': 9,
+                'item_description': 'Ultrasound Machine, Model: NEMIO',
+                'item_serial': '070602',
+              },
+              {
+                'item_description': 'Convex Probe, Model: PVM-375AT',
+                'item_serial': 'TDA1073239',
+              },
+            ],
+          },
+          rows: const <Map<String, dynamic>>[],
+        ),
+        labels: {'machine:9': 'NEMIO (070602)'},
+      );
+      expect(cells[2],
+          'NEMIO (070602) · Convex Probe, Model: PVM-375AT (TDA1073239)');
     });
 
     test('a sold send with no amount reads as unrecorded and unpaid', () {
@@ -304,11 +346,12 @@ void main() {
         row: const <String, dynamic>{},
         rows: const <Map<String, dynamic>>[],
       ));
+      expect(cells, hasLength(8));
       expect(cells[0], '11-01-2026'); // ISO date reads the shop way
-      expect(cells[4], '');
-      expect(cells[5], 'Sami');
-      expect(cells[6], 'Unpaid');
-      expect(cells[7], 'Sold send');
+      expect(cells[2], 'NEMIO 1');
+      expect(cells[3], '');
+      expect(cells[4], 'Sami');
+      expect(cells[5], 'Unpaid');
     });
 
     test('saleReportNotes drops the import party tags', () {
@@ -388,15 +431,13 @@ void main() {
           {'name_model': 'Probe X', 'serial_number': null},
         ],
       });
-      expect(cells, hasLength(12));
+      expect(cells, hasLength(9));
       expect(cells[0], 'REP-00007');
       expect(cells[2], 'XYZ');
       expect(cells[3], 'Mindray DP (SN-1); Probe X');
       expect(cells[6], '20-01-2026');
-      expect(cells[8], 'Ahmed');
-      expect(cells[9], '50');
-      expect(cells[10], '');
-      expect(cells[11], 'Fixed');
+      expect(cells[7], '');
+      expect(cells[8], 'Fixed');
     });
   });
 }

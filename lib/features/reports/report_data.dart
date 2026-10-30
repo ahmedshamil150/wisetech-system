@@ -210,9 +210,8 @@ List<String> boxReportRow(
 }
 
 /// One movement table row per send — the unit the app writes and reads
-/// in. Every item of the send shares the row, with the party, the
-/// person who recorded it, the sold mark (amount and seller included),
-/// the paid flag and the demo mark spelled out.
+/// in. The items are written name-first with their serial, the party
+/// only fills the destination when the location itself is blank.
 List<String> movementReportRow(
   List<Map<String, dynamic>> sendRows, {
   required Map<String, String> labels,
@@ -232,28 +231,21 @@ List<String> movementReportRow(
     'Workshop' => _joinName(first['workshops']),
     _ => '',
   };
+  final to = '${first['to_location'] ?? ''}'.trim();
   final sold = sendRows.any(movementSold);
   final notes = sendRows
       .map((row) => '${row['notes'] ?? ''}'.trim())
       .firstWhere((note) => note.isNotEmpty, orElse: () => '');
-  final reference = sendRows
-      .map((row) => '${row['reference'] ?? ''}'.trim())
-      .firstWhere((ref) => ref.isNotEmpty, orElse: () => '');
   return [
     reportDateText('${first['movement_date'] ?? ''}'),
     type,
-    party.isEmpty ? '${first['to_location'] ?? ''}' : party,
     items.join('; '),
-    '${first['from_location'] ?? ''}',
-    '${first['to_location'] ?? ''}',
+    to.isEmpty ? party : to,
     sold ? 'Sold' : '',
     sold ? reportMoney(soldAmountOf(first)) : '',
-    sold ? movementSoldBy(first) : '',
     isOutboundKind(type) ? (sendRows.any(movementPaid) ? 'Paid' : 'Unpaid') : '',
     _actorName(first['profiles']),
-    reference,
     notes,
-    sendRows.any((row) => row['is_demo'] == true) ? 'Yes' : '',
   ];
 }
 
@@ -271,36 +263,67 @@ String saleReportNotes(Map<String, dynamic> row) {
   return kept.join(' · ');
 }
 
+/// The item a recorded sale line points at, as `kind:id`.
+String? _saleLineKey(Map line) {
+  for (final kind in const ['machine', 'probe', 'printer', 'part']) {
+    final id = line['${kind}_id'];
+    if (id is int) return '$kind:$id';
+  }
+  return null;
+}
+
+/// What was sold on a recorded sale, written name-first with its serial:
+/// the linked item's name when the line points at stock, otherwise the
+/// imported description followed by the serial the old system stored.
+String _saleItemsText(Map<String, dynamic> row, Map<String, String> labels) {
+  final lines = (row['sale_items'] as List?)?.cast<Map>() ?? const [];
+  final parts = <String>[];
+  for (final line in lines) {
+    final key = _saleLineKey(line);
+    final label = key == null ? null : labels[key];
+    if (label != null && label.isNotEmpty) {
+      parts.add(label);
+      continue;
+    }
+    final description = '${line['item_description'] ?? ''}'.trim();
+    if (description.isEmpty) continue;
+    final serial = '${line['item_serial'] ?? ''}'.trim();
+    parts.add(serial.isEmpty ? description : '$description ($serial)');
+  }
+  return parts.join(' · ');
+}
+
 /// One sales table row: a recorded sale (imported or not) or a send
 /// marked Sold, with the amount it actually carries — old imported
 /// sales only have line prices, and an empty amount means nothing was
 /// recorded.
-List<String> salesReportRow(SaleEntry entry) {
+List<String> salesReportRow(
+  SaleEntry entry, {
+  Map<String, String> labels = const {},
+}) {
   final invoice = [
     '${entry.row['invoice_reference'] ?? ''}'.trim(),
     '${entry.row['old_trno'] ?? ''}'.trim(),
   ].firstWhere((value) => value.isNotEmpty, orElse: () => '');
   final note = entry.source == 'sale' ? saleReportNotes(entry.row) : '';
+  final items = entry.source == 'sale'
+      ? _saleItemsText(entry.row, labels)
+      : entry.summary;
   return [
     reportDateText(entry.date),
     entry.buyer,
-    entry.buyerKind,
-    entry.summary,
+    items,
     reportMoney(entry.total),
     entry.soldBy,
-    entry.source == 'sale'
-        ? 'Paid'
-        : (entry.paid ? 'Paid' : 'Unpaid'),
-    entry.source == 'sale'
-        ? (entry.imported ? 'Imported sale' : 'Sale')
-        : 'Sold send',
+    entry.source == 'sale' ? 'Paid' : (entry.paid ? 'Paid' : 'Unpaid'),
     invoice,
     note,
   ];
 }
 
 /// One repair table row — the job's whole story: when it came in and
-/// went out, whose it is, what it was, who handled it and the costs.
+/// went out, whose it is, what it was (name with its serial), the
+/// problem, the status, the charge and the notes.
 List<String> repairReportRow(Map<String, dynamic> row) {
   final items = [
     for (final item in (row['repair_items'] as List? ?? const []))
@@ -323,9 +346,6 @@ List<String> repairReportRow(Map<String, dynamic> row) {
     '${row['problem_description'] ?? ''}',
     '${row['status'] ?? ''}',
     '${row['returned_at'] ?? ''}',
-    '${row['collected_by'] ?? ''}',
-    _actorName(row['profiles']),
-    row['estimated_cost'] == null ? '' : '${row['estimated_cost']}',
     row['final_cost'] == null ? '' : '${row['final_cost']}',
     notes,
   ];
@@ -342,13 +362,11 @@ const kStockColumnsSingle = [
 ];
 
 const kMovementColumns = [
-  'Date', 'Type', 'Party', 'Item(s)', 'From', 'To', 'Sold', 'Amount',
-  'Sold by', 'Paid', 'By', 'Reference', 'Notes', 'Demo',
+  'Date', 'Type', 'Item(s)', 'To', 'Sold', 'Amount', 'Paid', 'By', 'Notes',
 ];
 
 const kSalesColumns = [
-  'Date', 'Buyer', 'Buyer type', 'Items', 'Amount', 'Sold by', 'Paid',
-  'Source', 'Invoice', 'Notes',
+  'Date', 'Buyer', 'Items', 'Amount', 'Sold by', 'Paid', 'Invoice', 'Notes',
 ];
 
 const kBoxColumns = [
@@ -356,6 +374,6 @@ const kBoxColumns = [
 ];
 
 const kRepairColumns = [
-  'Job', 'Received', 'Customer', 'Items', 'Problem', 'Status',
-  'Returned', 'Collected by', 'By', 'Est. cost', 'Final cost', 'Notes',
+  'Job', 'Received', 'Customer', 'Items', 'Problem', 'Status', 'Returned',
+  'Final cost', 'Notes',
 ];

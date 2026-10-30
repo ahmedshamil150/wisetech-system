@@ -5,6 +5,20 @@ import 'package:pdf/widgets.dart' as pw;
 
 import 'report_data.dart';
 
+/// A table cell that can never outgrow a page. Imported notes can run
+/// to hundreds of lines; a row taller than one page cannot be split,
+/// which is what made the layout give up.
+String _cellText(String cell) {
+  final text = pdfText(cell).replaceAll('\r', '');
+  final lines = text.split('\n');
+  var clipped = text;
+  if (lines.length > 12) {
+    clipped = '${lines.take(12).join('\n')}\n...';
+  }
+  if (clipped.length > 400) clipped = '${clipped.substring(0, 400)}...';
+  return clipped;
+}
+
 /// Builds the landscape A4 report: the shop's header, the report's
 /// title and range, the table (striped, with its header repeated on
 /// every page) and a page-number footer. Every piece of text goes
@@ -25,11 +39,15 @@ Future<Uint8List> buildReportPdf({
   final safeColumns = [for (final c in columns) pdfText(c)];
   final safeSummary = [for (final line in summary) pdfText(line)];
   final safeData = [
-    for (final row in data) [for (final cell in row) pdfText(cell)],
+    for (final row in data) [for (final cell in row) _cellText(cell)],
   ];
   doc.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
+      // The library's 20-page default aborts on a whole-stock report.
+      // A cell is capped below, so no single row can outgrow a page and
+      // loop; this is just a generous ceiling for real data.
+      maxPages: 10000,
       margin: const pw.EdgeInsets.all(28),
       build: (context) => [
         pw.Container(

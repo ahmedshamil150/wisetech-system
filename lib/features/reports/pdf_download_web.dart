@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 
 /// Hands the PDF to the browser as a download via a temporary anchor.
-void savePdfDownload(Uint8List bytes, String filename) {
+/// The object URL is released a moment later — revoking it in the same
+/// tick can cancel the download in some browsers.
+Future<void> savePdfDownload(Uint8List bytes, String filename) async {
   final blob = web.Blob(
     [bytes.toJS].toJS,
     web.BlobPropertyBag(type: 'application/pdf'),
@@ -14,8 +17,8 @@ void savePdfDownload(Uint8List bytes, String filename) {
     ..href = url
     ..download = filename
     ..style.display = 'none';
-  web.document.body!.appendChild(anchor);
+  (web.document.body ?? web.document.documentElement!).appendChild(anchor);
   anchor.click();
   anchor.remove();
-  web.URL.revokeObjectURL(url);
+  Timer(const Duration(seconds: 5), () => web.URL.revokeObjectURL(url));
 }
