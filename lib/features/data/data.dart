@@ -585,27 +585,27 @@ Future<List<Map<String, dynamic>>> fetchAllPages(
 }
 
 /// The imported old stock as items, so the movement picker, item
-/// labels, box sheet and returns cover both sides with one list. Only
-/// the display fields a movement needs are loaded — thousands of rows
-/// come in with the import, so the query stays light.
+/// labels, box sheet, returns and reports cover both sides with one
+/// list. Only the display fields an item needs are loaded — thousands
+/// of rows come in with the import, so the query stays light.
 final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
+  const fields =
+      'id, serial_number, status, current_location, acquisition_date, '
+      'purchase_price, vendor_id';
   final pages = await Future.wait([
     fetchAllPages(() => _db
         .from('machines')
-        .select(
-            'id, machine_id, model, serial_number, status, current_location')
+        .select('$fields, machine_id, model')
         .eq('batch_id', kOldBatchId)
         .order('id', ascending: false)),
     fetchAllPages(() => _db
         .from('probes')
-        .select('id, internal_id, model, serial_number, status, '
-            'current_location, box_id')
+        .select('$fields, internal_id, model, box_id')
         .eq('batch_id', kOldBatchId)
         .order('id', ascending: false)),
     fetchAllPages(() => _db
         .from('printers')
-        .select(
-            'id, internal_id, name_model, serial_number, status, current_location')
+        .select('$fields, internal_id, name_model')
         .eq('batch_id', kOldBatchId)
         .order('id', ascending: false)),
   ]);
@@ -622,8 +622,11 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
       serial: row['serial_number'] as String?,
       status: '${row['status'] ?? ''}',
       location: '${row['current_location'] ?? ''}',
+      date: row['acquisition_date'] as String?,
       batch: 'BATCH-OLD',
       boxId: kind == 'probe' ? row['box_id'] as int? : null,
+      vendorId: row['vendor_id'] as int?,
+      purchasePrice: (row['purchase_price'] as num?)?.toDouble(),
     );
   }
 

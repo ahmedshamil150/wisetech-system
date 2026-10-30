@@ -31,7 +31,9 @@ Map<String, dynamic> _movement(
   int id, {
   String type = 'Dealer',
   String? date,
+  int? machineId,
   int? probeId,
+  int? partId,
   int? oldSourceId,
   String group = '',
   bool paid = false,
@@ -54,10 +56,10 @@ Map<String, dynamic> _movement(
     'reference': null,
     'is_demo': false,
     'old_source_id': oldSourceId,
-    'machine_id': null,
+    'machine_id': machineId,
     'probe_id': probeId,
     'printer_id': null,
-    'part_id': null,
+    'part_id': partId,
     'dealers': type == 'Dealer' ? {'name': 'ABC'} : null,
     'customers': type == 'Customer' ? {'name': 'XYZ'} : null,
     'workshops': type == 'Workshop' ? {'name': 'Shop'} : null,
@@ -120,7 +122,7 @@ void main() {
   });
 
   group('filterMovementRows', () {
-    test('drops legacy, old-side imports, other kinds and rows outside the range', () {
+    test('All keeps dealer, branch and workshop sends only', () {
       final rows = [
         _movement(1, type: 'Dealer', date: '10-01-2026'),
         _movement(2, type: 'Workshop', date: '10-01-2026'),
@@ -129,21 +131,39 @@ void main() {
         _movement(5, type: 'Dealer', date: null),
         _movement(6, type: 'Return', date: '10-01-2026'),
         _movement(7, type: 'Customer', date: '10-01-2026', oldSourceId: 9001),
+        _movement(8, type: 'Customer', date: '10-01-2026'),
+        _movement(9, type: 'Branch', date: '10-01-2026'),
+        _movement(10, type: 'Box', date: '10-01-2026', probeId: 7),
       ];
       final all = filterMovementRows(rows,
           kind: 'All', from: from, to: to);
-      expect(all.map((row) => row['id']), [1, 2, 6]);
+      expect(all.map((row) => row['id']), [1, 2, 9]);
       final dealers = filterMovementRows(rows,
           kind: 'Dealer', from: from, to: to);
       expect(dealers.map((row) => row['id']), [1]);
+      final customers = filterMovementRows(rows,
+          kind: 'Customer', from: from, to: to);
+      expect(customers.map((row) => row['id']), [8]);
+    });
+
+    test('old-side part movements stay off the report like the screen', () {
+      final rows = [
+        _movement(1, type: 'Dealer', date: '10-09-2026', partId: 4),
+        _movement(2, type: 'Dealer', date: '20-09-2026', partId: 4),
+      ];
+      final kept = filterMovementRows(rows,
+          kind: 'All',
+          from: DateTime(2026, 9, 1),
+          to: DateTime(2026, 9, 30));
+      expect(kept.map((row) => row['id']), [2]);
     });
 
     test('keeps imported rows dated on or after the split', () {
       final rows = [
-        _movement(1, type: 'Customer', date: '13-09-2026', oldSourceId: 1),
-        _movement(2, type: 'Customer', date: '14-09-2026', oldSourceId: 2),
+        _movement(1, type: 'Dealer', date: '13-09-2026', oldSourceId: 1),
+        _movement(2, type: 'Dealer', date: '14-09-2026', oldSourceId: 2),
         _movement(3, type: 'Dealer', date: '29-09-2026', oldSourceId: 3),
-        _movement(4, type: 'Customer', date: null, oldSourceId: 4),
+        _movement(4, type: 'Dealer', date: null, oldSourceId: 4),
       ];
       final kept = filterMovementRows(rows,
           kind: 'All', from: DateTime(2026, 9, 1), to: DateTime(2026, 9, 30));
@@ -226,6 +246,7 @@ void main() {
           _movement(1,
               type: 'Customer',
               date: '10-01-2026',
+              machineId: 8,
               group: 'g1',
               paid: true,
               reason: 'Sold',
@@ -241,13 +262,71 @@ void main() {
               saleAmount: 45000,
               soldBy: 'Sami'),
         ],
-        labels: {'probe:5': 'Probe 5 (SN-5)'},
+        labels: {
+          'machine:8': 'Machine 8 (SN-8)',
+          'probe:5': 'Probe 5 (SN-5)',
+        },
       );
-      expect(cells[2], 'Probe 5 (SN-5)');
+      expect(cells[2], 'Machine 8 (SN-8); Probe 5 (SN-5)');
       expect(cells[4], 'Sold');
       expect(cells[5], '45,000');
       expect(cells[6], 'Paid');
       expect(cells[7], 'Ahmed');
+    });
+
+    test('the sold mark reads its own row, not the send\'s first row', () {
+      final unsold = _movement(1, type: 'Dealer', date: '10-01-2026');
+      final sold = _movement(2,
+          type: 'Dealer',
+          date: '10-01-2026',
+          probeId: 5,
+          reason: 'Sold',
+          saleAmount: 12000,
+          soldBy: 'Sami');
+      final cells = movementReportRow([unsold, sold], labels: const {});
+      expect(cells[4], 'Sold');
+      expect(cells[5], '12,000');
+      expect(cells[2], 'Unknown item; Unknown item');
+    });
+
+    test('items read machine first, then the probe, like the app', () {
+      final cells = movementReportRow(
+        [
+          _movement(2, type: 'Dealer', date: '10-01-2026', probeId: 5),
+          _movement(1, type: 'Dealer', date: '10-01-2026', machineId: 8),
+        ],
+        labels: {
+          'machine:8': 'Machine 8 (SN-8)',
+          'probe:5': 'Probe 5 (SN-5)',
+        },
+      );
+      expect(cells[2], 'Machine 8 (SN-8); Probe 5 (SN-5)');
+    });
+
+    test('reportItemLabels writes name first with the serial', () {
+      final labels = reportItemLabels([
+        _item(1, date: '10-01-2026'),
+        InventoryItem(
+          kind: 'probe',
+          id: 2,
+          code: 'S9',
+          name: 'NEMIO',
+          serial: '070602',
+          status: 'Available',
+          location: 'Company',
+          date: null,
+          batch: 'BATCH-OLD',
+          createdAt: null,
+          productId: null,
+          vendorId: null,
+          assignedMachineId: null,
+          boxId: null,
+          probeType: null,
+          purchasePrice: null,
+        ),
+      ]);
+      expect(labels['machine:1'], 'Item 1');
+      expect(labels['probe:2'], 'NEMIO (070602)');
     });
 
     test('reportSendGroups keeps a group together and a lone row alone', () {

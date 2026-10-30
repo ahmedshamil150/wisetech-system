@@ -54,11 +54,17 @@ List<InventoryItem> filterStockItems(
   ];
 }
 
-/// Movement rows for the report: the imported old-side rows never count
-/// (they carry an [old_source_id] and belong to the old-data side),
-/// [kind] narrows the type — 'All' means every send and return except
-/// the box moves (those have their own report), 'Box moves' means only
-/// them — and the movement date must sit inside the range.
+/// The movement types that leave the company: dealer, branch and
+/// workshop sends. Customer sends are sales (they have their own
+/// report), and returns and box moves are item history, not sends.
+const kMovementSendTypes = ['Dealer', 'Branch', 'Workshop'];
+
+/// Movement rows for the report, exactly the sends the Movements screen
+/// lists: the imported old-side rows never count (they carry an
+/// [old_source_id] and belong to the old-data side), Legacy rows never
+/// count, returns and box moves are not sends — [kind] narrows the type,
+/// where 'All' means every send and 'Box moves' the box history only —
+/// and the movement date must sit inside the range.
 List<Map<String, dynamic>> filterMovementRows(
   List<Map<String, dynamic>> rows, {
   required String kind,
@@ -68,15 +74,21 @@ List<Map<String, dynamic>> filterMovementRows(
   return [
     for (final row in rows)
       if (!isOldSideImport(row) &&
-          (row['movement_type'] ?? '').toString() != 'Legacy' &&
-          switch (kind) {
-            'All' => !isBoxMovement(row),
-            'Box moves' => isBoxMovement(row),
-            _ => row['movement_type'] == kind,
-          } &&
+          !isOldSideMovement(row) &&
+          _movementReportMatch(row, kind) &&
           dateInRange('${row['movement_date'] ?? ''}', from, to))
         row,
   ];
+}
+
+bool _movementReportMatch(Map<String, dynamic> row, String kind) {
+  final type = (row['movement_type'] ?? '').toString();
+  if (type == 'Legacy' || type == 'Return') return false;
+  final box = isBoxMovement(row);
+  if (kind == 'Box moves') return box;
+  if (box) return false;
+  if (kind == 'All') return kMovementSendTypes.contains(type);
+  return type == kind;
 }
 
 /// Repair jobs whose received date sits inside the range — the same
@@ -209,21 +221,49 @@ List<String> boxReportRow(
   ];
 }
 
+/// The report's label for an item: its name first, with the serial in
+/// brackets — how the shop reads equipment on the phone. Old imported
+/// items count too: a report names every item it can.
+String reportItemLabel(InventoryItem item) =>
+    (item.serial == null || item.serial!.isEmpty)
+        ? item.name
+        : '${item.name} (${item.serial})';
+
+/// `kind:id` -> [reportItemLabel] for every item a report can name —
+/// current stock and the imported old stock alike.
+Map<String, String> reportItemLabels(Iterable<InventoryItem> items) =>
+    {for (final item in items) item.key: reportItemLabel(item)};
+
+int _movementRank(Map<String, dynamic> row) {
+  if (row['machine_id'] != null) return 0;
+  if (row['printer_id'] != null) return 1;
+  if (row['probe_id'] != null) return 2;
+  if (row['part_id'] != null) return 3;
+  return 4;
+}
+
 /// One movement table row per send — the unit the app writes and reads
-/// in. The items are written name-first with their serial, the party
-/// only fills the destination when the location itself is blank.
+/// in. The items are written name-first with their serial, in the order
+/// the app lists them (machine first), and the party only fills the
+/// destination when the location itself is blank.
 List<String> movementReportRow(
   List<Map<String, dynamic>> sendRows, {
   required Map<String, String> labels,
 }) {
-  final first = sendRows.first;
+  final rows = [...sendRows]
+    ..sort((a, b) {
+      final byRank = _movementRank(a).compareTo(_movementRank(b));
+      return byRank != 0
+          ? byRank
+          : (a['id'] as int).compareTo(b['id'] as int);
+    });
+  final first = rows.first;
   final type = (first['movement_type'] ?? '').toString();
   final items = <String>[];
-  for (final row in sendRows) {
+  for (final row in rows) {
     final key = movementItemKey(row);
-    if (key == null) continue;
-    final label = labels['${key.key}:${key.value}'];
-    if (label != null && label.isNotEmpty) items.add(label);
+    final label = key == null ? null : labels['${key.key}:${key.value}'];
+    items.add(label == null || label.isEmpty ? 'Unknown item' : label);
   }
   final party = switch (type) {
     'Dealer' => _joinName(first['dealers']),
@@ -232,8 +272,16 @@ List<String> movementReportRow(
     _ => '',
   };
   final to = '${first['to_location'] ?? ''}'.trim();
-  final sold = sendRows.any(movementSold);
-  final notes = sendRows
+  // the sold mark, its amount and the seller sit on the row that was
+  // marked sold — not always the send's first row
+  Map<String, dynamic>? soldRow;
+  for (final row in rows) {
+    if (movementSold(row)) {
+      soldRow = row;
+      break;
+    }
+  }
+  final notes = rows
       .map((row) => '${row['notes'] ?? ''}'.trim())
       .firstWhere((note) => note.isNotEmpty, orElse: () => '');
   return [
@@ -241,9 +289,9 @@ List<String> movementReportRow(
     type,
     items.join('; '),
     to.isEmpty ? party : to,
-    sold ? 'Sold' : '',
-    sold ? reportMoney(soldAmountOf(first)) : '',
-    isOutboundKind(type) ? (sendRows.any(movementPaid) ? 'Paid' : 'Unpaid') : '',
+    soldRow == null ? '' : 'Sold',
+    soldRow == null ? '' : reportMoney(soldAmountOf(soldRow)),
+    isOutboundKind(type) ? (rows.any(movementPaid) ? 'Paid' : 'Unpaid') : '',
     _actorName(first['profiles']),
     notes,
   ];

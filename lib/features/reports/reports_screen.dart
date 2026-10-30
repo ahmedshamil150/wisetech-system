@@ -140,8 +140,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         .maybeWhen(data: (value) => value, orElse: () => null);
     final by = '${profile?['display_name'] ?? profile?['username'] ?? 'Admin'}';
     try {
-      final inventory = ref.read(inventoryProvider).maybeWhen(
-          data: (value) => value, orElse: () => const <InventoryItem>[]);
+      // every item a report can name — current stock plus the imported
+      // old stock, so old-data items show up on the paperwork too
+      final items = await ref.read(allItemsProvider.future);
       final movementRows = ref.read(allMovementsProvider).maybeWhen(
           data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
       final boxRows = ref.read(probeBoxesProvider).maybeWhen(
@@ -157,19 +158,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       };
       // Reports write items name-first with their serial, whatever the
       // screen shows elsewhere.
-      final labels = {
-        for (final item in inventory)
-          item.key: (item.serial == null || item.serial!.isEmpty)
-              ? item.name
-              : '${item.name} (${item.serial})',
-      };
+      final labels = reportItemLabels(items);
 
       final Uint8List bytes;
       final String filename;
       final String subtitle;
       if (_kind == 'Boxes') {
         final data = [
-          for (final box in boxRows) boxReportRow(box, items: inventory),
+          for (final box in boxRows) boxReportRow(box, items: items),
         ];
         subtitle = 'Every box, with the probes inside it right now';
         bytes = await buildReportPdf(
@@ -189,7 +185,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         final data = [
           for (final send in sends) movementReportRow(send, labels: labels),
         ];
-        subtitle = 'From ${_from.text} to ${_to.text} · one row per send';
+        subtitle = _kind == 'All movements'
+            ? 'From ${_from.text} to ${_to.text} · dealer, branch and '
+                'workshop sends'
+            : 'From ${_from.text} to ${_to.text} · one row per send';
         bytes = await buildReportPdf(
           title: _titleOf(_kind),
           subtitle: subtitle,
@@ -262,11 +261,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         filename =
             '${_fileOf(_kind)}_${_from.text}_${_to.text}.pdf';
       } else {
-        final items = filterStockItems(inventory,
+        final stock = filterStockItems(items,
             kind: _kind, from: from!, to: to!);
         final single = _kind != 'All stock';
         final data = [
-          for (final item in items)
+          for (final item in stock)
             stockReportRow(item,
                 single: single,
                 vendors: vendors,
