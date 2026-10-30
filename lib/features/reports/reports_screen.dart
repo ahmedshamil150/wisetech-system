@@ -20,6 +20,7 @@ const _kMovements = [
   'Branch movements',
   'Dealer movements',
   'Customer movements',
+  'Returned items',
   'Box movements',
 ];
 const _kSales = ['All sales', 'Recorded sales', 'Sold sends'];
@@ -35,6 +36,7 @@ String _titleOf(String kind) => switch (kind) {
       'Branch movements' => 'Movements report — branch',
       'Dealer movements' => 'Movements report — dealer',
       'Customer movements' => 'Movements report — customer',
+      'Returned items' => 'Movements report — returned items',
       'All sales' => 'Sales report — all sales',
       'Recorded sales' => 'Sales report — recorded sales',
       'Sold sends' => 'Sales report — sold sends',
@@ -52,6 +54,7 @@ String _fileOf(String kind) => switch (kind) {
       'Branch movements' => 'movements-branch',
       'Dealer movements' => 'movements-dealer',
       'Customer movements' => 'movements-customer',
+      'Returned items' => 'movements-returns',
       'All sales' => 'sales-all',
       'Recorded sales' => 'sales-recorded',
       'Sold sends' => 'sales-sends',
@@ -64,6 +67,7 @@ String _movementKindOf(String kind) => switch (kind) {
       'Branch movements' => 'Branch',
       'Dealer movements' => 'Dealer',
       'Customer movements' => 'Customer',
+      'Returned items' => 'Returns',
       'Box movements' => 'Box moves',
       _ => 'All',
     };
@@ -176,6 +180,26 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           generatedBy: by,
         );
         filename = '${_fileOf(_kind)}.pdf';
+      } else if (_kind == 'Returned items') {
+        final filtered = filterMovementRows(movementRows,
+            kind: 'Returns', from: from!, to: to!);
+        final data = [
+          for (final row in filtered) returnedReportRow(row, labels: labels),
+        ];
+        subtitle =
+            'From ${_from.text} to ${_to.text} · every item that came back';
+        bytes = await buildReportPdf(
+          title: _titleOf(_kind),
+          subtitle: subtitle,
+          columns: kReturnColumns,
+          data: data,
+          generatedBy: by,
+          summary: [
+            '${filtered.length} returned item'
+                '${filtered.length == 1 ? '' : 's'}',
+          ],
+        );
+        filename = '${_fileOf(_kind)}_${_from.text}_${_to.text}.pdf';
       } else if (_kMovements.contains(_kind)) {
         final filtered = filterMovementRows(movementRows,
             kind: _movementKindOf(_kind), from: from!, to: to!);

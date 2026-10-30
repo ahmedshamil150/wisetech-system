@@ -83,7 +83,9 @@ List<Map<String, dynamic>> filterMovementRows(
 
 bool _movementReportMatch(Map<String, dynamic> row, String kind) {
   final type = (row['movement_type'] ?? '').toString();
-  if (type == 'Legacy' || type == 'Return') return false;
+  if (type == 'Legacy') return false;
+  if (kind == 'Returns') return type == 'Return';
+  if (type == 'Return') return false;
   final box = isBoxMovement(row);
   if (kind == 'Box moves') return box;
   if (box) return false;
@@ -398,6 +400,29 @@ List<String> repairReportRow(Map<String, dynamic> row) {
     notes,
   ];
 }
+
+/// One returned-item row: when it came back, what came back (name and
+/// serial), where it came back from and to, who recorded it and why.
+/// Each Return row is one item, so nothing is grouped here.
+List<String> returnedReportRow(
+  Map<String, dynamic> row, {
+  required Map<String, String> labels,
+}) {
+  final key = movementItemKey(row);
+  final label = key == null ? null : labels['${key.key}:${key.value}'];
+  return [
+    reportDateText('${row['movement_date'] ?? ''}'),
+    label == null || label.isEmpty ? 'Unknown item' : label,
+    '${row['from_location'] ?? ''}',
+    '${row['to_location'] ?? ''}',
+    _actorName(row['profiles']),
+    '${row['notes'] ?? ''}'.trim(),
+  ];
+}
+
+const kReturnColumns = [
+  'Date', 'Item', 'From', 'To', 'By', 'Notes',
+];
 
 const kStockColumnsAll = [
   'Type', 'Code', 'Name', 'Serial', 'Status', 'Location', 'Acquired',

@@ -158,6 +158,18 @@ void main() {
       expect(kept.map((row) => row['id']), [2]);
     });
 
+    test('Returns keeps only the Return rows inside the range', () {
+      final rows = [
+        _movement(1, type: 'Return', date: '10-01-2026', probeId: 5),
+        _movement(2, type: 'Dealer', date: '10-01-2026'),
+        _movement(3, type: 'Return', date: '10-06-2026', probeId: 5),
+        _movement(4, type: 'Legacy', date: '10-01-2026'),
+      ];
+      final kept =
+          filterMovementRows(rows, kind: 'Returns', from: from, to: to);
+      expect(kept.map((row) => row['id']), [1]);
+    });
+
     test('keeps imported rows dated on or after the split', () {
       final rows = [
         _movement(1, type: 'Dealer', date: '13-09-2026', oldSourceId: 1),
@@ -301,6 +313,24 @@ void main() {
         },
       );
       expect(cells[2], 'Machine 8 (SN-8); Probe 5 (SN-5)');
+    });
+
+    test('returnedReportRow names the item and where it came back from', () {
+      final row = _movement(1, type: 'Return', date: '10-01-2026', probeId: 5)
+        ..['from_location'] = 'ABC'
+        ..['to_location'] = 'Company'
+        ..['notes'] = 'screen fixed';
+      final cells = returnedReportRow(
+        row,
+        labels: {'probe:5': 'Probe 5 (SN-5)'},
+      );
+      expect(cells, hasLength(6));
+      expect(cells[0], '10-01-2026');
+      expect(cells[1], 'Probe 5 (SN-5)');
+      expect(cells[2], 'ABC');
+      expect(cells[3], 'Company');
+      expect(cells[4], 'Ahmed');
+      expect(cells[5], 'screen fixed');
     });
 
     test('reportItemLabels writes name first with the serial', () {
