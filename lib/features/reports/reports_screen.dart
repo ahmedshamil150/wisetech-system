@@ -211,7 +211,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ];
         subtitle = _kind == 'All movements'
             ? 'From ${_from.text} to ${_to.text} · dealer, branch and '
-                'workshop sends'
+                'customer sends'
             : 'From ${_from.text} to ${_to.text} · one row per send';
         bytes = await buildReportPdf(
           title: _titleOf(_kind),

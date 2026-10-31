@@ -122,7 +122,7 @@ void main() {
   });
 
   group('filterMovementRows', () {
-    test('All keeps dealer, branch and workshop sends only', () {
+    test('All keeps dealer, branch and customer sends only', () {
       final rows = [
         _movement(1, type: 'Dealer', date: '10-01-2026'),
         _movement(2, type: 'Workshop', date: '10-01-2026'),
@@ -137,13 +137,13 @@ void main() {
       ];
       final all = filterMovementRows(rows,
           kind: 'All', from: from, to: to);
-      expect(all.map((row) => row['id']), [1, 2, 9]);
+      expect(all.map((row) => row['id']), [1, 8, 9]);
       final dealers = filterMovementRows(rows,
           kind: 'Dealer', from: from, to: to);
       expect(dealers.map((row) => row['id']), [1]);
-      final customers = filterMovementRows(rows,
-          kind: 'Customer', from: from, to: to);
-      expect(customers.map((row) => row['id']), [8]);
+      final workshops = filterMovementRows(rows,
+          kind: 'Workshop', from: from, to: to);
+      expect(workshops.map((row) => row['id']), [2]);
     });
 
     test('old-side part movements stay off the report like the screen', () {

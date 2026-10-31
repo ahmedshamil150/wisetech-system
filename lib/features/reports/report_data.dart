@@ -54,10 +54,10 @@ List<InventoryItem> filterStockItems(
   ];
 }
 
-/// The movement types that leave the company: dealer, branch and
-/// workshop sends. Customer sends are sales (they have their own
-/// report), and returns and box moves are item history, not sends.
-const kMovementSendTypes = ['Dealer', 'Branch', 'Workshop'];
+/// The movement types that make up "all movements": dealer, branch and
+/// customer sends. Workshop sends have their own report; returns and
+/// box moves are item history, not sends.
+const kMovementSendTypes = ['Dealer', 'Branch', 'Customer'];
 
 /// Movement rows for the report, exactly the sends the Movements screen
 /// lists: the imported old-side rows never count (they carry an
