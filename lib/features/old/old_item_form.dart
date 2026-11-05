@@ -21,7 +21,8 @@ Future<void> showOldItemForm(
     heightFraction: 0.9,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
       child: _OldItemForm(kind: kind, row: row),
     ),
   );
@@ -36,18 +37,18 @@ String nameColumnFor(String kind) =>
     kind == 'machine' || kind == 'probe' ? 'model' : 'name_model';
 
 String tableFor(String kind) => switch (kind) {
-      'machine' => 'machines',
-      'probe' => 'probes',
-      'printer' => 'printers',
-      _ => 'parts',
-    };
+  'machine' => 'machines',
+  'probe' => 'probes',
+  'printer' => 'printers',
+  _ => 'parts',
+};
 
 String kindLabel(String kind) => switch (kind) {
-      'machine' => 'Machine',
-      'probe' => 'Probe',
-      'printer' => 'Printer',
-      _ => 'Part',
-    };
+  'machine' => 'Machine',
+  'probe' => 'Probe',
+  'printer' => 'Printer',
+  _ => 'Part',
+};
 
 class _OldItemForm extends ConsumerStatefulWidget {
   const _OldItemForm({required this.kind, this.row});
@@ -64,8 +65,12 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
   late final TextEditingController _name;
   late final TextEditingController _serial;
   late final TextEditingController _location;
+  late final TextEditingController _date;
+  late final TextEditingController _price;
+  late final TextEditingController _condition;
   late final TextEditingController _notes;
   late String _status;
+  int? _vendorId;
   bool _saving = false;
 
   bool get _isEdit => widget.row != null;
@@ -75,21 +80,49 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
     super.initState();
     final row = widget.row;
     _code = TextEditingController(
-        text: row == null ? '' : (row[codeColumnFor(widget.kind)] ?? '').toString());
+      text: row == null
+          ? ''
+          : (row[codeColumnFor(widget.kind)] ?? '').toString(),
+    );
     _name = TextEditingController(
-        text: row == null ? '' : (row[nameColumnFor(widget.kind)] ?? '').toString());
+      text: row == null
+          ? ''
+          : (row[nameColumnFor(widget.kind)] ?? '').toString(),
+    );
     _serial = TextEditingController(
-        text: row == null ? '' : (row['serial_number'] ?? '').toString());
+      text: row == null ? '' : (row['serial_number'] ?? '').toString(),
+    );
     _location = TextEditingController(
-        text: row == null ? '' : (row['current_location'] ?? '').toString());
+      text: row == null ? '' : (row['current_location'] ?? '').toString(),
+    );
+    _date = TextEditingController(
+      text: row == null ? '' : (row['acquisition_date'] ?? '').toString(),
+    );
+    _price = TextEditingController(
+      text: row == null ? '' : (row['purchase_price'] ?? '').toString(),
+    );
+    _condition = TextEditingController(
+      text: row == null ? '' : (row['condition'] ?? '').toString(),
+    );
     _notes = TextEditingController(
-        text: row == null ? '' : (row['notes'] ?? '').toString());
+      text: row == null ? '' : (row['notes'] ?? '').toString(),
+    );
     _status = row?['status']?.toString() ?? defaultStatus(widget.kind);
+    _vendorId = row?['vendor_id'] as int?;
   }
 
   @override
   void dispose() {
-    for (final c in [_code, _name, _serial, _location, _notes]) {
+    for (final c in [
+      _code,
+      _name,
+      _serial,
+      _location,
+      _date,
+      _price,
+      _condition,
+      _notes,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -106,39 +139,42 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
       showSnack(context, 'Name is required.', error: true);
       return;
     }
+    final priceText = _price.text.trim();
+    final price = parseSaleAmount(priceText);
+    if (priceText.isNotEmpty && price == null) {
+      showSnack(context, 'Purchase price must be a number.', error: true);
+      return;
+    }
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     final table = tableFor(widget.kind);
+    final values = {
+      codeColumnFor(widget.kind): code,
+      nameColumnFor(widget.kind): name,
+      'status': _status,
+      'serial_number': _serial.text.trim().isEmpty ? null : _serial.text.trim(),
+      'current_location': _location.text.trim(),
+      'acquisition_date': _date.text.trim().isEmpty ? null : _date.text.trim(),
+      'purchase_price': price,
+      'vendor_id': _vendorId,
+      'condition': _condition.text.trim().isEmpty
+          ? null
+          : _condition.text.trim(),
+      'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      if (!_isEdit && widget.kind != 'part') 'batch_id': kOldBatchId,
+    };
     try {
       if (_isEdit) {
-        await db.from(table).update({
-          nameColumnFor(widget.kind): name,
-          'status': _status,
-          'serial_number': _serial.text.trim().isEmpty
-              ? null
-              : _serial.text.trim(),
-          'current_location': _location.text.trim(),
-          'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-        }).eq('id', widget.row!['id']);
+        await db.from(table).update(values).eq('id', widget.row!['id']);
       } else {
-        await db.from(table).insert({
-          codeColumnFor(widget.kind): code,
-          nameColumnFor(widget.kind): name,
-          'status': _status,
-          if (_serial.text.trim().isNotEmpty)
-            'serial_number': _serial.text.trim(),
-          'current_location': _location.text.trim(),
-          if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
-          // machines, probes and printers belong to BATCH-OLD; parts are
-          // shared and have no batch_id column
-          if (widget.kind != 'part') 'batch_id': kOldBatchId,
-        });
+        await db.from(table).insert(values);
       }
       _invalidate();
       if (!mounted) return;
       Navigator.pop(context);
-      messenger.showSnackBar(SnackBar(
-          content: Text(_isEdit ? '$code updated.' : '$code added.')));
+      messenger.showSnackBar(
+        SnackBar(content: Text(_isEdit ? '$code updated.' : '$code added.')),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -154,11 +190,13 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
         title: Text('Delete $code?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -170,15 +208,11 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await db
-          .from(tableFor(widget.kind))
-          .delete()
-          .eq('id', widget.row!['id']);
+      await db.from(tableFor(widget.kind)).delete().eq('id', widget.row!['id']);
       _invalidate();
       if (!mounted) return;
       Navigator.pop(context);
-      messenger
-          .showSnackBar(SnackBar(content: Text('$code deleted.')));
+      messenger.showSnackBar(SnackBar(content: Text('$code deleted.')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -196,6 +230,17 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
 
   @override
   Widget build(BuildContext context) {
+    final vendors = ref
+        .watch(vendorsProvider)
+        .maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final vendorOptions = [
+      if (_vendorId != null && !vendors.any((v) => v['id'] == _vendorId))
+        {'id': _vendorId, 'name': 'Vendor #$_vendorId'},
+      ...vendors,
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
@@ -206,11 +251,14 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
             children: [
               Expanded(
                 child: Text(
-                    _isEdit
-                        ? 'Edit ${_code.text}'
-                        : 'Add ${kindLabel(widget.kind).toLowerCase()}',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800)),
+                  _isEdit
+                      ? 'Edit ${_code.text}'
+                      : 'Add ${kindLabel(widget.kind).toLowerCase()}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -227,42 +275,44 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
                   TextField(
                     controller: _code,
                     autocorrect: false,
-                    enabled: !_isEdit,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: 'Code *',
-                      hintText: _isEdit
-                          ? 'Cannot change an existing code'
-                          : 'e.g. 123, OLD-45',
+                      hintText: 'e.g. 123, OLD-45',
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _name,
                     decoration: InputDecoration(
-                        labelText: '${kindLabel(widget.kind)} name *'),
+                      labelText: '${kindLabel(widget.kind)} name *',
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _serial,
                     autocorrect: false,
                     decoration: const InputDecoration(
-                        labelText: 'Serial number (optional)'),
+                      labelText: 'Serial number (optional)',
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  Text('Status',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Status',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('old-status-$_status'),
                     initialValue: _status,
                     items: statusOptions(widget.kind)
-                        .map((s) =>
-                            DropdownMenuItem(value: s, child: Text(s)))
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                         .toList(),
                     onChanged: (v) => setState(
-                        () => _status = v ?? defaultStatus(widget.kind)),
+                      () => _status = v ?? defaultStatus(widget.kind),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -270,11 +320,57 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
                     decoration: const InputDecoration(labelText: 'Location'),
                   ),
                   const SizedBox(height: 12),
+                  DateField(controller: _date, label: 'Acquisition date'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _price,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Purchase price',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Vendor',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<int?>(
+                    key: ValueKey('old-vendor-$_vendorId'),
+                    initialValue: _vendorId,
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('(none)'),
+                      ),
+                      for (final vendor in vendorOptions)
+                        DropdownMenuItem<int?>(
+                          value: vendor['id'] as int,
+                          child: Text(
+                            (vendor['name'] ?? '').toString(),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() => _vendorId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _condition,
+                    decoration: const InputDecoration(labelText: 'Condition'),
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _notes,
                     maxLines: 2,
-                    decoration:
-                        const InputDecoration(labelText: 'Notes (optional)'),
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                    ),
                   ),
                 ],
               ),
@@ -286,7 +382,8 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
               if (_isEdit)
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.error),
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                  ),
                   onPressed: _saving ? null : _delete,
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('Delete'),
@@ -298,7 +395,8 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Text(_isEdit ? 'Save changes' : 'Add'),
               ),
             ],

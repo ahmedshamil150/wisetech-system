@@ -7,8 +7,7 @@ import '../common/widgets.dart';
 class ManualScreen extends StatelessWidget {
   const ManualScreen({super.key});
 
-  static const _sections =
-      <({IconData icon, String title, List<String> lines})>[
+  static const _sections = <({IconData icon, String title, List<String> lines})>[
     (
       icon: Icons.login_outlined,
       title: 'Signing in',
@@ -103,7 +102,10 @@ class ManualScreen extends StatelessWidget {
         'The imported system lives on its own side: old stock and old movements.',
         'Switch to it from the menu, and back from the old menu.',
         'Old sales show in the one Sales list on the current side.',
-        'Admins can add and correct old rows; the import stays as it came in otherwise.',
+        'Admins can edit old stock, old movements and imported sales.',
+        'An imported sale opens with its old invoice number, buyer and items.',
+        'Add an item from stock or type a custom one; tap a line to edit it and use its close button to remove it.',
+        'Removed items go back to stock only when no other sale or sold send still names them.',
       ],
     ),
     (
@@ -135,9 +137,13 @@ class ManualScreen extends StatelessWidget {
                       Icon(section.icon, size: 20, color: scheme.primary),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(section.title,
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w800)),
+                        child: Text(
+                          section.title,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -148,12 +154,15 @@ class ManualScreen extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('•  ',
-                              style: TextStyle(color: scheme.outline)),
+                          Text('•  ', style: TextStyle(color: scheme.outline)),
                           Expanded(
-                            child: Text(line,
-                                style: const TextStyle(
-                                    fontSize: 13.5, height: 1.35)),
+                            child: Text(
+                              line,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                height: 1.35,
+                              ),
+                            ),
                           ),
                         ],
                       ),

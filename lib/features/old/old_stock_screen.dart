@@ -60,24 +60,38 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
             ],
           ),
         ),
-        oldSearchField(context,
-            hint: 'Search old stock',
-            onChanged: (value) => setState(() {
-                  _query = value.trim();
-                  _page = 0;
-                })),
+        oldSearchField(
+          context,
+          hint: 'Search old stock',
+          onChanged: (value) => setState(() {
+            _query = value.trim();
+            _page = 0;
+          }),
+        ),
         Expanded(
           child: TabBarView(
             controller: _tab,
             children: [
-              _MachinesPane(search: _query, page: _page, onPage: (p) =>
-                  setState(() => _page = p)),
-              _ProbesPane(search: _query, page: _page, onPage: (p) =>
-                  setState(() => _page = p)),
-              _PrintersPane(search: _query, page: _page, onPage: (p) =>
-                  setState(() => _page = p)),
-              _PartsPane(search: _query, page: _page, onPage: (p) =>
-                  setState(() => _page = p)),
+              _MachinesPane(
+                search: _query,
+                page: _page,
+                onPage: (p) => setState(() => _page = p),
+              ),
+              _ProbesPane(
+                search: _query,
+                page: _page,
+                onPage: (p) => setState(() => _page = p),
+              ),
+              _PrintersPane(
+                search: _query,
+                page: _page,
+                onPage: (p) => setState(() => _page = p),
+              ),
+              _PartsPane(
+                search: _query,
+                page: _page,
+                onPage: (p) => setState(() => _page = p),
+              ),
             ],
           ),
         ),
@@ -104,8 +118,10 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Text('Add to old stock',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              child: Text(
+                'Add to old stock',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
             ),
             for (final (kind, label, icon) in const [
               ('machine', 'Machine', Icons.computer_outlined),
@@ -133,10 +149,13 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
 /// Tapping the row opens the edit form. There is no sell button here —
 /// an item is sold by sending it to the buyer from the Movements side
 /// and marking that send sold.
-Widget _oldItemTile(BuildContext context, Map<String, dynamic> row,
-    {required String code,
-    required String name,
-    VoidCallback? onTap}) {
+Widget _oldItemTile(
+  BuildContext context,
+  Map<String, dynamic> row, {
+  required String code,
+  required String name,
+  VoidCallback? onTap,
+}) {
   final serial = (row['serial_number'] ?? '').toString();
   final status = (row['status'] ?? '').toString();
   final location = (row['current_location'] ?? '').toString();
@@ -147,14 +166,18 @@ Widget _oldItemTile(BuildContext context, Map<String, dynamic> row,
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          child: Text(code.isEmpty ? '?' : code.characters.first.toUpperCase(),
-              style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer)),
+          child: Text(
+            code.isEmpty ? '?' : code.characters.first.toUpperCase(),
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+          ),
         ),
         title: Text(
-            code.isEmpty ? (serial.isEmpty ? name : serial) : code,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+          code.isEmpty ? (serial.isEmpty ? name : serial) : code,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -166,13 +189,15 @@ Widget _oldItemTile(BuildContext context, Map<String, dynamic> row,
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    [if (serial.isNotEmpty) serial, location]
-                        .where((s) => s.isNotEmpty)
-                        .join(' · '),
+                    [
+                      if (serial.isNotEmpty) serial,
+                      location,
+                    ].where((s) => s.isNotEmpty).join(' · '),
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.outline),
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
                 ),
               ],
@@ -186,16 +211,20 @@ Widget _oldItemTile(BuildContext context, Map<String, dynamic> row,
 }
 
 class _MachinesPane extends ConsumerWidget {
-  const _MachinesPane(
-      {required this.search, required this.page, required this.onPage});
+  const _MachinesPane({
+    required this.search,
+    required this.page,
+    required this.onPage,
+  });
   final String search;
   final int page;
   final ValueChanged<int> onPage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(oldMachinesProvider(
-        (page: page, search: search, status: 'All')));
+    final data = ref.watch(
+      oldMachinesProvider((page: page, search: search, status: 'All')),
+    );
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) =>
@@ -206,26 +235,33 @@ class _MachinesPane extends ConsumerWidget {
         page: page,
         onPageChanged: onPage,
         emptyMessage: 'No old machines match this search.',
-        rowBuilder: (row) => _oldItemTile(context, row,
-            code: (row['machine_id'] ?? '').toString(),
-            name: (row['model'] ?? '').toString(),
-            onTap: () => showOldItemForm(context, kind: 'machine', row: row)),
+        rowBuilder: (row) => _oldItemTile(
+          context,
+          row,
+          code: (row['machine_id'] ?? '').toString(),
+          name: (row['model'] ?? '').toString(),
+          onTap: () => showOldItemForm(context, kind: 'machine', row: row),
+        ),
       ),
     );
   }
 }
 
 class _ProbesPane extends ConsumerWidget {
-  const _ProbesPane(
-      {required this.search, required this.page, required this.onPage});
+  const _ProbesPane({
+    required this.search,
+    required this.page,
+    required this.onPage,
+  });
   final String search;
   final int page;
   final ValueChanged<int> onPage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref
-        .watch(oldProbesProvider((page: page, search: search, status: 'All')));
+    final data = ref.watch(
+      oldProbesProvider((page: page, search: search, status: 'All')),
+    );
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) =>
@@ -236,26 +272,33 @@ class _ProbesPane extends ConsumerWidget {
         page: page,
         onPageChanged: onPage,
         emptyMessage: 'No old probes match this search.',
-        rowBuilder: (row) => _oldItemTile(context, row,
-            code: (row['internal_id'] ?? '').toString(),
-            name: (row['model'] ?? '').toString(),
-            onTap: () => showOldItemForm(context, kind: 'probe', row: row)),
+        rowBuilder: (row) => _oldItemTile(
+          context,
+          row,
+          code: (row['internal_id'] ?? '').toString(),
+          name: (row['model'] ?? '').toString(),
+          onTap: () => showOldItemForm(context, kind: 'probe', row: row),
+        ),
       ),
     );
   }
 }
 
 class _PrintersPane extends ConsumerWidget {
-  const _PrintersPane(
-      {required this.search, required this.page, required this.onPage});
+  const _PrintersPane({
+    required this.search,
+    required this.page,
+    required this.onPage,
+  });
   final String search;
   final int page;
   final ValueChanged<int> onPage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(oldPrintersProvider(
-        (page: page, search: search, status: 'All')));
+    final data = ref.watch(
+      oldPrintersProvider((page: page, search: search, status: 'All')),
+    );
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) =>
@@ -266,10 +309,13 @@ class _PrintersPane extends ConsumerWidget {
         page: page,
         onPageChanged: onPage,
         emptyMessage: 'No old printers match this search.',
-        rowBuilder: (row) => _oldItemTile(context, row,
-            code: (row['internal_id'] ?? '').toString(),
-            name: (row['name_model'] ?? '').toString(),
-            onTap: () => showOldItemForm(context, kind: 'printer', row: row)),
+        rowBuilder: (row) => _oldItemTile(
+          context,
+          row,
+          code: (row['internal_id'] ?? '').toString(),
+          name: (row['name_model'] ?? '').toString(),
+          onTap: () => showOldItemForm(context, kind: 'printer', row: row),
+        ),
       ),
     );
   }
@@ -278,15 +324,20 @@ class _PrintersPane extends ConsumerWidget {
 /// Parts are shared between both sides; this pane reuses the regular
 /// inventory provider filtered to parts so counts stay consistent.
 class _PartsPane extends ConsumerWidget {
-  const _PartsPane(
-      {required this.search, required this.page, required this.onPage});
+  const _PartsPane({
+    required this.search,
+    required this.page,
+    required this.onPage,
+  });
   final String search;
   final int page;
   final ValueChanged<int> onPage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final all = ref.watch(inventoryProvider).maybeWhen(
+    final all = ref
+        .watch(inventoryProvider)
+        .maybeWhen(
           data: (rows) => rows.where((i) => i.kind == 'part').toList(),
           orElse: () => const <InventoryItem>[],
         );
@@ -294,18 +345,22 @@ class _PartsPane extends ConsumerWidget {
     final filtered = term.isEmpty
         ? all
         : all
-            .where((i) =>
-                i.code.toLowerCase().contains(term) ||
-                i.name.toLowerCase().contains(term) ||
-                (i.serial ?? '').toLowerCase().contains(term))
-            .toList();
+              .where(
+                (i) =>
+                    i.code.toLowerCase().contains(term) ||
+                    i.name.toLowerCase().contains(term) ||
+                    (i.serial ?? '').toLowerCase().contains(term),
+              )
+              .toList();
     final start = page * 50;
     final slice = start >= filtered.length
         ? const <InventoryItem>[]
         : filtered.skip(start).take(50).toList();
     if (filtered.isEmpty) {
       return const EmptyState(
-          icon: Icons.inbox_outlined, message: 'No parts match this search.');
+        icon: Icons.inbox_outlined,
+        message: 'No parts match this search.',
+      );
     }
     return OldTable(
       rows: [
@@ -317,16 +372,19 @@ class _PartsPane extends ConsumerWidget {
             'serial': item.serial ?? '',
             'status': item.status,
             'location': item.location,
-          }
+          },
       ],
       total: filtered.length,
       page: page,
       onPageChanged: onPage,
       emptyMessage: 'No parts match this search.',
-      rowBuilder: (row) => _oldItemTile(context, row,
-          code: (row['code'] ?? '').toString(),
-          name: (row['name'] ?? '').toString(),
-          onTap: () => _openPart(context, row['id'] as int)),
+      rowBuilder: (row) => _oldItemTile(
+        context,
+        row,
+        code: (row['code'] ?? '').toString(),
+        name: (row['name'] ?? '').toString(),
+        onTap: () => _openPart(context, row['id'] as int),
+      ),
     );
   }
 
@@ -336,7 +394,9 @@ class _PartsPane extends ConsumerWidget {
     final rows = await db
         .from('parts')
         .select(
-            'id, internal_id, name_model, serial_number, status, current_location, notes')
+          'id, internal_id, name_model, serial_number, status, current_location, notes, '
+          'acquisition_date, purchase_price, vendor_id, condition',
+        )
         .eq('id', id)
         .limit(1);
     if (!context.mounted || rows.isEmpty) return;

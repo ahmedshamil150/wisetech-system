@@ -36,21 +36,27 @@ Future<OldPage> _paged(
 // between the two sides and are listed in both.
 // ---------------------------------------------------------------------------
 
-final oldMachinesProvider =
-    FutureProvider.family<OldPage, OldArgs>((ref, args) {
+final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
+  ref,
+  args,
+) {
   return _paged(
     () {
-      PostgrestFilterBuilder<PostgrestList> query = _db.from('machines')
+      PostgrestFilterBuilder<PostgrestList> query = _db
+          .from('machines')
           .select(
-              'id, machine_id, model, serial_number, status, current_location, notes, acquisition_date')
+            'id, machine_id, model, serial_number, status, current_location, notes, '
+            'acquisition_date, purchase_price, vendor_id, condition',
+          )
           .eq('batch_id', kOldBatchId);
       if (args.status != 'All') {
         query = query.eq('status', args.status);
       }
       if (args.search.isNotEmpty) {
         final t = args.search;
-        query = query
-            .or('machine_id.ilike.%$t%,model.ilike.%$t%,serial_number.ilike.%$t%');
+        query = query.or(
+          'machine_id.ilike.%$t%,model.ilike.%$t%,serial_number.ilike.%$t%',
+        );
       }
       return query;
     },
@@ -66,13 +72,15 @@ final oldMachinesProvider =
   );
 });
 
-final oldProbesProvider =
-    FutureProvider.family<OldPage, OldArgs>((ref, args) {
+final oldProbesProvider = FutureProvider.family<OldPage, OldArgs>((ref, args) {
   return _paged(
     () {
-      PostgrestFilterBuilder<PostgrestList> query = _db.from('probes')
+      PostgrestFilterBuilder<PostgrestList> query = _db
+          .from('probes')
           .select(
-              'id, internal_id, model, serial_number, status, current_location, notes')
+            'id, internal_id, model, serial_number, status, current_location, notes, '
+            'acquisition_date, purchase_price, vendor_id, condition',
+          )
           .eq('batch_id', kOldBatchId)
           // a probe sitting in a box belongs to the box sheet, not the
           // stock list — unboxing puts it back here
@@ -82,8 +90,9 @@ final oldProbesProvider =
       }
       if (args.search.isNotEmpty) {
         final t = args.search;
-        query = query
-            .or('internal_id.ilike.%$t%,model.ilike.%$t%,serial_number.ilike.%$t%');
+        query = query.or(
+          'internal_id.ilike.%$t%,model.ilike.%$t%,serial_number.ilike.%$t%',
+        );
       }
       return query;
     },
@@ -100,21 +109,27 @@ final oldProbesProvider =
   );
 });
 
-final oldPrintersProvider =
-    FutureProvider.family<OldPage, OldArgs>((ref, args) {
+final oldPrintersProvider = FutureProvider.family<OldPage, OldArgs>((
+  ref,
+  args,
+) {
   return _paged(
     () {
-      PostgrestFilterBuilder<PostgrestList> query = _db.from('printers')
+      PostgrestFilterBuilder<PostgrestList> query = _db
+          .from('printers')
           .select(
-              'id, internal_id, name_model, serial_number, status, current_location, notes')
+            'id, internal_id, name_model, serial_number, status, current_location, notes, '
+            'acquisition_date, purchase_price, vendor_id, condition',
+          )
           .eq('batch_id', kOldBatchId);
       if (args.status != 'All') {
         query = query.eq('status', args.status);
       }
       if (args.search.isNotEmpty) {
         final t = args.search;
-        query = query
-            .or('internal_id.ilike.%$t%,name_model.ilike.%$t%,serial_number.ilike.%$t%');
+        query = query.or(
+          'internal_id.ilike.%$t%,name_model.ilike.%$t%,serial_number.ilike.%$t%',
+        );
       }
       return query;
     },
@@ -136,20 +151,26 @@ final oldPrintersProvider =
 
 typedef OldMovementsArgs = ({int page, String search});
 
-final oldMovementsProvider =
-    FutureProvider.family<OldPage, OldMovementsArgs>((ref, args) {
+final oldMovementsProvider = FutureProvider.family<OldPage, OldMovementsArgs>((
+  ref,
+  args,
+) {
   return _paged(
     () {
-      PostgrestFilterBuilder<PostgrestList> query = _db.from('movements').select(
-          'id, movement_type, movement_date, from_location, to_location, reason, notes, '
-          'machine_id, probe_id, printer_id, part_id, old_source_id, '
-          'machines(machine_id, model), probes(internal_id, model), '
-          'printers(internal_id, name_model), parts(internal_id, name_model)');
+      PostgrestFilterBuilder<PostgrestList> query = _db
+          .from('movements')
+          .select(
+            'id, movement_type, movement_date, from_location, to_location, reason, reference, notes, '
+            'machine_id, probe_id, printer_id, part_id, old_source_id, '
+            'machines(machine_id, model), probes(internal_id, model), '
+            'printers(internal_id, name_model), parts(internal_id, name_model)',
+          );
       query = query.eq('movement_type', 'Legacy');
       if (args.search.isNotEmpty) {
         final t = args.search;
-        query = query
-            .or('from_location.ilike.%$t%,to_location.ilike.%$t%,notes.ilike.%$t%');
+        query = query.or(
+          'from_location.ilike.%$t%,to_location.ilike.%$t%,notes.ilike.%$t%',
+        );
       }
       return query;
     },
@@ -203,7 +224,9 @@ PostgrestFilterBuilder<PostgrestList> _salesQuery(
   List<int> itemSaleIds = const [],
   List<int> customerIds = const [],
 }) {
-  PostgrestFilterBuilder<PostgrestList> query = _db.from('sales').select(select);
+  PostgrestFilterBuilder<PostgrestList> query = _db
+      .from('sales')
+      .select(select);
   if (args.dateFrom.isNotEmpty) {
     query = query.gte('sale_date', oldDisplayToIso(args.dateFrom));
   }
@@ -242,8 +265,10 @@ PostgrestFilterBuilder<PostgrestList> _salesQuery(
   return query;
 }
 
-final oldSalesProvider =
-    FutureProvider.family<OldPage, OldSalesArgs>((ref, args) async {
+final oldSalesProvider = FutureProvider.family<OldPage, OldSalesArgs>((
+  ref,
+  args,
+) async {
   final t = args.search.trim();
   var itemSaleIds = <int>[];
   var customerIds = <int>[];
@@ -257,18 +282,19 @@ final oldSalesProvider =
       _db.from('customers').select('id').ilike('name', '%$t%').limit(500),
     ]);
     itemSaleIds = ((lookups[0] as PostgrestList)
-            .map((r) => r['sale_id'] as int)
-            .toSet()
-            .toList());
+        .map((r) => r['sale_id'] as int)
+        .toSet()
+        .toList());
     customerIds = ((lookups[1] as PostgrestList)
-            .map((r) => r['id'] as int)
-            .toSet()
-            .toList());
+        .map((r) => r['id'] as int)
+        .toSet()
+        .toList());
   }
   return _paged(
     () => _salesQuery(
       args,
-      select: 'id, sale_date, invoice_reference, sale_price, notes, old_trno, '
+      select:
+          'id, sale_date, invoice_reference, sale_price, notes, old_trno, '
           'old_source_id, customer_id, customers(name), '
           'sale_items(item_description, item_serial, item_price, item_type, '
           'is_main_item)',

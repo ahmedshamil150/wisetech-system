@@ -11,17 +11,21 @@ import '../old/old_table.dart';
 /// Every recorded sale with its lines — the imported history plus the
 /// ones recorded since — in one fetch. The screen filters it in memory;
 /// nothing is ever written here.
-final allSalesProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allSalesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   // past 1,000 rows PostgREST would truncate the sales list silently
-  final rows = await fetchAllPages(() => db
-      .from('sales')
-      .select(
+  final rows = await fetchAllPages(
+    () => db
+        .from('sales')
+        .select(
           'id, sale_date, invoice_reference, sale_price, notes, old_trno, '
           'old_source_id, customer_id, customers(name), '
           'sale_items(item_description, item_serial, item_price, item_type, '
-          'is_main_item, machine_id, probe_id, printer_id, part_id)')
-      .order('id', ascending: false));
+          'is_main_item, machine_id, probe_id, printer_id, part_id)',
+        )
+        .order('id', ascending: false),
+  );
   return rows;
 });
 
@@ -144,7 +148,8 @@ List<SaleEntry> mergeSaleEntries({
   for (final key in order) {
     final rows = groups[key]!;
     final first = rows.first;
-    final party = (first['customers'] as Map?) ??
+    final party =
+        (first['customers'] as Map?) ??
         (first['dealers'] as Map?) ??
         (first['workshops'] as Map?);
     final parts = <String>[];
@@ -183,7 +188,7 @@ Set<String> saleEntryItemTypes(SaleEntry entry) {
   if (entry.source == 'sale') {
     final lines = (entry.row['sale_items'] as List?)?.cast<Map>() ?? const [];
     return {
-      for (final line in lines) '${line['item_type'] ?? ''}'.toLowerCase()
+      for (final line in lines) '${line['item_type'] ?? ''}'.toLowerCase(),
     };
   }
   return {
@@ -248,8 +253,9 @@ OldSaleBuyer oldSaleBuyer(Map<String, dynamic> row) {
   if (customer.isNotEmpty) return (name: customer, kind: 'Customer');
   final notes = (row['notes'] ?? '').toString();
   for (final line in notes.split('\n')) {
-    final m = RegExp(r'^party:(dealer|branch|customer|none):(.+)$')
-        .firstMatch(line.trim());
+    final m = RegExp(
+      r'^party:(dealer|branch|customer|none):(.+)$',
+    ).firstMatch(line.trim());
     if (m != null) {
       final kind = switch (m.group(1)) {
         'dealer' => 'Dealer',
@@ -280,9 +286,14 @@ Widget _buyerChip(BuildContext context, String kind) {
       color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(8),
     ),
-    child: Text(kind,
-        style: TextStyle(
-            fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
+    child: Text(
+      kind,
+      style: TextStyle(
+        fontSize: 10.5,
+        fontWeight: FontWeight.w700,
+        color: color,
+      ),
+    ),
   );
 }
 
@@ -318,8 +329,11 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   Map<String, String>? _entriesLabelsSource;
   List<SaleEntry>? _entriesCache;
 
-  List<SaleEntry> _entriesFor(List<Map<String, dynamic>> salesRows,
-      List<Map<String, dynamic>> movementRows, Map<String, String> labels) {
+  List<SaleEntry> _entriesFor(
+    List<Map<String, dynamic>> salesRows,
+    List<Map<String, dynamic>> movementRows,
+    Map<String, String> labels,
+  ) {
     if (identical(salesRows, _entriesSalesSource) &&
         identical(movementRows, _entriesMovementsSource) &&
         identical(labels, _entriesLabelsSource)) {
@@ -370,25 +384,27 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   }
 
   Future<void> _openFilters() async {
-    final result = await showAppSheet<
-        ({
-          String source,
-          String buyerType,
-          String itemType,
-          String dateFrom,
-          String dateTo,
-        })>(
-      context: context,
-      title: 'Filter sales',
-      heightFraction: 0.8,
-      builder: (sheetContext) => _SalesFilterSheet(
-        source: _source,
-        buyerType: _buyerType,
-        itemType: _itemType,
-        dateFrom: _dateFrom,
-        dateTo: _dateTo,
-      ),
-    );
+    final result =
+        await showAppSheet<
+          ({
+            String source,
+            String buyerType,
+            String itemType,
+            String dateFrom,
+            String dateTo,
+          })
+        >(
+          context: context,
+          title: 'Filter sales',
+          heightFraction: 0.8,
+          builder: (sheetContext) => _SalesFilterSheet(
+            source: _source,
+            buyerType: _buyerType,
+            itemType: _itemType,
+            dateFrom: _dateFrom,
+            dateTo: _dateTo,
+          ),
+        );
     if (result == null) return;
     setState(() {
       _source = result.source;
@@ -404,7 +420,9 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
     final isAdmin = ref.watch(isAdminProvider);
     final scheme = Theme.of(context).colorScheme;
     final sales = ref.watch(allSalesProvider);
-    final movements = ref.watch(allMovementsProvider).maybeWhen(
+    final movements = ref
+        .watch(allMovementsProvider)
+        .maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
@@ -412,8 +430,9 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
     return Column(
       children: [
         SearchField(
-            hint: 'Search sales by buyer, item, serial or invoice',
-            onChanged: (value) => setState(() => _query = value.trim())),
+          hint: 'Search sales by buyer, item, serial or invoice',
+          onChanged: (value) => setState(() => _query = value.trim()),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
           child: Row(
@@ -441,8 +460,11 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
               if (_activeFilterCount > 0)
                 IconButton(
                   tooltip: 'Clear filters',
-                  icon: Icon(Icons.close,
-                      size: 20, color: Theme.of(context).colorScheme.error),
+                  icon: Icon(
+                    Icons.close,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                   onPressed: _clearFilters,
                 ),
               const Spacer(),
@@ -453,17 +475,19 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
           child: sales.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => EmptyState(
-                icon: Icons.error_outline, message: errorMessage(error)),
+              icon: Icons.error_outline,
+              message: errorMessage(error),
+            ),
             data: (saleRows) {
-              final entries =
-                  _entriesFor(saleRows, movements, labels);
+              final entries = _entriesFor(saleRows, movements, labels);
               final filtered = _applyFilters(entries);
               if (filtered.isEmpty) {
                 return EmptyState(
-                    icon: Icons.receipt_long_outlined,
-                    message: _hasFilters
-                        ? 'Nothing matches these filters.'
-                        : 'No sales recorded yet.');
+                  icon: Icons.receipt_long_outlined,
+                  message: _hasFilters
+                      ? 'Nothing matches these filters.'
+                      : 'No sales recorded yet.',
+                );
               }
               return AppRefresh(
                 child: ListView.builder(
@@ -476,10 +500,12 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                         padding: const EdgeInsets.only(top: 8),
                         child: Center(
                           child: Text(
-                              '${filtered.length} sale${filtered.length == 1 ? '' : 's'}',
-                              style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: scheme.onSurfaceVariant)),
+                            '${filtered.length} sale${filtered.length == 1 ? '' : 's'}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
                         ),
                       );
                     }
@@ -511,32 +537,33 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                 ? scheme.primaryContainer
                 : scheme.secondaryContainer,
             child: Icon(
-                isSend
-                    ? Icons.sell_outlined
-                    : Icons.receipt_long_outlined,
-                size: 20,
-                color: isSend
-                    ? scheme.onPrimaryContainer
-                    : scheme.onSecondaryContainer),
+              isSend ? Icons.sell_outlined : Icons.receipt_long_outlined,
+              size: 20,
+              color: isSend
+                  ? scheme.onPrimaryContainer
+                  : scheme.onSecondaryContainer,
+            ),
           ),
           title: Row(
             children: [
               Flexible(
                 child: Text(
-                    [
-                      if (hasDate) rawDate,
-                      if (isSend) 'Sold',
-                      if (!isSend &&
-                          (entry.row['old_trno'] ?? '').toString().isNotEmpty)
-                        entry.row['old_trno'].toString(),
-                      if (!isSend &&
-                          (entry.row['invoice_reference'] ?? '')
-                              .toString()
-                              .isNotEmpty)
-                        'Invoice ${entry.row['invoice_reference']}',
-                    ].join(' · '),
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                  [
+                    if (hasDate) rawDate,
+                    if (isSend) 'Sold',
+                    if (!isSend &&
+                        (entry.row['old_trno'] ?? '').toString().isNotEmpty &&
+                        entry.row['old_trno'].toString() != '0')
+                      'Old invoice ${entry.row['old_trno']}',
+                    if (!isSend &&
+                        (entry.row['invoice_reference'] ?? '')
+                            .toString()
+                            .isNotEmpty)
+                      'Invoice ${entry.row['invoice_reference']}',
+                  ].join(' · '),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
               const SizedBox(width: 6),
               if (entry.imported) oldBadge(context),
@@ -549,55 +576,74 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(entry.buyer,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.outline)),
+                      child: Text(
+                        entry.buyer,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 6),
                     _buyerChip(context, entry.buyerKind),
                   ],
                 ),
               if (entry.summary.isNotEmpty)
-                Text(entry.summary,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.outline)),
+                Text(
+                  entry.summary,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
               if (isSend && entry.soldBy.isNotEmpty)
-                Text('Sold by ${entry.soldBy}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.outline)),
+                Text(
+                  'Sold by ${entry.soldBy}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
               Row(
                 children: [
                   if (showTotal)
-                    Text('Total: ${saleAmountText(total)}',
-                        style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text(
+                      'Total: ${saleAmountText(total)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   if (isSend) ...[
                     if (showTotal) const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 1),
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
-                        color: (entry.paid
-                                ? context.colors.success
-                                : scheme.outline)
-                            .withValues(alpha: 0.12),
+                        color:
+                            (entry.paid
+                                    ? context.colors.success
+                                    : scheme.outline)
+                                .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(entry.paid ? 'Paid' : 'Unpaid',
-                          style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                              color: entry.paid
-                                  ? context.colors.success
-                                  : scheme.outline)),
+                      child: Text(
+                        entry.paid ? 'Paid' : 'Unpaid',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: entry.paid
+                              ? context.colors.success
+                              : scheme.outline,
+                        ),
+                      ),
                     ),
                   ],
                 ],
@@ -613,8 +659,11 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   // details + actions
   // -----------------------------------------------------------------------
 
-  void _showDetails(BuildContext context, SaleEntry entry,
-      {required bool isAdmin}) {
+  void _showDetails(
+    BuildContext context,
+    SaleEntry entry, {
+    required bool isAdmin,
+  }) {
     showAppSheet<void>(
       context: context,
       title: 'Sale details',
@@ -630,17 +679,23 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
 
   /// A recorded sale: its own fields and lines, plus Edit (imported
   /// sales) and Delete for admins.
-  Widget _saleDetails(BuildContext context, BuildContext sheetContext,
-      SaleEntry entry, {required bool isAdmin}) {
+  Widget _saleDetails(
+    BuildContext context,
+    BuildContext sheetContext,
+    SaleEntry entry, {
+    required bool isAdmin,
+  }) {
     final row = entry.row;
     final notes = (row['notes'] ?? '').toString();
     final cleanNotes = notes
         .split('\n')
-        .where((l) =>
-            l.trim().isNotEmpty &&
-            !l.startsWith('party:') &&
-            l != 'Unknown legacy customer' &&
-            !l.startsWith('Unknown legacy customer ('))
+        .where(
+          (l) =>
+              l.trim().isNotEmpty &&
+              !l.startsWith('party:') &&
+              l != 'Unknown legacy customer' &&
+              !l.startsWith('Unknown legacy customer ('),
+        )
         .join('\n');
     final lines = (row['sale_items'] as List?)?.cast<Map>() ?? [];
     return Column(
@@ -649,32 +704,39 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
         Row(
           children: [
             const Expanded(
-              child: Text('Sale details',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              child: Text(
+                'Sale details',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
             ),
             if (isAdmin) ...[
               TextButton.icon(
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
-                  final deleted =
-                      await confirmDeleteOldSale(context, ref, row);
+                  final deleted = await confirmDeleteOldSale(context, ref, row);
                   if (!deleted || !sheetContext.mounted) return;
                   Navigator.pop(sheetContext);
                   ref.invalidate(allSalesProvider);
-                  messenger
-                      .showSnackBar(const SnackBar(content: Text('Sale deleted.')));
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Sale deleted.')),
+                  );
                 },
-                icon: Icon(Icons.delete_outline,
-                    size: 18, color: Theme.of(context).colorScheme.error),
-                label: Text('Delete',
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error)),
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                label: Text(
+                  'Delete',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
               if (entry.imported)
                 TextButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(sheetContext);
-                    showOldSaleForm(context, row: row);
+                    await showOldSaleForm(context, row: row);
+                    ref.invalidate(allSalesProvider);
                   },
                   icon: const Icon(Icons.edit_outlined, size: 18),
                   label: const Text('Edit'),
@@ -693,39 +755,50 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 KeyValue(
-                    label: 'Date',
-                    value: (row['sale_date'] ?? '').toString().compareTo(
-                                '0010') >
-                            0
-                        ? (row['sale_date'] ?? '').toString()
-                        : 'Unknown'),
-                if ((row['old_trno'] ?? '').toString().isNotEmpty)
+                  label: 'Date',
+                  value:
+                      (row['sale_date'] ?? '').toString().compareTo('0010') > 0
+                      ? (row['sale_date'] ?? '').toString()
+                      : 'Unknown',
+                ),
+                if ((row['old_trno'] ?? '').toString().isNotEmpty &&
+                    row['old_trno'].toString() != '0')
                   KeyValue(
-                      label: 'Trno', value: (row['old_trno'] ?? '').toString()),
+                    label: 'Old invoice no.',
+                    value: (row['old_trno'] ?? '').toString(),
+                  ),
                 if ((row['invoice_reference'] ?? '').toString().isNotEmpty)
                   KeyValue(
-                      label: 'Invoice',
-                      value: (row['invoice_reference'] ?? '').toString()),
+                    label: 'Invoice',
+                    value: (row['invoice_reference'] ?? '').toString(),
+                  ),
                 KeyValue(
-                    label: 'Buyer',
-                    value: entry.buyer.isEmpty ? 'Unknown' : entry.buyer),
+                  label: 'Buyer',
+                  value: entry.buyer.isEmpty ? 'Unknown' : entry.buyer,
+                ),
                 if (entry.buyerKind.isNotEmpty)
                   KeyValue(label: 'Buyer type', value: entry.buyerKind),
                 if (row['sale_price'] != null)
-                  KeyValue(
-                      label: 'Total', value: row['sale_price'].toString()),
+                  KeyValue(label: 'Total', value: row['sale_price'].toString()),
                 if (cleanNotes.isNotEmpty)
                   KeyValue(label: 'Notes', value: cleanNotes),
                 const SizedBox(height: 12),
-                Text('Items (${lines.length})',
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
+                Text(
+                  'Items (${lines.length})',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 if (lines.isEmpty)
-                  Text('No line items recorded.',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.outline)),
+                  Text(
+                    'No line items recorded.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
                 for (final line in lines) _itemCard(context, line),
               ],
             ),
@@ -737,8 +810,12 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
 
   /// A send marked Sold: the send's own facts, its items by label, and —
   /// for admins — the way back (clear the sold mark, keep the send).
-  Widget _sendDetails(BuildContext context, BuildContext sheetContext,
-      SaleEntry entry, {required bool isAdmin}) {
+  Widget _sendDetails(
+    BuildContext context,
+    BuildContext sheetContext,
+    SaleEntry entry, {
+    required bool isAdmin,
+  }) {
     final first = entry.row;
     final notes = (first['notes'] ?? '').toString();
     final actor = first['profiles'];
@@ -752,17 +829,23 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
         Row(
           children: [
             const Expanded(
-              child: Text('Sold send',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              child: Text(
+                'Sold send',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
             ),
             if (isAdmin)
               TextButton.icon(
                 onPressed: () => _unmarkSold(context, sheetContext, entry),
-                icon: Icon(Icons.remove_shopping_cart_outlined,
-                    size: 18, color: Theme.of(context).colorScheme.error),
-                label: Text('Not sold anymore',
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error)),
+                icon: Icon(
+                  Icons.remove_shopping_cart_outlined,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                label: Text(
+                  'Not sold anymore',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
             TextButton(
               onPressed: () => Navigator.pop(sheetContext),
@@ -778,27 +861,35 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
               children: [
                 KeyValue(label: 'Date', value: entry.date),
                 KeyValue(
-                    label: 'Buyer',
-                    value: entry.buyer.isEmpty ? 'Unknown' : entry.buyer),
+                  label: 'Buyer',
+                  value: entry.buyer.isEmpty ? 'Unknown' : entry.buyer,
+                ),
                 KeyValue(label: 'Sent to', value: entry.buyerKind),
                 KeyValue(
-                    label: 'Amount',
-                    value: saleAmountText(entry.total).isEmpty
-                        ? 'Not recorded'
-                        : saleAmountText(entry.total)),
+                  label: 'Amount',
+                  value: saleAmountText(entry.total).isEmpty
+                      ? 'Not recorded'
+                      : saleAmountText(entry.total),
+                ),
                 KeyValue(
-                    label: 'Sold by',
-                    value: entry.soldBy.isEmpty
-                        ? 'Not recorded'
-                        : entry.soldBy),
-                KeyValue(label: 'Settled', value: entry.paid ? 'Paid' : 'Unpaid'),
+                  label: 'Sold by',
+                  value: entry.soldBy.isEmpty ? 'Not recorded' : entry.soldBy,
+                ),
+                KeyValue(
+                  label: 'Settled',
+                  value: entry.paid ? 'Paid' : 'Unpaid',
+                ),
                 if (actorName.isNotEmpty)
                   KeyValue(label: 'Recorded by', value: actorName),
                 if (notes.isNotEmpty) KeyValue(label: 'Notes', value: notes),
                 const SizedBox(height: 12),
-                Text('Items (${rows.length})',
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
+                Text(
+                  'Items (${rows.length})',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 for (final row in rows) _sendItemCard(context, row),
               ],
@@ -830,11 +921,14 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                       children: [
                         Flexible(
                           child: Text(
-                              description.isEmpty
-                                  ? '(no description)'
-                                  : description,
-                              style: const TextStyle(
-                                  fontSize: 13.5, fontWeight: FontWeight.w600)),
+                            description.isEmpty
+                                ? '(no description)'
+                                : description,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                         if (isMain) ...[
                           const SizedBox(width: 6),
@@ -843,15 +937,21 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                       ],
                     ),
                     if (serial.isNotEmpty)
-                      Text('Serial: $serial',
-                          style: TextStyle(fontSize: 12, color: scheme.outline)),
+                      Text(
+                        'Serial: $serial',
+                        style: TextStyle(fontSize: 12, color: scheme.outline),
+                      ),
                   ],
                 ),
               ),
               if (price != null && price.toString() != '0')
-                Text(price.toString(),
-                    style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(
+                  price.toString(),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
             ],
           ),
         ),
@@ -870,9 +970,10 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
       child: AppCard(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(label,
-              style:
-                  const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+          ),
         ),
       ),
     );
@@ -881,19 +982,24 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   /// The way back from a sold send: clear the sold mark and the amount.
   /// The send itself, its rows and the items' history all stay — it can
   /// be marked sold again at any time.
-  Future<void> _unmarkSold(BuildContext context, BuildContext sheetContext,
-      SaleEntry entry) async {
+  Future<void> _unmarkSold(
+    BuildContext context,
+    BuildContext sheetContext,
+    SaleEntry entry,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Not a sale anymore?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Remove sold mark'),
           ),
@@ -995,9 +1101,10 @@ class _SalesFilterSheetState extends State<_SalesFilterSheet> {
           Row(
             children: [
               const Expanded(
-                child: Text('Filter sales',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Filter sales',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -1014,8 +1121,7 @@ class _SalesFilterSheetState extends State<_SalesFilterSheet> {
                   Row(
                     children: [
                       Expanded(
-                        child:
-                            DateField(controller: _from, label: 'From date'),
+                        child: DateField(controller: _from, label: 'From date'),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -1052,7 +1158,9 @@ class _SalesFilterSheetState extends State<_SalesFilterSheet> {
                     items: [
                       for (final option in _itemTypes.entries)
                         DropdownMenuItem(
-                            value: option.key, child: Text(option.value)),
+                          value: option.key,
+                          child: Text(option.value),
+                        ),
                     ],
                     onChanged: (value) =>
                         setState(() => _itemType = value ?? 'All'),
