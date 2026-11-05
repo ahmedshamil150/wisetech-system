@@ -344,24 +344,6 @@ MapEntry<String, int>? movementItemKey(Map<String, dynamic> row) {
   return null;
 }
 
-/// The newest movement row of every item in [rows], keyed `kind:id`.
-/// Whether an item is still out, back in stock or moved on is read off
-/// this — the list, the counts and the detail sheet all share it.
-Map<String, Map<String, dynamic>> latestMovementByItem(
-  Iterable<Map<String, dynamic>> rows,
-) {
-  final latest = <String, Map<String, dynamic>>{};
-  for (final row in rows) {
-    final key = movementItemKey(row);
-    if (key == null) continue;
-    final mapKey = '${key.key}:${key.value}';
-    final id = row['id'] as int;
-    final seen = latest[mapKey];
-    if (seen == null || id > (seen['id'] as int)) latest[mapKey] = row;
-  }
-  return latest;
-}
-
 /// Every item's movement rows, oldest first — by the day the movement
 /// happened, then by row id when two share a day. A send's state is read
 /// off this history: a return recorded after it closes the send even if

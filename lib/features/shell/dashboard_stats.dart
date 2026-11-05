@@ -67,11 +67,7 @@ DashPeriod? dashCustomPeriod(String from, String to) {
   final start = reportDate(from);
   final end = reportDate(to);
   if (start == null || end == null || end.isBefore(start)) return null;
-  return (
-    from: start,
-    to: end,
-    label: '${_day(start)} – ${_day(end)}',
-  );
+  return (from: start, to: end, label: '${_day(start)} – ${_day(end)}');
 }
 
 /// Whether a stored date sits inside [period]. All time counts every
@@ -96,8 +92,7 @@ String? saleLineItemKey(Map line) {
 
 /// The batch code an item sits in, read off [batchByItem] (built from
 /// the full item list). '' when the item is unknown.
-String itemBatchOf(
-    Map<String, dynamic> row, Map<String, String> batchByItem) {
+String itemBatchOf(Map<String, dynamic> row, Map<String, String> batchByItem) {
   final key = movementItemKey(row);
   if (key == null) return '';
   return batchByItem['${key.key}:${key.value}'] ?? '';
@@ -107,7 +102,10 @@ String itemBatchOf(
 /// batch — a mixed-batch sale can't be split by amount, so it stays in
 /// the all-batches numbers alone. Sends without items never match.
 bool dashEntryMatchesBatch(
-    SaleEntry entry, String batch, Map<String, String> batchByItem) {
+  SaleEntry entry,
+  String batch,
+  Map<String, String> batchByItem,
+) {
   if (batch.isEmpty) return true;
   if (entry.source == 'send') {
     if (entry.rows.isEmpty) return false;
@@ -156,7 +154,7 @@ DashStats computeDashStats({
   bool inBatch(Map<String, dynamic> row) =>
       batch.isEmpty || itemBatchOf(row, batchByItem) == batch;
 
-  final latest = latestMovementByItem(movementRows);
+  final history = movementHistoryByItem(movementRows);
   final sendGroups = <String, Set<String>>{};
   var itemCount = 0;
   var returned = 0;
@@ -171,10 +169,14 @@ DashStats computeDashStats({
     if (type == 'Return') {
       returned++;
       // an item that came back and was sent out again is no longer in
-      // stock — only the item whose latest movement is this return counts
+      // stock — only the item whose return is its newest event counts
       final key = movementItemKey(row);
-      final last = key == null ? null : latest['${key.key}:${key.value}'];
-      if (last != null && last['id'] == row['id']) returnedBack++;
+      final events = key == null ? null : history['${key.key}:${key.value}'];
+      if (events != null &&
+          events.isNotEmpty &&
+          events.last['id'] == row['id']) {
+        returnedBack++;
+      }
       continue;
     }
     if (!_sendKinds.contains(type)) continue;
@@ -187,8 +189,10 @@ DashStats computeDashStats({
   final sendsByKind = {
     for (final entry in sendGroups.entries) entry.key: entry.value.length,
   };
-  final sendCount =
-      sendGroups.values.fold<int>(0, (sum, groups) => sum + groups.length);
+  final sendCount = sendGroups.values.fold<int>(
+    0,
+    (sum, groups) => sum + groups.length,
+  );
 
   var salesCount = 0;
   var salesAmount = 0.0;

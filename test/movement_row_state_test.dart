@@ -46,11 +46,17 @@ void main() {
     });
   });
 
-  group('latestMovementByItem', () {
-    test('keeps the newest row of every item, keyed kind:id', () {
-      final latest = latestMovementByItem(_history);
+  group('movementHistoryByItem', () {
+    test('keys every item and skips rows that name none', () {
+      final history = movementHistoryByItem([
+        _row(1, 'machine', 29),
+        _row(2, 'probe', 54),
+        _row(3, 'printer', 45825),
+        _row(4, 'machine', 27),
+        {'id': 5, 'movement_type': 'Return'},
+      ]);
       expect(
-        latest.keys,
+        history.keys,
         unorderedEquals([
           'machine:29',
           'probe:54',
@@ -58,20 +64,8 @@ void main() {
           'machine:27',
         ]),
       );
-      expect(latest['machine:29']!['id'], 20);
-      expect(latest['machine:27']!['id'], 14);
-      expect(latest['probe:54']!['id'], 11);
     });
 
-    test('skips rows that name no item', () {
-      final latest = latestMovementByItem([
-        {'id': 1, 'movement_type': 'Return'},
-      ]);
-      expect(latest, isEmpty);
-    });
-  });
-
-  group('movementHistoryByItem', () {
     test('orders each item by the day it moved, then by id', () {
       final history = movementHistoryByItem([
         _row(9, 'machine', 29, date: '02-11-2026'),
