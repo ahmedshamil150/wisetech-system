@@ -55,14 +55,18 @@ final brandsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return await _db.from('brands').select('id, name, notes').order('name');
 });
 
-final productsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   return await _db
       .from('catalog_products')
       .select('id, name_model, category, probe_type, brand_id, brands(name)')
       .order('name_model');
 });
 
-final customersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final customersProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   return await _db
       .from('customers')
       .select('id, name, phone, city, address, customer_type, notes')
@@ -77,24 +81,33 @@ final dealersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
 });
 
 final vendorsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  return await _db.from('vendors').select('id, name, phone, city, address').order('name');
+  return await _db
+      .from('vendors')
+      .select('id, name, phone, city, address')
+      .order('name');
 });
 
-final workshopsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  return await _db.from('workshops').select('id, name, city, phone').order('name');
+final workshopsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  return await _db
+      .from('workshops')
+      .select('id, name, city, phone')
+      .order('name');
 });
 
 final batchesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return await _db
       .from('batches')
-      .select(
-          'id, code, letter, arrival_date, vendor_id, notes, vendors(name)')
+      .select('id, code, letter, arrival_date, vendor_id, notes, vendors(name)')
       .neq('code', 'BATCH-OLD')
       .order('id');
 });
 
 /// Boxes the leftover probes are kept in. Each box holds one probe type.
-final probeBoxesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final probeBoxesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   return await _db
       .from('probe_boxes')
       .select('id, name, probe_type, notes')
@@ -124,10 +137,10 @@ final currentBatchProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
 });
 
 Future<void> setCurrentBatch(int batchId) async {
-  await _db.from('app_settings').upsert(
-        {'key': 'current_batch_id', 'value': batchId.toString()},
-        onConflict: 'key',
-      );
+  await _db.from('app_settings').upsert({
+    'key': 'current_batch_id',
+    'value': batchId.toString(),
+  }, onConflict: 'key');
 }
 
 // ---------------------------------------------------------------------------
@@ -192,14 +205,15 @@ class InventoryItem {
 
   String get key => '$kind:$id';
 
-  String get title => (serial == null || serial!.isEmpty) ? name : '$name · $serial';
+  String get title =>
+      (serial == null || serial!.isEmpty) ? name : '$name · $serial';
 
   String get kindLabel => switch (kind) {
-        'machine' => 'Machine',
-        'probe' => 'Probe',
-        'printer' => 'Printer',
-        _ => 'Part',
-      };
+    'machine' => 'Machine',
+    'probe' => 'Probe',
+    'printer' => 'Printer',
+    _ => 'Part',
+  };
 
   bool get isSold => status == 'Sold';
 }
@@ -211,7 +225,8 @@ DateTime? _parseDate(Object? raw) {
   final parts = raw.split('-');
   if (parts.length == 3) {
     return DateTime.tryParse(
-        '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}');
+      '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}',
+    );
   }
   return null;
 }
@@ -294,8 +309,7 @@ bool isSoldKind(String kind) =>
     kind == 'Dealer' || kind == 'Customer' || kind == 'Branch';
 
 /// Whether a send left for anywhere the company sends things to.
-bool isOutboundKind(String kind) =>
-    isSoldKind(kind) || kind == 'Workshop';
+bool isOutboundKind(String kind) => isSoldKind(kind) || kind == 'Workshop';
 
 /// The reason a send is recorded with. Undoing the sold mark writes
 /// this back — it mirrors the wording create_movement uses.
@@ -306,8 +320,9 @@ String sendReason(String kind, {required bool demo}) {
     'Dealer' => 'dealer',
     _ => 'customer',
   };
-  final suffix =
-      demo && (kind == 'Dealer' || kind == 'Customer') ? ' (demo)' : '';
+  final suffix = demo && (kind == 'Dealer' || kind == 'Customer')
+      ? ' (demo)'
+      : '';
   return 'Sent to $to$suffix';
 }
 
@@ -333,7 +348,8 @@ MapEntry<String, int>? movementItemKey(Map<String, dynamic> row) {
 /// Whether an item is still out, back in stock or moved on is read off
 /// this — the list, the counts and the detail sheet all share it.
 Map<String, Map<String, dynamic>> latestMovementByItem(
-    Iterable<Map<String, dynamic>> rows) {
+  Iterable<Map<String, dynamic>> rows,
+) {
   final latest = <String, Map<String, dynamic>>{};
   for (final row in rows) {
     final key = movementItemKey(row);
@@ -346,38 +362,94 @@ Map<String, Map<String, dynamic>> latestMovementByItem(
   return latest;
 }
 
+/// Every item's movement rows, oldest first — by the day the movement
+/// happened, then by row id when two share a day. A send's state is read
+/// off this history: a return recorded after it closes the send even if
+/// the item went out again later, so the old send still reads as returned.
+Map<String, List<Map<String, dynamic>>> movementHistoryByItem(
+  Iterable<Map<String, dynamic>> rows,
+) {
+  final history = <String, List<Map<String, dynamic>>>{};
+  for (final row in rows) {
+    final key = movementItemKey(row);
+    if (key == null) continue;
+    history
+        .putIfAbsent('${key.key}:${key.value}', () => <Map<String, dynamic>>[])
+        .add(row);
+  }
+  for (final events in history.values) {
+    events.sort(_compareMovementDay);
+  }
+  return history;
+}
+
+int _compareMovementDay(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final da = _parseDate(a['movement_date']);
+  final db = _parseDate(b['movement_date']);
+  final byDay = da == null || db == null ? 0 : da.compareTo(db);
+  return byDay != 0 ? byDay : (a['id'] as int).compareTo(b['id'] as int);
+}
+
 /// Where a send's member stands right now: still out with this send,
 /// already back in stock, or moved on to a later movement.
 enum SendRowState { out, back, movedOn }
 
-/// The state of one send row, judged from [latest] (from
-/// [latestMovementByItem]).
+/// The state of one send row, judged from [history] (from
+/// [movementHistoryByItem]). A row is out when nothing came after it, back
+/// when a Return came after it, and moved on when only later sends did.
 SendRowState sendRowState(
-    Map<String, dynamic> row, Map<String, Map<String, dynamic>> latest) {
+  Map<String, dynamic> row,
+  Map<String, List<Map<String, dynamic>>> history,
+) {
   final key = movementItemKey(row);
   if (key == null) return SendRowState.movedOn;
-  final last = latest['${key.key}:${key.value}'];
-  if (last == null) return SendRowState.out;
-  if (last['movement_type'] == 'Return') return SendRowState.back;
-  if (last['id'] == row['id']) return SendRowState.out;
+  final events = history['${key.key}:${key.value}'];
+  if (events == null) return SendRowState.out;
+  final index = events.indexWhere((event) => event['id'] == row['id']);
+  if (index < 0 || index == events.length - 1) return SendRowState.out;
+  for (var i = index + 1; i < events.length; i++) {
+    if (events[i]['movement_type'] == 'Return') return SendRowState.back;
+  }
   return SendRowState.movedOn;
 }
 
+/// The Return row that closed [row]'s send — the first one after it in
+/// the item's history. Null while the send has not come back.
+Map<String, dynamic>? closingReturn(
+  Map<String, dynamic> row,
+  Map<String, List<Map<String, dynamic>>> history,
+) {
+  final key = movementItemKey(row);
+  if (key == null) return null;
+  final events = history['${key.key}:${key.value}'];
+  if (events == null) return null;
+  final index = events.indexWhere((event) => event['id'] == row['id']);
+  if (index < 0) return null;
+  for (var i = index + 1; i < events.length; i++) {
+    if (events[i]['movement_type'] == 'Return') return events[i];
+  }
+  return null;
+}
+
 /// Splits one send's rows into three: what is still out with it, what
-/// already came back, and what a later movement took away (returned and
-/// sent on again). The list shows the first two — the returned part
-/// under 'Returned' — and the detail sheet labels each group, so a
-/// single returned item leaves its send's card instead of sitting on it.
-({List<Map<String, dynamic>> out,
-    List<Map<String, dynamic>> back,
-    List<Map<String, dynamic>> movedOn})
-    partitionSendRows(List<Map<String, dynamic>> rows,
-        Map<String, Map<String, dynamic>> latest) {
+/// already came back, and what a later send took away without a return.
+/// The list shows the first two — the returned part under 'Returned' —
+/// and the detail sheet labels each group, so a returned item leaves its
+/// send's card instead of sitting on it.
+({
+  List<Map<String, dynamic>> out,
+  List<Map<String, dynamic>> back,
+  List<Map<String, dynamic>> movedOn,
+})
+partitionSendRows(
+  List<Map<String, dynamic>> rows,
+  Map<String, List<Map<String, dynamic>>> history,
+) {
   final out = <Map<String, dynamic>>[];
   final back = <Map<String, dynamic>>[];
   final movedOn = <Map<String, dynamic>>[];
   for (final row in rows) {
-    switch (sendRowState(row, latest)) {
+    switch (sendRowState(row, history)) {
       case SendRowState.back:
         back.add(row);
       case SendRowState.movedOn:
@@ -409,7 +481,7 @@ String movementCardKey(Map<String, dynamic> row) {
   final day = date == null
       ? '${row['movement_date'] ?? ''}'
       : '${date.year}-${date.month.toString().padLeft(2, '0')}-'
-          '${date.day.toString().padLeft(2, '0')}';
+            '${date.day.toString().padLeft(2, '0')}';
   final to = '${row['to_location'] ?? ''}'.trim().toLowerCase();
   return '$kind|$day|${to.isEmpty ? '#${movementSendKey(row)}' : to}';
 }
@@ -425,7 +497,8 @@ String movementSendKey(Map<String, dynamic> row) {
 /// in. Order follows the rows given, so the list keeps its newest-first
 /// order; the caller puts each send's main item first.
 List<({String key, List<Map<String, dynamic>> rows})> groupSendRows(
-    List<Map<String, dynamic>> rows) {
+  List<Map<String, dynamic>> rows,
+) {
   final order = <String>[];
   final groups = <String, List<Map<String, dynamic>>>{};
   for (final row in rows) {
@@ -436,8 +509,12 @@ List<({String key, List<Map<String, dynamic>> rows})> groupSendRows(
   return [for (final key in order) (key: key, rows: groups[key]!)];
 }
 
-InventoryItem _item(String kind, Map<String, dynamic> row,
-    {required String codeField, required String nameField}) {
+InventoryItem _item(
+  String kind,
+  Map<String, dynamic> row, {
+  required String codeField,
+  required String nameField,
+}) {
   final batch = row['batches'];
   return InventoryItem(
     kind: kind,
@@ -463,11 +540,15 @@ InventoryItem _item(String kind, Map<String, dynamic> row,
 
 /// Probes and printers that travel with the given machine.
 List<InventoryItem> attachedItems(
-    List<InventoryItem> items, InventoryItem machine) {
+  List<InventoryItem> items,
+  InventoryItem machine,
+) {
   return items
-      .where((item) =>
-          item.assignedMachineId == machine.id &&
-          (item.kind == 'probe' || item.kind == 'printer'))
+      .where(
+        (item) =>
+            item.assignedMachineId == machine.id &&
+            (item.kind == 'probe' || item.kind == 'printer'),
+      )
       .toList();
 }
 
@@ -489,8 +570,10 @@ List<InventoryItem> linkedItems(List<InventoryItem> items, InventoryItem item) {
   if (machines.isEmpty) return const [];
   return [
     machines.first,
-    ...attachedItems(items, machines.first)
-        .where((other) => other.key != item.key),
+    ...attachedItems(
+      items,
+      machines.first,
+    ).where((other) => other.key != item.key),
   ];
 }
 
@@ -512,7 +595,8 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
     _db
         .from('probes')
         .select(
-            '$fields, $linked box_id, needs_review, review_kind, catalog_products(probe_type), internal_id, model')
+          '$fields, $linked box_id, needs_review, review_kind, catalog_products(probe_type), internal_id, model',
+        )
         .or(batchFilter)
         .order('id', ascending: false),
     _db
@@ -542,7 +626,9 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
       _item('part', row, codeField: 'internal_id', nameField: 'name_model'),
   ];
   items.sort((a, b) {
-    final byDate = (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0));
+    final byDate = (b.createdAt ?? DateTime(0)).compareTo(
+      a.createdAt ?? DateTime(0),
+    );
     return byDate != 0 ? byDate : b.id.compareTo(a.id);
   });
   return items;
@@ -553,14 +639,17 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
 /// a plain select silently drops every item past the first page, which
 /// made their movements, pickers and repairs read "Unknown item".
 Future<List<Map<String, dynamic>>> fetchAllPages(
-    PostgrestTransformBuilder<PostgrestList> Function() build) async {
+  PostgrestTransformBuilder<PostgrestList> Function() build,
+) async {
   const pageSize = 1000;
   const window = 4;
   final rows = <Map<String, dynamic>>[];
 
   Future<List<Map<String, dynamic>>> page(int index) async {
-    final result = await build()
-        .range(index * pageSize, index * pageSize + pageSize - 1);
+    final result = await build().range(
+      index * pageSize,
+      index * pageSize + pageSize - 1,
+    );
     return result.cast<Map<String, dynamic>>();
   }
 
@@ -571,7 +660,7 @@ Future<List<Map<String, dynamic>>> fetchAllPages(
   rows.addAll(first);
   if (first.length < pageSize) return rows;
 
-  for (var start = 1;; start += window) {
+  for (var start = 1; ; start += window) {
     final pages = await Future.wait([
       for (var index = start; index < start + window; index++) page(index),
     ]);
@@ -593,27 +682,37 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
       'id, serial_number, status, current_location, acquisition_date, '
       'purchase_price, vendor_id';
   final pages = await Future.wait([
-    fetchAllPages(() => _db
-        .from('machines')
-        .select('$fields, machine_id, model')
-        .eq('batch_id', kOldBatchId)
-        .order('id', ascending: false)),
-    fetchAllPages(() => _db
-        .from('probes')
-        .select('$fields, internal_id, model, box_id')
-        .eq('batch_id', kOldBatchId)
-        .order('id', ascending: false)),
-    fetchAllPages(() => _db
-        .from('printers')
-        .select('$fields, internal_id, name_model')
-        .eq('batch_id', kOldBatchId)
-        .order('id', ascending: false)),
+    fetchAllPages(
+      () => _db
+          .from('machines')
+          .select('$fields, machine_id, model')
+          .eq('batch_id', kOldBatchId)
+          .order('id', ascending: false),
+    ),
+    fetchAllPages(
+      () => _db
+          .from('probes')
+          .select('$fields, internal_id, model, box_id')
+          .eq('batch_id', kOldBatchId)
+          .order('id', ascending: false),
+    ),
+    fetchAllPages(
+      () => _db
+          .from('printers')
+          .select('$fields, internal_id, name_model')
+          .eq('batch_id', kOldBatchId)
+          .order('id', ascending: false),
+    ),
   ]);
   final machines = pages[0];
   final probes = pages[1];
   final printers = pages[2];
-  InventoryItem oldItem(String kind, Map<String, dynamic> row,
-      {required String codeField, required String nameField}) {
+  InventoryItem oldItem(
+    String kind,
+    Map<String, dynamic> row, {
+    required String codeField,
+    required String nameField,
+  }) {
     return InventoryItem(
       kind: kind,
       id: row['id'] as int,
@@ -636,7 +735,12 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
     for (final row in probes)
       oldItem('probe', row, codeField: 'internal_id', nameField: 'model'),
     for (final row in printers)
-      oldItem('printer', row, codeField: 'internal_id', nameField: 'name_model'),
+      oldItem(
+        'printer',
+        row,
+        codeField: 'internal_id',
+        nameField: 'name_model',
+      ),
   ];
 });
 
@@ -646,29 +750,25 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
 /// side: it just narrows to current stock.
 final allItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
   final currentFuture = ref.watch(inventoryProvider.future);
-  final oldFuture = ref.watch(oldStockItemsProvider.future).then(
-        (value) => value,
-        onError: (_) => <InventoryItem>[],
-      );
+  final oldFuture = ref
+      .watch(oldStockItemsProvider.future)
+      .then((value) => value, onError: (_) => <InventoryItem>[]);
   final results = await Future.wait([currentFuture, oldFuture]);
   return [...results[0], ...results[1]];
 });
 
 /// `machine:12` -> label used by the movement list
 final itemLabelsProvider = Provider<Map<String, String>>((ref) {
-  final items = ref.watch(allItemsProvider).maybeWhen(
-        data: (rows) => rows,
-        orElse: () => const <InventoryItem>[],
-      );
+  final items = ref
+      .watch(allItemsProvider)
+      .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
   return labelsForItems(items);
 });
 
 /// The `kind:id` -> "CODE  name" map the movement list and the sales
 /// screen read item names from.
 Map<String, String> labelsForItems(List<InventoryItem> items) {
-  return {
-    for (final item in items) item.key: '${item.code}  ${item.title}',
-  };
+  return {for (final item in items) item.key: '${item.code}  ${item.title}'};
 }
 
 // ---------------------------------------------------------------------------
@@ -679,23 +779,27 @@ Map<String, String> labelsForItems(List<InventoryItem> items) {
 /// excluded at the query level so no screen can leak it — item history,
 /// return checks and group counts all read this. [movementsProvider]
 /// derives from it for display.
-final allMovementsProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allMovementsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   // past 1,000 rows PostgREST would truncate the list silently
-  final rows = await fetchAllPages(() => _db
-      .from('movements')
-      .select(
-        'id, group_ref, movement_type, movement_date, to_location, from_location, '
-        'reason, notes, reference, is_demo, paid, sale_amount, sold_by, created_at, actor_id, machine_id, '
-        'probe_id, printer_id, part_id, dealer_id, customer_id, workshop_id, old_source_id, '
-        'dealers(name), customers(name), '
-        'workshops(name), profiles(display_name, username)',
-      )
-      .neq('movement_type', 'Legacy')
-      .order('id', ascending: false));
+  final rows = await fetchAllPages(
+    () => _db
+        .from('movements')
+        .select(
+          'id, group_ref, movement_type, movement_date, to_location, from_location, '
+          'reason, notes, reference, is_demo, paid, sale_amount, sold_by, created_at, actor_id, machine_id, '
+          'probe_id, printer_id, part_id, dealer_id, customer_id, workshop_id, old_source_id, '
+          'dealers(name), customers(name), '
+          'workshops(name), profiles(display_name, username)',
+        )
+        .neq('movement_type', 'Legacy')
+        .order('id', ascending: false),
+  );
   rows.sort((a, b) {
-    final byDate = (_parseDate(b['movement_date']) ?? DateTime(0))
-        .compareTo(_parseDate(a['movement_date']) ?? DateTime(0));
+    final byDate = (_parseDate(b['movement_date']) ?? DateTime(0)).compareTo(
+      _parseDate(a['movement_date']) ?? DateTime(0),
+    );
     return byDate != 0 ? byDate : (b['id'] as int).compareTo(a['id'] as int);
   });
   return rows;
@@ -705,12 +809,16 @@ final allMovementsProvider =
 /// and returns only. Imported old-side rows live in the old-data side;
 /// box moves and the old part movements stay in item history but are
 /// not listed here.
-final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final rows = await ref.watch(allMovementsProvider.future);
   return [
     for (final row in rows)
-      if (!isOldSideImport(row) && !isOldSideMovement(row) && !isBoxMovement(row))
-        row
+      if (!isOldSideImport(row) &&
+          !isOldSideMovement(row) &&
+          !isBoxMovement(row))
+        row,
   ];
 });
 
@@ -718,14 +826,21 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
 /// are restored and a 'Return' movement records when it came back.
 /// [date] is dd-MM-yyyy (defaults to today) and [notes] is free text —
 /// both let a partial return say when and why items came back.
-Future<int> returnToInventory(InventoryItem item,
-    {String? date, String? notes}) async {
-  return await _db.rpc('return_to_inventory', params: {
-    'p_item_type': item.kind,
-    'p_item_id': item.id,
-    if (date != null && date.isNotEmpty) 'p_date': date,
-    if (notes != null && notes.isNotEmpty) 'p_notes': notes,
-  }) as int;
+Future<int> returnToInventory(
+  InventoryItem item, {
+  String? date,
+  String? notes,
+}) async {
+  return await _db.rpc(
+        'return_to_inventory',
+        params: {
+          'p_item_type': item.kind,
+          'p_item_id': item.id,
+          if (date != null && date.isNotEmpty) 'p_date': date,
+          if (notes != null && notes.isNotEmpty) 'p_notes': notes,
+        },
+      )
+      as int;
 }
 
 /// Erases a whole send: its movement rows (and the Return rows that
@@ -766,14 +881,17 @@ Future<void> setSendPaid(List<Map<String, dynamic>> rows, bool paid) async {
 /// amount and [soldBy] the person who sold it, when given; off, the
 /// original wording goes back and both are cleared. A label only — the
 /// items keep their status. Only admins may (enforced by RLS).
-Future<void> setSendSold(List<Map<String, dynamic>> rows, bool sold,
-    {double? amount, String? soldBy}) async {
+Future<void> setSendSold(
+  List<Map<String, dynamic>> rows,
+  bool sold, {
+  double? amount,
+  String? soldBy,
+}) async {
   final first = rows.first;
   final kind = '${first['movement_type'] ?? ''}';
   final seller = (soldBy ?? '').trim();
   await _updateSend(rows, {
-    'reason':
-        sold ? 'Sold' : sendReason(kind, demo: first['is_demo'] == true),
+    'reason': sold ? 'Sold' : sendReason(kind, demo: first['is_demo'] == true),
     'sale_amount': sold ? amount : null,
     'sold_by': sold && seller.isNotEmpty ? seller : null,
   });
@@ -783,7 +901,9 @@ Future<void> setSendSold(List<Map<String, dynamic>> rows, bool sold,
 /// the same text, the way the new-movement form writes one note for
 /// the whole send. Only admins may (enforced by RLS).
 Future<void> setMovementNotes(
-    List<Map<String, dynamic>> rows, String notes) async {
+  List<Map<String, dynamic>> rows,
+  String notes,
+) async {
   await _updateSend(rows, {'notes': notes.isEmpty ? null : notes});
 }
 
@@ -798,13 +918,16 @@ Future<void> setSendDestination(
   int? partyId,
   required bool demo,
 }) async {
-  await _db.rpc('set_send_destination', params: {
-    'p_movement_ids': [for (final row in rows) row['id'] as int],
-    'p_kind': kind,
-    if (kind == 'Dealer') 'p_dealer_id': partyId,
-    if (kind == 'Customer') 'p_customer_id': partyId,
-    'p_demo': demo,
-  });
+  await _db.rpc(
+    'set_send_destination',
+    params: {
+      'p_movement_ids': [for (final row in rows) row['id'] as int],
+      'p_kind': kind,
+      if (kind == 'Dealer') 'p_dealer_id': partyId,
+      if (kind == 'Customer') 'p_customer_id': partyId,
+      'p_demo': demo,
+    },
+  );
 }
 
 /// Finds a dealer/customer by name or adds it — any member may add one
@@ -818,8 +941,11 @@ Future<(int, bool)> findOrCreateParty(String table, String name) async {
       .order('id')
       .limit(1);
   if (rows.isNotEmpty) return (rows.first['id'] as int, false);
-  final inserted =
-      await _db.from(table).insert({'name': name}).select('id').single();
+  final inserted = await _db
+      .from(table)
+      .insert({'name': name})
+      .select('id')
+      .single();
   return (inserted['id'] as int, true);
 }
 
@@ -827,7 +953,9 @@ Future<(int, bool)> findOrCreateParty(String table, String name) async {
 /// (Return rows carry their own group, box rows have none, so neither
 /// is ever caught here), row by row for the ungrouped legacy rows.
 Future<void> _updateSend(
-    List<Map<String, dynamic>> rows, Map<String, Object?> values) async {
+  List<Map<String, dynamic>> rows,
+  Map<String, Object?> values,
+) async {
   final group = '${rows.first['group_ref'] ?? ''}';
   if (group.isNotEmpty) {
     await _db.from('movements').update(values).eq('group_ref', group);
@@ -848,8 +976,9 @@ final flagsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final rows = await _db
       .from('flags')
       .select(
-          'id, item_kind, item_id, movement_id, repair_id, group_ref, '
-          'color, note, created_by, created_at')
+        'id, item_kind, item_id, movement_id, repair_id, group_ref, '
+        'color, note, created_by, created_at',
+      )
       .order('id', ascending: false);
   return rows;
 });
@@ -858,8 +987,9 @@ final flagsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
 /// Records and reused anywhere a flag can be applied. Applying copies
 /// both onto the flag row, so deleting an entry never removes flags
 /// already in use.
-final flagDefsProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final flagDefsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final rows = await _db
       .from('flag_defs')
       .select('id, name, color, created_by, created_at')
@@ -868,8 +998,11 @@ final flagDefsProvider =
 });
 
 /// Creates or updates one library flag. Admins only (enforced by RLS).
-Future<void> saveFlagDef(
-    {int? id, required String name, required String color}) async {
+Future<void> saveFlagDef({
+  int? id,
+  required String name,
+  required String color,
+}) async {
   if (id == null) {
     await _db.from('flag_defs').insert({'name': name, 'color': color});
   } else {
@@ -923,7 +1056,8 @@ String? flagKeyOf(Map<String, dynamic> flag) {
 /// is newest first. One item / movement / repair can carry several
 /// flags at once.
 Map<String, List<Map<String, dynamic>>> flagIndex(
-    List<Map<String, dynamic>> flags) {
+  List<Map<String, dynamic>> flags,
+) {
   final byKey = <String, List<Map<String, dynamic>>>{};
   for (final flag in flags) {
     final key = flagKeyOf(flag);
@@ -951,8 +1085,11 @@ String flagNoteText(Map<String, dynamic> flag) {
 /// Adds a flag to [target] — flags already on it stay put, so one thing
 /// can carry several. [target] holds item_kind+item_id, or movement_id
 /// (plus group_ref when the whole send is flagged), or repair_id.
-Future<void> setFlag(Map<String, dynamic> target,
-    {required String color, String? note}) async {
+Future<void> setFlag(
+  Map<String, dynamic> target, {
+  required String color,
+  String? note,
+}) async {
   await _db.from('flags').insert({
     ...target,
     'color': color,
@@ -984,52 +1121,59 @@ bool movementPartyMissing(Map<String, dynamic> row) {
 /// without one — only the sender or an admin may (enforced by the RPC).
 /// The sales recorded against a customer (via customer_id).
 final customerSalesProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, name) async {
-  // Look the customer up by name so the sheet can be opened from the people
-  // list (which is keyed by name, not id).
-  final party = await _db
-      .from('customers')
-      .select('id')
-      .ilike('name', name)
-      .limit(1);
-  if (party.isEmpty) return const <Map<String, dynamic>>[];
-  final rows = await _db
-      .from('sales')
-      .select(
-        'id, sale_date, invoice_reference, sale_price, notes, old_source_id, old_trno, '
-        'sale_items(item_description, item_serial, item_price, item_type, '
-        'machines(machine_id, model), '
-        'probes(internal_id, model), printers(internal_id, name_model), '
-        'parts(internal_id, name_model))',
-      )
-      .eq('customer_id', party.first['id'] as int);
-  return _sortSales(rows);
-});
+    FutureProvider.family<List<Map<String, dynamic>>, String>((
+      ref,
+      name,
+    ) async {
+      // Look the customer up by name so the sheet can be opened from the people
+      // list (which is keyed by name, not id).
+      final party = await _db
+          .from('customers')
+          .select('id')
+          .ilike('name', name)
+          .limit(1);
+      if (party.isEmpty) return const <Map<String, dynamic>>[];
+      final rows = await _db
+          .from('sales')
+          .select(
+            'id, sale_date, invoice_reference, sale_price, notes, old_source_id, old_trno, '
+            'sale_items(item_description, item_serial, item_price, item_type, '
+            'machines(machine_id, model), '
+            'probes(internal_id, model), printers(internal_id, name_model), '
+            'parts(internal_id, name_model))',
+          )
+          .eq('customer_id', party.first['id'] as int);
+      return _sortSales(rows);
+    });
 
 /// The sales whose party tag names this dealer (imported legacy rows have no
 /// customer_id, only a `party:dealer:NAME` line in notes).
 final dealerSalesProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, name) async {
-  final rows = await _db
-      .from('sales')
-      .select(
-        'id, sale_date, invoice_reference, sale_price, notes, old_source_id, old_trno, '
-        'sale_items(item_description, item_serial, item_price, item_type, '
-        'machines(machine_id, model), '
-        'probes(internal_id, model), printers(internal_id, name_model), '
-        'parts(internal_id, name_model))',
-      )
-      .like('notes', 'party:dealer:${name.toUpperCase()}%');
-  return _sortSales(rows);
-});
+    FutureProvider.family<List<Map<String, dynamic>>, String>((
+      ref,
+      name,
+    ) async {
+      final rows = await _db
+          .from('sales')
+          .select(
+            'id, sale_date, invoice_reference, sale_price, notes, old_source_id, old_trno, '
+            'sale_items(item_description, item_serial, item_price, item_type, '
+            'machines(machine_id, model), '
+            'probes(internal_id, model), printers(internal_id, name_model), '
+            'parts(internal_id, name_model))',
+          )
+          .like('notes', 'party:dealer:${name.toUpperCase()}%');
+      return _sortSales(rows);
+    });
 
 /// sale_date is dd-MM-yyyy text, so a server-side order() would sort
 /// lexicographically ("06-10-2026" before "01-01-2026"); newest first
 /// is done here on the parsed date instead.
 List<Map<String, dynamic>> _sortSales(List<Map<String, dynamic>> rows) {
   rows.sort((a, b) {
-    final byDate = (_parseDate(b['sale_date']) ?? DateTime(0))
-        .compareTo(_parseDate(a['sale_date']) ?? DateTime(0));
+    final byDate = (_parseDate(b['sale_date']) ?? DateTime(0)).compareTo(
+      _parseDate(a['sale_date']) ?? DateTime(0),
+    );
     return byDate != 0 ? byDate : (b['id'] as int).compareTo(a['id'] as int);
   });
   return rows;
@@ -1040,23 +1184,30 @@ Future<void> setMovementParty(
   int? dealerId,
   int? customerId,
 }) async {
-  await _db.rpc('set_movement_party', params: {
-    'p_movement_id': movementId,
-    'p_dealer_id': ?dealerId,
-    'p_customer_id': ?customerId,
-  });
+  await _db.rpc(
+    'set_movement_party',
+    params: {
+      'p_movement_id': movementId,
+      'p_dealer_id': ?dealerId,
+      'p_customer_id': ?customerId,
+    },
+  );
 }
 
 /// Customers and dealers added recently, newest first — admins see this
 /// on the dashboard ("who added which name"). Rows without a created_by
 /// are from the legacy import and are left out.
-final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>(
-    (ref) async {
+final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   if (!ref.watch(isAdminProvider)) return const <Map<String, dynamic>>[];
   Future<List<Map<String, dynamic>>> fetch(String table, String kind) async {
-    final rows = await _db.from(table).select(
-        'id, name, created_at, created_by, '
-        'profiles:created_by(display_name, username)');
+    final rows = await _db
+        .from(table)
+        .select(
+          'id, name, created_at, created_by, '
+          'profiles:created_by(display_name, username)',
+        );
     return [
       for (final row in rows)
         if (row['created_by'] != null)
@@ -1064,10 +1215,11 @@ final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>(
             'name': row['name'],
             'at': row['created_at'],
             'kind': kind,
-            'by': ((row['profiles'] as Map?)?['display_name'] ??
-                    (row['profiles'] as Map?)?['username'] ??
-                    'Someone')
-                .toString(),
+            'by':
+                ((row['profiles'] as Map?)?['display_name'] ??
+                        (row['profiles'] as Map?)?['username'] ??
+                        'Someone')
+                    .toString(),
           },
     ];
   }
@@ -1076,11 +1228,11 @@ final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>(
     fetch('customers', 'customer'),
     fetch('dealers', 'dealer'),
   ]);
-  final rows = [
-    ...parties[0],
-    ...parties[1],
-  ]..sort((a, b) =>
-      (b['at'] ?? '').toString().compareTo((a['at'] ?? '').toString()));
+  final rows = [...parties[0], ...parties[1]]
+    ..sort(
+      (a, b) =>
+          (b['at'] ?? '').toString().compareTo((a['at'] ?? '').toString()),
+    );
   return rows.take(8).toList();
 });
 
@@ -1126,14 +1278,17 @@ final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
 
 /// Number of repairs that are still with us.
 final openRepairsCountProvider = Provider<int>((ref) {
-  final jobs = ref.watch(repairsProvider).maybeWhen(
+  final jobs = ref
+      .watch(repairsProvider)
+      .maybeWhen(
         data: (rows) => rows,
         orElse: () => const <Map<String, dynamic>>[],
       );
   return jobs.where((row) => repairIsOpen('${row['status']}')).length;
 });
 
-bool repairIsOpen(String status) => status != 'Returned' && status != 'Cancelled';
+bool repairIsOpen(String status) =>
+    status != 'Returned' && status != 'Cancelled';
 
 /// Adds a repair: the customer (created if new), the job and its items.
 Future<int> createRepair({
@@ -1143,13 +1298,16 @@ Future<int> createRepair({
   String? problem,
   required List<Map<String, dynamic>> items,
 }) async {
-  final id = await _db.rpc('create_repair', params: {
-    'p_customer_name': customerName,
-    if (contact != null && contact.isNotEmpty) 'p_contact': contact,
-    'p_received_at': receivedAt,
-    if (problem != null && problem.isNotEmpty) 'p_problem': problem,
-    'p_items': items,
-  });
+  final id = await _db.rpc(
+    'create_repair',
+    params: {
+      'p_customer_name': customerName,
+      if (contact != null && contact.isNotEmpty) 'p_contact': contact,
+      'p_received_at': receivedAt,
+      if (problem != null && problem.isNotEmpty) 'p_problem': problem,
+      'p_items': items,
+    },
+  );
   return id as int;
 }
 
@@ -1216,33 +1374,37 @@ Future<void> updateRepair({
 }) async {
   // a renamed sender moves the job to that customer (created if new)
   final customerId = await resolveReferenceId(
-      table: 'customers',
-      name: customerName,
-      payload: {'customer_type': 'Customer'});
+    table: 'customers',
+    name: customerName,
+    payload: {'customer_type': 'Customer'},
+  );
 
   String? nullable(String text) => text.trim().isEmpty ? null : text.trim();
 
-  await _db.from('repair_jobs').update({
-    'customer_id': customerId,
-    'customer_contact': nullable(contact ?? ''),
-    'received_at': receivedAt,
-    'problem_description': problem?.trim() ?? '',
-    'delivered_by': nullable(deliveredBy ?? ''),
-    'accessories_received': nullable(accessories ?? ''),
-    'condition_on_arrival': nullable(condition ?? ''),
-    'estimated_cost': estimatedCost,
-    'final_cost': finalCost,
-    'repair_notes': nullable(repairNotes ?? ''),
-    'status': status,
-    // the return details belong to a returned job only
-    if (status == 'Returned') ...{
-      'returned_at': nullable(returnedAt ?? ''),
-      'collected_by': nullable(collectedBy ?? ''),
-      'return_notes': nullable(returnNotes ?? ''),
-      'money_received': moneyReceived,
-      'money_received_by': nullable(receivedBy ?? ''),
-    },
-  }).eq('id', id);
+  await _db
+      .from('repair_jobs')
+      .update({
+        'customer_id': customerId,
+        'customer_contact': nullable(contact ?? ''),
+        'received_at': receivedAt,
+        'problem_description': problem?.trim() ?? '',
+        'delivered_by': nullable(deliveredBy ?? ''),
+        'accessories_received': nullable(accessories ?? ''),
+        'condition_on_arrival': nullable(condition ?? ''),
+        'estimated_cost': estimatedCost,
+        'final_cost': finalCost,
+        'repair_notes': nullable(repairNotes ?? ''),
+        'status': status,
+        // the return details belong to a returned job only
+        if (status == 'Returned') ...{
+          'returned_at': nullable(returnedAt ?? ''),
+          'collected_by': nullable(collectedBy ?? ''),
+          'return_notes': nullable(returnNotes ?? ''),
+          'money_received': moneyReceived,
+          'money_received_by': nullable(receivedBy ?? ''),
+        },
+      })
+      .eq('id', id);
 
   final keep = <int>{};
   for (final item in items) {
@@ -1266,8 +1428,10 @@ Future<void> updateRepair({
       keep.add(inserted['id'] as int);
     }
   }
-  final existing =
-      await _db.from('repair_items').select('id').eq('repair_job_id', id);
+  final existing = await _db
+      .from('repair_items')
+      .select('id')
+      .eq('repair_job_id', id);
   for (final row in existing) {
     final itemId = row['id'] as int;
     if (!keep.contains(itemId)) {
@@ -1285,15 +1449,21 @@ Future<void> deleteRepair(int id) async {
 /// Puts a leftover probe into a box: it comes off its machine, becomes
 /// Available, the box becomes its location, and a 'Box' movement is
 /// written so the probe's history shows when it went in.
-Future<void> putProbeInBox(InventoryItem probe, Map<String, dynamic> box) async {
+Future<void> putProbeInBox(
+  InventoryItem probe,
+  Map<String, dynamic> box,
+) async {
   final boxName = (box['name'] ?? '').toString();
   final from = probe.location;
-  await _db.from('probes').update({
-    'box_id': box['id'],
-    'assigned_machine_id': null,
-    'status': 'Available',
-    'current_location': boxName,
-  }).eq('id', probe.id);
+  await _db
+      .from('probes')
+      .update({
+        'box_id': box['id'],
+        'assigned_machine_id': null,
+        'status': 'Available',
+        'current_location': boxName,
+      })
+      .eq('id', probe.id);
   await _db.from('movements').insert({
     'movement_type': 'Box',
     'movement_date': movementToday(),
@@ -1309,10 +1479,10 @@ Future<void> putProbeInBox(InventoryItem probe, Map<String, dynamic> box) async 
 Future<void> takeProbeOutOfBox(InventoryItem probe) async {
   final from = probe.location;
   final to = defaultLocationFor('Available');
-  await _db.from('probes').update({
-    'box_id': null,
-    'current_location': to,
-  }).eq('id', probe.id);
+  await _db
+      .from('probes')
+      .update({'box_id': null, 'current_location': to})
+      .eq('id', probe.id);
   await _db.from('movements').insert({
     'movement_type': 'Unbox',
     'movement_date': movementToday(),
@@ -1329,7 +1499,9 @@ Future<void> takeProbeOutOfBox(InventoryItem probe) async {
 /// by searching its serial. Sold / Archived / With Customer probes and
 /// probes already in a box are excluded.
 List<InventoryItem> boxAddCandidates(
-    List<InventoryItem> items, Map<String, dynamic> box) {
+  List<InventoryItem> items,
+  Map<String, dynamic> box,
+) {
   return items.where((item) {
     if (item.kind != 'probe') return false;
     if (item.status == 'Sold' ||
@@ -1361,12 +1533,12 @@ Future<void> deleteProbeBox(Map<String, dynamic> box) async {
 const kItemKinds = ['machine', 'probe', 'printer', 'part'];
 
 String itemKindLabel(String kind) => switch (kind) {
-      'machine' => 'Machine',
-      'probe' => 'Probe',
-      'printer' => 'Printer',
-      'other' => 'Other',
-      _ => 'Part',
-    };
+  'machine' => 'Machine',
+  'probe' => 'Probe',
+  'printer' => 'Printer',
+  'other' => 'Other',
+  _ => 'Part',
+};
 
 /// Status options offered for a given item kind (mirrors the CHECK constraints).
 List<String> statusOptions(String kind) => kind == 'machine'
@@ -1394,13 +1566,13 @@ String defaultStatus(String kind) =>
     kind == 'machine' ? 'In Stock' : 'Available';
 
 String defaultLocationFor(String status) => switch (status) {
-      'With Workshop' => 'Workshop',
-      'With Branch' => 'Lahore branch',
-      'With Dealer' => 'Dealer',
-      'With Customer' => 'Customer',
-      'Sold' => 'Customer',
-      _ => 'Company',
-    };
+  'With Workshop' => 'Workshop',
+  'With Branch' => 'Lahore branch',
+  'With Dealer' => 'Dealer',
+  'With Customer' => 'Customer',
+  'Sold' => 'Customer',
+  _ => 'Company',
+};
 
 /// Suggested id for an item entered from the app.
 ///
@@ -1412,8 +1584,10 @@ Future<String> suggestedId(String kind, {String? letter}) async {
     if (letter == null || letter.isEmpty) {
       throw Exception('Pick a batch first — a machine id needs its letter.');
     }
-    final code =
-        await _db.rpc('next_machine_code', params: {'p_letter': letter});
+    final code = await _db.rpc(
+      'next_machine_code',
+      params: {'p_letter': letter},
+    );
     return code as String;
   }
   final code = await _db.rpc('next_internal_id', params: {'kind': kind});

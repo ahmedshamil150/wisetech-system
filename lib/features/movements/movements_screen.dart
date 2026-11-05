@@ -20,7 +20,14 @@ class MovementsScreen extends ConsumerStatefulWidget {
   ConsumerState<MovementsScreen> createState() => _MovementsScreenState();
 }
 
-const _filters = ['All', 'Workshop', 'Branch', 'Dealer', 'Customer', 'Returned'];
+const _filters = [
+  'All',
+  'Workshop',
+  'Branch',
+  'Dealer',
+  'Customer',
+  'Returned',
+];
 
 class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _filter = 'All';
@@ -34,34 +41,28 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _demo = 'All'; // 'All' / 'Exclude demo' / 'Demo only'
   final _search = TextEditingController();
 
-  // The counts and the latest-movement map are rebuilt only when their
-  // inputs change, not on every frame of a scroll or a chip tap.
-  List<Map<String, dynamic>>? _latestSource;
-  Map<String, Map<String, dynamic>>? _latestCache;
+  // The counts and the per-item movement history are rebuilt only when
+  // their inputs change, not on every frame of a scroll or a chip tap.
+  List<Map<String, dynamic>>? _historySource;
+  Map<String, List<Map<String, dynamic>>>? _historyCache;
   List<Map<String, dynamic>>? _countsRows;
   List<Map<String, dynamic>>? _countsHistory;
   Map<String, String>? _countsLabels;
   String _countsKey = '';
   Map<String, int> _countsCache = const {};
 
-  Map<String, Map<String, dynamic>> _latestFor(
-      List<Map<String, dynamic>> fullHistory) {
-    if (!identical(fullHistory, _latestSource)) {
-      _latestSource = fullHistory;
-      _latestCache = latestMovementByItem(fullHistory);
+  Map<String, List<Map<String, dynamic>>> _historyFor(
+    List<Map<String, dynamic>> fullHistory,
+  ) {
+    if (!identical(fullHistory, _historySource)) {
+      _historySource = fullHistory;
+      _historyCache = movementHistoryByItem(fullHistory);
     }
-    return _latestCache!;
+    return _historyCache!;
   }
 
-  String get _countsInputKey => [
-        _party,
-        _actor,
-        _kind,
-        _dateFrom,
-        _dateTo,
-        _demo,
-        _query,
-      ].join('\u0000');
+  String get _countsInputKey =>
+      [_party, _actor, _kind, _dateFrom, _dateTo, _demo, _query].join('\u0000');
 
   @override
   void dispose() {
@@ -106,29 +107,36 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
   /// The page's round add button: a new movement.
   Widget _newMovementFab(BuildContext context) => AppFab(
-        tooltip: 'New movement',
-        onPressed: () => showAppSheet<void>(
-          context: context,
-          title: 'New movement',
-          heightFraction: 0.85,
-          builder: (sheetContext) => Padding(
-            padding: EdgeInsets.only(
-                bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-            child: const _NewMovementForm(),
-          ),
+    tooltip: 'New movement',
+    onPressed: () => showAppSheet<void>(
+      context: context,
+      title: 'New movement',
+      heightFraction: 0.85,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
         ),
-      );
+        child: const _NewMovementForm(),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final movements = ref.watch(movementsProvider);
     final labels = ref.watch(itemLabelsProvider);
     final rows = movements.maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+      data: (value) => value,
+      orElse: () => const <Map<String, dynamic>>[],
+    );
     // counts decide Returned vs out from the latest movement of each
     // item, so they need the full history behind the filtered list
-    final fullHistory = ref.watch(allMovementsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final fullHistory = ref
+        .watch(allMovementsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     final counts = _groupCounts(rows, fullHistory, labels);
 
     return Column(
@@ -154,14 +162,18 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 }),
                 selectedColor: Theme.of(context).colorScheme.primary,
                 labelStyle: TextStyle(
-                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: selected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
                 backgroundColor: context.colors.isDark
                     ? context.colors.quietFill
                     : Theme.of(context).colorScheme.surface,
-                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               );
             },
           ),
@@ -202,8 +214,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               if (_hasFilters)
                 IconButton(
                   tooltip: 'Clear filters',
-                  icon: Icon(Icons.close,
-                      size: 20, color: Theme.of(context).colorScheme.error),
+                  icon: Icon(
+                    Icons.close,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                   onPressed: _clearFilters,
                 ),
             ],
@@ -213,17 +228,20 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
           child: movements.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => EmptyState(
-                icon: Icons.error_outline, message: errorMessage(error)),
+              icon: Icons.error_outline,
+              message: errorMessage(error),
+            ),
             data: (allRows) {
-              // the latest movement of an item decides whether it is
-              // already back in stock — computed from the full history,
-              // not the display rows
+              // each item's own movement history decides whether a send
+              // is back — computed from the full history, not the
+              // display rows
               final fullHistory = ref
                   .watch(allMovementsProvider)
                   .maybeWhen(
-                      data: (value) => value,
-                      orElse: () => const <Map<String, dynamic>>[]);
-              final latest = _latestFor(fullHistory);
+                    data: (value) => value,
+                    orElse: () => const <Map<String, dynamic>>[],
+                  );
+              final history = _historyFor(fullHistory);
 
               // Return rows are history, not cards — they show in the
               // item details instead. The date range is applied per card
@@ -239,11 +257,13 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               final entries = <List<Map<String, dynamic>>>[];
               final byMovement = <String, List<Map<String, dynamic>>>{};
               for (final row in sends) {
-                byMovement.putIfAbsent(movementCardKey(row), () {
-                  final members = <Map<String, dynamic>>[];
-                  entries.add(members);
-                  return members;
-                }).add(row);
+                byMovement
+                    .putIfAbsent(movementCardKey(row), () {
+                      final members = <Map<String, dynamic>>[];
+                      entries.add(members);
+                      return members;
+                    })
+                    .add(row);
               }
 
               // one send shows in two places once only part of it came
@@ -254,18 +274,24 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               // a later send took with it stays on its own card too, but
               // marked 'Moved on', so it never reads as a live send.
               final visible =
-                  <({List<Map<String, dynamic>> rows, int total, int sends, Set<int> movedOn})>[];
+                  <
+                    ({
+                      List<Map<String, dynamic>> rows,
+                      int total,
+                      int sends,
+                      Set<int> movedOn,
+                    })
+                  >[];
               for (final members in entries) {
-                final parts = partitionSendRows(members, latest);
+                final parts = partitionSendRows(members, history);
                 final shown = _filter == 'Returned'
                     ? <Map<String, dynamic>>[
                         for (final row in parts.back)
-                          if (_passesDate(_returnDateOf(row, latest))) row,
+                          if (_passesDate(_returnDateOf(row, history))) row,
                       ]
                     : <Map<String, dynamic>>[
                         for (final row in [...parts.out, ...parts.movedOn])
-                          if (_passesDate('${row['movement_date'] ?? ''}'))
-                            row,
+                          if (_passesDate('${row['movement_date'] ?? ''}')) row,
                       ];
                 if (shown.isEmpty) continue;
                 if (_filter != 'All' &&
@@ -289,23 +315,29 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   children: [
                     Positioned.fill(
                       child: EmptyState(
-                          icon: Icons.alt_route_outlined,
-                          message: _filter == 'Returned'
-                              ? 'No items are back in inventory yet.'
-                              : _hasFilters
-                                  ? 'No movements match these filters.'
-                                  : 'No movements recorded yet.'),
+                        icon: Icons.alt_route_outlined,
+                        message: _filter == 'Returned'
+                            ? 'No items are back in inventory yet.'
+                            : _hasFilters
+                            ? 'No movements match these filters.'
+                            : 'No movements recorded yet.',
+                      ),
                     ),
                     Positioned(
-                        right: 16, bottom: 16, child: _newMovementFab(context)),
+                      right: 16,
+                      bottom: 16,
+                      child: _newMovementFab(context),
+                    ),
                   ],
                 );
               }
               for (final card in visible) {
                 card.rows.sort(_mainItemFirst);
               }
-              final shown =
-                  visible.fold<int>(0, (sum, card) => sum + card.rows.length);
+              final shown = visible.fold<int>(
+                0,
+                (sum, card) => sum + card.rows.length,
+              );
               return Column(
                 children: [
                   Padding(
@@ -313,10 +345,13 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                          '${visible.length} movement${visible.length == 1 ? '' : 's'}'
-                          ' · $shown item${shown == 1 ? '' : 's'}',
-                          style: TextStyle(
-                              fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                        '${visible.length} movement${visible.length == 1 ? '' : 's'}'
+                        ' · $shown item${shown == 1 ? '' : 's'}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ),
                   Expanded(
@@ -326,19 +361,22 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                           child: AppRefresh(
                             child: ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 8, 16, 84),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 84),
                               itemCount: visible.length,
                               itemBuilder: (context, index) {
                                 final card = visible[index];
-                                return _tile(context, card.rows, labels,
-                                    back: _filter == 'Returned',
-                                    sendTotal: card.total,
-                                    sendCount: card.sends,
-                                    movedOn: card.movedOn,
-                                    returnedOn: _filter == 'Returned'
-                                        ? _returnedDates(card.rows, latest)
-                                        : const <int, String>{});
+                                return _tile(
+                                  context,
+                                  card.rows,
+                                  labels,
+                                  back: _filter == 'Returned',
+                                  sendTotal: card.total,
+                                  sendCount: card.sends,
+                                  movedOn: card.movedOn,
+                                  returnedOn: _filter == 'Returned'
+                                      ? _returnedDates(card.rows, history)
+                                      : const <int, String>{},
+                                );
                               },
                             ),
                           ),
@@ -368,8 +406,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// (party, actor, item kind, date, search) kept as they are.
   /// [fullHistory] is every current movement so the
   /// latest-movement check behind "Returned" is correct.
-  Map<String, int> _groupCounts(List<Map<String, dynamic>> allRows,
-      List<Map<String, dynamic>> fullHistory, Map<String, String> labels) {
+  Map<String, int> _groupCounts(
+    List<Map<String, dynamic>> allRows,
+    List<Map<String, dynamic>> fullHistory,
+    Map<String, String> labels,
+  ) {
     final key = _countsInputKey;
     if (identical(allRows, _countsRows) &&
         identical(fullHistory, _countsHistory) &&
@@ -384,9 +425,12 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return _countsCache = _computeGroupCounts(allRows, fullHistory, labels);
   }
 
-  Map<String, int> _computeGroupCounts(List<Map<String, dynamic>> allRows,
-      List<Map<String, dynamic>> fullHistory, Map<String, String> labels) {
-    final latest = _latestFor(fullHistory);
+  Map<String, int> _computeGroupCounts(
+    List<Map<String, dynamic>> allRows,
+    List<Map<String, dynamic>> fullHistory,
+    Map<String, String> labels,
+  ) {
+    final history = _historyFor(fullHistory);
 
     // one card per movement, exactly as in the list
     final entries = <List<Map<String, dynamic>>>[];
@@ -394,23 +438,25 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     for (final row in allRows) {
       if (row['movement_type'] == 'Return') continue;
       if (!_passes(row, skipDates: true)) continue;
-      byMovement.putIfAbsent(movementCardKey(row), () {
-        final members = <Map<String, dynamic>>[];
-        entries.add(members);
-        return members;
-      }).add(row);
+      byMovement
+          .putIfAbsent(movementCardKey(row), () {
+            final members = <Map<String, dynamic>>[];
+            entries.add(members);
+            return members;
+          })
+          .add(row);
     }
 
     // each tab counts the part of a send it would actually show: what
     // is still out, or — under 'Returned' — what already came back
     final counts = <String, int>{for (final f in _filters) f: 0};
     for (final members in entries) {
-      final parts = partitionSendRows(members, latest);
+      final parts = partitionSendRows(members, history);
       for (final filter in _filters) {
         final shown = filter == 'Returned'
             ? <Map<String, dynamic>>[
                 for (final row in parts.back)
-                  if (_passesDate(_returnDateOf(row, latest))) row,
+                  if (_passesDate(_returnDateOf(row, history))) row,
               ]
             : <Map<String, dynamic>>[
                 for (final row in [...parts.out, ...parts.movedOn])
@@ -432,16 +478,16 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return counts;
   }
 
-  /// The day each of these rows came back — its own Return row's date,
-  /// as the latest movement of the item.
-  Map<int, String> _returnedDates(List<Map<String, dynamic>> rows,
-      Map<String, Map<String, dynamic>> latest) {
+  /// The day each of these rows came back — the Return row that closed
+  /// its send.
+  Map<int, String> _returnedDates(
+    List<Map<String, dynamic>> rows,
+    Map<String, List<Map<String, dynamic>>> history,
+  ) {
     final dates = <int, String>{};
     for (final row in rows) {
-      final key = movementItemKey(row);
-      final last = key == null ? null : latest['${key.key}:${key.value}'];
-      if (last == null || last['movement_type'] != 'Return') continue;
-      final date = (last['movement_date'] ?? '').toString();
+      final back = closingReturn(row, history);
+      final date = (back?['movement_date'] ?? '').toString();
       if (date.isNotEmpty) dates[row['id'] as int] = date;
     }
     return dates;
@@ -452,11 +498,12 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// by the day it came back — an October return of a September send
   /// still belongs to October.
   String? _returnDateOf(
-      Map<String, dynamic> row, Map<String, Map<String, dynamic>> latest) {
-    final key = movementItemKey(row);
-    final last = key == null ? null : latest['${key.key}:${key.value}'];
-    if (last == null || last['movement_type'] != 'Return') return null;
-    return (last['movement_date'] ?? '').toString();
+    Map<String, dynamic> row,
+    Map<String, List<Map<String, dynamic>>> history,
+  ) {
+    final back = closingReturn(row, history);
+    if (back == null) return null;
+    return (back['movement_date'] ?? '').toString();
   }
 
   bool _passesDate(String? raw) {
@@ -472,16 +519,14 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   }
 
   bool _passes(Map<String, dynamic> row, {bool skipDates = false}) {
-    if (_party != 'All' &&
-        (row['to_location'] ?? '').toString() != _party) {
+    if (_party != 'All' && (row['to_location'] ?? '').toString() != _party) {
       return false;
     }
     if (_actor != 'All' && _actorOf(row) != _actor) return false;
     if (_kind != 'All' && _kindOf(row) != _kind) return false;
     if (_demo == 'Demo only' && row['is_demo'] != true) return false;
     if (_demo == 'Exclude demo' && row['is_demo'] == true) return false;
-    if (!skipDates &&
-        !_passesDate((row['movement_date'] ?? '').toString())) {
+    if (!skipDates && !_passesDate((row['movement_date'] ?? '').toString())) {
       return false;
     }
     return true;
@@ -505,12 +550,12 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   }
 
   String _kindOf(Map<String, dynamic> row) => switch (_rankOf(row)) {
-        0 => 'Machine',
-        1 => 'Printer',
-        2 => 'Probe',
-        3 => 'Part',
-        _ => 'Other',
-      };
+    0 => 'Machine',
+    1 => 'Printer',
+    2 => 'Probe',
+    3 => 'Part',
+    _ => 'Other',
+  };
 
   List<String> _partyOptions(List<Map<String, dynamic>> rows) {
     final names = <String>{};
@@ -543,10 +588,18 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   /// plus the date range and demo rows. The sheet only narrows the list
   /// already in memory; nothing is fetched or written.
   Future<void> _openFilters() async {
-    final rows = ref.read(movementsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final fullHistory = ref.read(allMovementsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final rows = ref
+        .read(movementsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final fullHistory = ref
+        .read(allMovementsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     final labels = ref.read(itemLabelsProvider);
     final counts = _groupCounts(rows, fullHistory, labels);
     final showParty = _filter == 'Customer' || _filter == 'Dealer';
@@ -572,8 +625,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         show: _filter,
         showCounts: counts,
         showParty: showParty,
-        partyLabel:
-            _filter == 'Customer' ? 'Any customer' : 'Any dealer',
+        partyLabel: _filter == 'Customer' ? 'Any customer' : 'Any dealer',
         party: _party,
         partyOptions: partyOptions,
         actor: _actor,
@@ -617,7 +669,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   Map<String, List<Map<String, dynamic>>> _flagCache = const {};
 
   Map<String, List<Map<String, dynamic>>> _flagBy(
-      List<Map<String, dynamic>> flags) {
+    List<Map<String, dynamic>> flags,
+  ) {
     if (!identical(flags, _flagSource)) {
       _flagSource = flags;
       _flagCache = flagIndex(flags);
@@ -625,13 +678,16 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     return _flagCache;
   }
 
-  Widget _tile(BuildContext context, List<Map<String, dynamic>> rows,
-      Map<String, String> labels,
-      {required bool back,
-      int? sendTotal,
-      int? sendCount,
-      Set<int> movedOn = const {},
-      Map<int, String> returnedOn = const {}}) {
+  Widget _tile(
+    BuildContext context,
+    List<Map<String, dynamic>> rows,
+    Map<String, String> labels, {
+    required bool back,
+    int? sendTotal,
+    int? sendCount,
+    Set<int> movedOn = const {},
+    Map<int, String> returnedOn = const {},
+  }) {
     final row = rows.first;
     final kind = (row['movement_type'] ?? '').toString();
     final icon = switch (kind) {
@@ -663,8 +719,12 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
     // any item of the movement may carry flags, and a send itself too —
     // the card shows the first target that has one
-    final flagRows = ref.watch(flagsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final flagRows = ref
+        .watch(flagsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     final flagBy = _flagBy(flagRows);
     List<Map<String, dynamic>> cardFlags = const [];
     for (final r in rows) {
@@ -710,40 +770,57 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       return tags;
     }
 
-    Widget itemLine(Map<String, dynamic> other, {required bool indented}) => InkWell(
+    Widget itemLine(Map<String, dynamic> other, {required bool indented}) =>
+        InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: () => _openMovement(rows),
           child: Padding(
-            padding: EdgeInsets.only(left: indented ? 28 : 16, right: 16, bottom: 8),
+            padding: EdgeInsets.only(
+              left: indented ? 28 : 16,
+              right: 16,
+              bottom: 8,
+            ),
             child: Row(
               children: [
-                Icon(Icons.subdirectory_arrow_right,
-                    size: 15, color: Theme.of(context).colorScheme.outline),
+                Icon(
+                  Icons.subdirectory_arrow_right,
+                  size: 15,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(_labelFor(other, labels),
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  child: Text(
+                    _labelFor(other, labels),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
                 if (other['is_demo'] == true)
                   Padding(
                     padding: const EdgeInsets.only(left: 6),
-                    child: Text('Demo',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.outline)),
+                    child: Text(
+                      'Demo',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
                   ),
                 if (movedOn.contains(other['id'] as int))
                   Padding(
                     padding: const EdgeInsets.only(left: 6),
-                    child: Text('Moved on',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.outline)),
+                    child: Text(
+                      'Moved on',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -777,10 +854,13 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     const SizedBox(width: 6),
                   ],
                   Expanded(
-                    child: Text(partyLabel,
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: phone ? 13 : 14)),
+                    child: Text(
+                      partyLabel,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: phone ? 13 : 14,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -811,7 +891,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                   ),
                 ],
               ),
-              trailing: Icon(Icons.chevron_right, size: 20, color: Theme.of(context).colorScheme.outline),
+              trailing: Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Theme.of(context).colorScheme.outline,
+              ),
               onTap: () => _openMovement(rows),
             ),
             if (back)
@@ -819,8 +903,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle_outline,
-                        size: 15, color: context.colors.success),
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 15,
+                      color: context.colors.success,
+                    ),
                     SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -831,9 +918,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                             ? 'Back in inventory'
                             : returnedBannerText(rows.length, sendTotal),
                         style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: context.colors.success),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: context.colors.success,
+                        ),
                       ),
                     ),
                   ],
@@ -851,32 +939,46 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.subdirectory_arrow_right,
-                              size: 16,
-                              color: Theme.of(context).colorScheme.outline),
+                          Icon(
+                            Icons.subdirectory_arrow_right,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                           const SizedBox(width: 6),
                           Expanded(
-                            child: Text(_labelFor(send.rows.first, labels),
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w700)),
+                            child: Text(
+                              _labelFor(send.rows.first, labels),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      Builder(builder: (context) {
-                        final tags = sendTags(send.rows);
-                        if (tags.isEmpty) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.only(left: 22, top: 2, bottom: 2),
-                          child: Text(tags.join(' · '),
+                      Builder(
+                        builder: (context) {
+                          final tags = sendTags(send.rows);
+                          if (tags.isEmpty) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(
+                              left: 22,
+                              top: 2,
+                              bottom: 2,
+                            ),
+                            child: Text(
+                              tags.join(' · '),
                               style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant)),
-                        );
-                      }),
+                                fontSize: 11.5,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -894,18 +996,16 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   void _openItem(Map<String, dynamic> row) {
     final key = movementItemKey(row);
     if (key == null) return;
-    final items = ref.read(allItemsProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <InventoryItem>[],
-        );
+    final items = ref
+        .read(allItemsProvider)
+        .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
     for (final item in items) {
       if (item.key == '${key.key}:${key.value}') {
         showItemDetails(context, ref, item);
         return;
       }
     }
-    showSnack(context, 'This item is no longer in the inventory.',
-        error: true);
+    showSnack(context, 'This item is no longer in the inventory.', error: true);
   }
 
   /// The whole movement in one sheet: every send it was recorded in as a
@@ -914,8 +1014,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   void _openMovement(List<Map<String, dynamic>> rows) {
     final groupRefs = <String>{
       for (final row in rows)
-        if ('${row['group_ref'] ?? ''}'.isNotEmpty)
-          '${row['group_ref']}'
+        if ('${row['group_ref'] ?? ''}'.isNotEmpty) '${row['group_ref']}',
     };
     showAppSheet<void>(
       context: context,
@@ -956,21 +1055,29 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
       ref.invalidate(oldStockItemsProvider);
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Movement deleted.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Movement deleted.')),
+      );
     } catch (error) {
-      messenger
-          .showSnackBar(SnackBar(content: Text(errorMessage(error))));
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
     }
   }
 
   /// Puts every item of this send back into stock. An item that moved on
   /// to a later send is left alone — only its own last movement decides.
   Future<void> _returnGroup(List<Map<String, dynamic>> rows) async {
-    final allMovements = ref.read(allMovementsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final items = ref.read(allItemsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <InventoryItem>[]);
+    final allMovements = ref
+        .read(allMovementsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final items = ref
+        .read(allItemsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <InventoryItem>[],
+        );
     final groupIds = {for (final row in rows) row['id'] as int};
 
     final latest = <String, int>{}; // item key -> latest movement id
@@ -1011,12 +1118,13 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     }
     if (!mounted) return;
     showSnack(
-        context,
-        failure ??
-            (count == 0
-                ? 'Nothing to return — these items moved on.'
-                : '$count item${count == 1 ? '' : 's'} back in inventory.'),
-        error: failure != null);
+      context,
+      failure ??
+          (count == 0
+              ? 'Nothing to return — these items moved on.'
+              : '$count item${count == 1 ? '' : 's'} back in inventory.'),
+      error: failure != null,
+    );
   }
 
   /// Adds an item to an open send: the new row joins the same group —
@@ -1049,7 +1157,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
           if (item.status != 'Sold' &&
               item.status != 'Archived' &&
               !inSend.contains(item.key))
-            item
+            item,
       ];
     } catch (error) {
       if (!mounted) return;
@@ -1064,47 +1172,52 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     if (!mounted) return;
     final picked = await showPickItem(context, items: available);
     if (picked == null) return;
-    final additions =
-        picked.kind == 'machine' ? kitFor(available, picked) : [picked];
+    final additions = picked.kind == 'machine'
+        ? kitFor(available, picked)
+        : [picked];
     try {
       for (final item in additions) {
-        await db.rpc('create_movement', params: {
-          'p_item_type': item.kind,
-          'p_item_id': item.id,
-          'p_kind': kind,
-          if (first['dealer_id'] != null) 'p_dealer_id': first['dealer_id'],
-          if (first['customer_id'] != null)
-            'p_customer_id': first['customer_id'],
-          if (first['workshop_id'] != null)
-            'p_workshop_id': first['workshop_id'],
-          if ('${first['movement_date'] ?? ''}'.isNotEmpty)
-            'p_date': '${first['movement_date']}',
-          if ('${first['notes'] ?? ''}'.isNotEmpty)
-            'p_notes': '${first['notes']}',
-          'p_demo': first['is_demo'] == true,
-          'p_group_ref': group,
-          'p_paid': movementPaid(first),
-        });
+        await db.rpc(
+          'create_movement',
+          params: {
+            'p_item_type': item.kind,
+            'p_item_id': item.id,
+            'p_kind': kind,
+            if (first['dealer_id'] != null) 'p_dealer_id': first['dealer_id'],
+            if (first['customer_id'] != null)
+              'p_customer_id': first['customer_id'],
+            if (first['workshop_id'] != null)
+              'p_workshop_id': first['workshop_id'],
+            if ('${first['movement_date'] ?? ''}'.isNotEmpty)
+              'p_date': '${first['movement_date']}',
+            if ('${first['notes'] ?? ''}'.isNotEmpty)
+              'p_notes': '${first['notes']}',
+            'p_demo': first['is_demo'] == true,
+            'p_group_ref': group,
+            'p_paid': movementPaid(first),
+          },
+        );
       }
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
       ref.invalidate(oldStockItemsProvider);
       if (!mounted) return;
       showSnack(
-          context,
-          '${additions.length} item${additions.length == 1 ? '' : 's'} '
-          '${newGroup ? 'added as a new group' : 'added to this send'}.');
+        context,
+        '${additions.length} item${additions.length == 1 ? '' : 's'} '
+        '${newGroup ? 'added as a new group' : 'added to this send'}.',
+      );
     } catch (error) {
       if (!mounted) return;
-      messenger
-          .showSnackBar(SnackBar(content: Text(errorMessage(error))));
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
     }
   }
 
   /// One Add item action for every movement: a single send goes straight
   /// to the picker, several sends ask which group the item belongs to.
   Future<void> _addItemToMovement(
-      List<({String key, List<Map<String, dynamic>> rows})> sends) async {
+    List<({String key, List<Map<String, dynamic>> rows})> sends,
+  ) async {
     if (sends.length == 1) {
       await _addToSend(sends.first.rows);
       return;
@@ -1120,28 +1233,36 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: Text('Which group gets the item?',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            child: Text(
+              'Which group gets the item?',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
           ),
           for (final send in sends)
             ListTile(
               dense: true,
               leading: const Icon(Icons.subdirectory_arrow_right, size: 20),
-              title: Text(_sendTitle(send.rows, labels),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 14)),
+              title: Text(
+                _sendTitle(send.rows, labels),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
               subtitle: Text(
-                  [
-                    '${send.rows.length} item'
-                        '${send.rows.length == 1 ? '' : 's'}',
-                    if (send.rows.any(movementSold)) 'Sold',
-                    if (isOutboundKind(
-                        '${send.rows.first['movement_type'] ?? ''}'))
-                      send.rows.any(movementPaid) ? 'Paid' : 'Unpaid',
-                  ].join(' · '),
-                  style: const TextStyle(fontSize: 12)),
+                [
+                  '${send.rows.length} item'
+                      '${send.rows.length == 1 ? '' : 's'}',
+                  if (send.rows.any(movementSold)) 'Sold',
+                  if (isOutboundKind(
+                    '${send.rows.first['movement_type'] ?? ''}',
+                  ))
+                    send.rows.any(movementPaid) ? 'Paid' : 'Unpaid',
+                ].join(' · '),
+                style: const TextStyle(fontSize: 12),
+              ),
               onTap: () => Navigator.pop(sheetContext, send.rows),
             ),
         ],
@@ -1158,8 +1279,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   Future<void> _addGroupToMovement(List<Map<String, dynamic>> rows) async {
     final first = rows.first;
     final kind = '${first['movement_type'] ?? ''}'.trim();
-    final party =
-        movementPartyMissing(first) ? '' : '${first['to_location'] ?? ''}'.trim();
+    final party = movementPartyMissing(first)
+        ? ''
+        : '${first['to_location'] ?? ''}'.trim();
     final notes = rows
         .map((row) => '${row['notes'] ?? ''}'.trim())
         .firstWhere((note) => note.isNotEmpty, orElse: () => '');
@@ -1168,8 +1290,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       title: 'Add a group',
       heightFraction: 0.85,
       builder: (sheetContext) => Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
         child: _NewMovementForm(
           seedKind: kind.isEmpty ? null : kind,
           seedParty: party,
@@ -1188,8 +1311,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       title: 'Back to inventory',
       heightFraction: 0.8,
       builder: (sheetContext) => Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
         child: _ReturnFromSendSheet(rows: rows),
       ),
     );
@@ -1229,8 +1353,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       messenger.showSnackBar(const SnackBar(content: Text('Send deleted.')));
       return true;
     } catch (error) {
-      messenger
-          .showSnackBar(SnackBar(content: Text(errorMessage(error))));
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
       return false;
     }
   }
@@ -1256,13 +1379,13 @@ int _rankOf(Map<String, dynamic> row) {
 
 /// One line of a PopupMenuButton: icon + label.
 Widget _menuRow(IconData icon, String label, {Color? color}) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 10),
-        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-      ],
-    );
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Icon(icon, size: 18, color: color),
+    const SizedBox(width: 10),
+    Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+  ],
+);
 
 /// A fresh send id, so every item of one group travels together and a
 /// group added later never collides with the ones already recorded.
@@ -1312,10 +1435,18 @@ class _MovementDetails extends ConsumerWidget {
     final labels = ref.watch(itemLabelsProvider);
     final isAdmin = ref.watch(isAdminProvider);
     final myId = ref.read(authControllerProvider).currentUser?.id;
-    final all = ref.watch(allMovementsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final flagRows = ref.watch(flagsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final all = ref
+        .watch(allMovementsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final flagRows = ref
+        .watch(flagsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     final flagBy = flagIndex(flagRows);
     // every send of this movement, however it was recorded: by the group
     // it travelled in, by the rows the card was opened with, or by the
@@ -1326,19 +1457,21 @@ class _MovementDetails extends ConsumerWidget {
             (rowIds.contains(row['id'] as int) ||
                 groupRefs.contains('${row['group_ref'] ?? ''}') ||
                 movementCardKey(row) == cardKey))
-          row
+          row,
     ]..sort(_mainItemFirst);
     if (rows.isEmpty) {
       return Center(
-        child: Text('This movement was deleted.',
-            style: TextStyle(color: scheme.onSurfaceVariant)),
+        child: Text(
+          'This movement was deleted.',
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
       );
     }
 
-    // the latest movement of an item decides where it stands right now
-    final latest = latestMovementByItem(all);
+    // the item's own history decides where each send row stands
+    final history = movementHistoryByItem(all);
     SendRowState stateOf(Map<String, dynamic> row) =>
-        sendRowState(row, latest);
+        sendRowState(row, history);
 
     // the movement's sends, each its own group: a send sold apart from
     // the rest of the movement keeps its own sold and paid marks
@@ -1351,13 +1484,16 @@ class _MovementDetails extends ConsumerWidget {
     // what already came back is kept apart from what is still out, and
     // from what a later send took with it: each gets its own section
     // here, and the returned ones leave the movement's card in the list
-    final parts = partitionSendRows(rows, latest);
+    final parts = partitionSendRows(rows, history);
     final outRows = parts.out;
     final backRows = parts.back;
     final movedRows = parts.movedOn;
-    final mixed = [outRows, movedRows, backRows]
-            .where((groupRows) => groupRows.isNotEmpty)
-            .length >
+    final mixed =
+        [
+          outRows,
+          movedRows,
+          backRows,
+        ].where((groupRows) => groupRows.isNotEmpty).length >
         1;
 
     String labelOf(Map<String, dynamic> row) {
@@ -1369,7 +1505,8 @@ class _MovementDetails extends ConsumerWidget {
     final back = outRows.isEmpty && movedRows.isEmpty; // all of it is back
     final canManage = isAdmin || rows.any((r) => r['actor_id'] == myId);
     final missing = rows.where(movementPartyMissing).toList();
-    final canFixParty = missing.isNotEmpty &&
+    final canFixParty =
+        missing.isNotEmpty &&
         (isAdmin || missing.any((r) => r['actor_id'] == myId));
     final first = rows.first;
     final kind = (first['movement_type'] ?? '').toString();
@@ -1391,8 +1528,8 @@ class _MovementDetails extends ConsumerWidget {
     final title = oneSend
         ? _sendTitle(rows, labels)
         : party.isEmpty
-            ? '$kind movement'
-            : party;
+        ? '$kind movement'
+        : party;
     final notes = rows
         .map((row) => '${row['notes'] ?? ''}'.trim())
         .firstWhere((note) => note.isNotEmpty, orElse: () => '');
@@ -1433,9 +1570,12 @@ class _MovementDetails extends ConsumerWidget {
     final topMenu = <PopupMenuEntry<String>>[
       if (canFixParty)
         PopupMenuItem(
-            value: 'party',
-            child: _menuRow(
-                Icons.edit_note, 'Add the ${kind.toLowerCase()} name')),
+          value: 'party',
+          child: _menuRow(
+            Icons.edit_note,
+            'Add the ${kind.toLowerCase()} name',
+          ),
+        ),
     ];
     final hasActions = canManage || isAdmin || topMenu.isNotEmpty;
 
@@ -1448,19 +1588,18 @@ class _MovementDetails extends ConsumerWidget {
       final dotFlags = rowFlags.isNotEmpty
           ? rowFlags
           : flagBy[flagSendKey(row)] ?? const [];
-      // the day it came back, read off its own Return row
+      // the day it came back, read off the Return row that closed it
       var returnedOn = '';
       if (rowState == SendRowState.back) {
-        final key = movementItemKey(row);
-        final last = key == null ? null : latest['${key.key}:${key.value}'];
-        if (last != null && last['movement_type'] == 'Return') {
-          returnedOn = (last['movement_date'] ?? '').toString();
-        }
+        returnedOn = (closingReturn(row, history)?['movement_date'] ?? '')
+            .toString();
       }
       final meta = [
         row['movement_date'] ?? '',
         if (rowState == SendRowState.back)
-          returnedOn.isEmpty ? 'Back in inventory' : 'Back in inventory $returnedOn',
+          returnedOn.isEmpty
+              ? 'Back in inventory'
+              : 'Back in inventory $returnedOn',
         if (rowState == SendRowState.movedOn) 'Moved on',
         if (row['is_demo'] == true) 'Demo',
       ].join(' · ');
@@ -1484,15 +1623,20 @@ class _MovementDetails extends ConsumerWidget {
               const SizedBox(width: 6),
             ],
             Expanded(
-              child: Text(labelOf(row),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 13.5)),
+              child: Text(
+                labelOf(row),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                ),
+              ),
             ),
           ],
         ),
-        subtitle: Text(meta,
-            style: TextStyle(
-                fontSize: 12, color: scheme.onSurfaceVariant)),
+        subtitle: Text(
+          meta,
+          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+        ),
         // one ⋮ instead of a row of buttons — flag, back to inventory
         // and delete live in the menu; the item itself opens on tap
         trailing: hasRowActions
@@ -1504,32 +1648,41 @@ class _MovementDetails extends ConsumerWidget {
                     PopupMenuItem(
                       value: 'flag',
                       child: _menuRow(
-                          Icons.flag_outlined,
-                          rowFlags.isEmpty
-                              ? 'Flag this item'
-                              : 'Flags (${rowFlags.length})',
-                          color: rowFlags.isEmpty
-                              ? null
-                              : colorFromHex('${rowFlags.first['color']}')),
+                        Icons.flag_outlined,
+                        rowFlags.isEmpty
+                            ? 'Flag this item'
+                            : 'Flags (${rowFlags.length})',
+                        color: rowFlags.isEmpty
+                            ? null
+                            : colorFromHex('${rowFlags.first['color']}'),
+                      ),
                     ),
                   if (canReturn)
                     PopupMenuItem(
                       value: 'return',
-                      child: _menuRow(Icons.login_outlined, 'Back to inventory',
-                          color: scheme.primary),
+                      child: _menuRow(
+                        Icons.login_outlined,
+                        'Back to inventory',
+                        color: scheme.primary,
+                      ),
                     ),
                   if (canDelete)
                     PopupMenuItem(
                       value: 'delete',
                       child: _menuRow(
-                          Icons.delete_outline, 'Delete this movement',
-                          color: scheme.error),
+                        Icons.delete_outline,
+                        'Delete this movement',
+                        color: scheme.error,
+                      ),
                     ),
                 ],
                 onSelected: (value) {
                   if (value == 'flag') {
-                    showFlagSheet(context, ref,
-                        target: {'movement_id': row['id']});
+                    showFlagSheet(
+                      context,
+                      ref,
+                      target: {'movement_id': row['id']},
+                    );
                   } else if (value == 'return') {
                     state._returnGroup([row]);
                   } else if (value == 'delete') {
@@ -1546,8 +1699,7 @@ class _MovementDetails extends ConsumerWidget {
     Widget sendCard(String sendKey, List<Map<String, dynamic>> shownRows) {
       final full = sends.firstWhere((s) => s.key == sendKey).rows;
       final sendFirst = full.first;
-      final canManageSend =
-          isAdmin || full.any((r) => r['actor_id'] == myId);
+      final canManageSend = isAdmin || full.any((r) => r['actor_id'] == myId);
       final sendOut = [
         for (final row in full)
           if (stateOf(row) == SendRowState.out) row,
@@ -1558,33 +1710,45 @@ class _MovementDetails extends ConsumerWidget {
       final sendMenu = <PopupMenuEntry<String>>[
         if (isAdmin)
           PopupMenuItem(
-              value: 'edit',
-              child: _menuRow(Icons.edit_outlined, 'Edit this send')),
+            value: 'edit',
+            child: _menuRow(Icons.edit_outlined, 'Edit this send'),
+          ),
         if (canManageSend)
           PopupMenuItem(
-              value: 'add',
-              child: _menuRow(Icons.add, 'Add item to this send')),
+            value: 'add',
+            child: _menuRow(Icons.add, 'Add item to this send'),
+          ),
         if (canManageSend && sendOut.isNotEmpty)
           PopupMenuItem(
-              value: 'return',
-              child: _menuRow(Icons.login_outlined, 'Back to inventory',
-                  color: scheme.primary)),
+            value: 'return',
+            child: _menuRow(
+              Icons.login_outlined,
+              'Back to inventory',
+              color: scheme.primary,
+            ),
+          ),
         if (isAdmin)
           PopupMenuItem(
-              value: 'flag',
-              child: _menuRow(
-                  Icons.flag_outlined,
-                  sendFlags.isEmpty
-                      ? 'Flag this send'
-                      : 'Flags (${sendFlags.length})',
-                  color: sendFlags.isEmpty
-                      ? null
-                      : colorFromHex('${sendFlags.first['color']}'))),
+            value: 'flag',
+            child: _menuRow(
+              Icons.flag_outlined,
+              sendFlags.isEmpty
+                  ? 'Flag this send'
+                  : 'Flags (${sendFlags.length})',
+              color: sendFlags.isEmpty
+                  ? null
+                  : colorFromHex('${sendFlags.first['color']}'),
+            ),
+          ),
         if (canManageSend)
           PopupMenuItem(
-              value: 'delete',
-              child: _menuRow(Icons.delete_outline, 'Delete this send',
-                  color: scheme.error)),
+            value: 'delete',
+            child: _menuRow(
+              Icons.delete_outline,
+              'Delete this send',
+              color: scheme.error,
+            ),
+          ),
       ];
       return AppCard(
         padding: const EdgeInsets.all(4),
@@ -1598,26 +1762,34 @@ class _MovementDetails extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(12, 6, 0, 2),
                 child: Row(
                   children: [
-                    Icon(Icons.subdirectory_arrow_right,
-                        size: 15, color: scheme.outline),
+                    Icon(
+                      Icons.subdirectory_arrow_right,
+                      size: 15,
+                      color: scheme.outline,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                          [
-                            '${full.length} item${full.length == 1 ? '' : 's'}',
-                            ...tags,
-                          ].join(' · '),
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: scheme.onSurfaceVariant)),
+                        [
+                          '${full.length} item${full.length == 1 ? '' : 's'}',
+                          ...tags,
+                        ].join(' · '),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                     if (sendMenu.isNotEmpty)
                       PopupMenuButton<String>(
                         tooltip: 'Send actions',
-                        icon: Icon(Icons.more_vert,
-                            size: 20, color: scheme.outline),
+                        icon: Icon(
+                          Icons.more_vert,
+                          size: 20,
+                          color: scheme.outline,
+                        ),
                         itemBuilder: (menuContext) => sendMenu,
                         onSelected: (value) async {
                           if (value == 'edit') {
@@ -1634,11 +1806,14 @@ class _MovementDetails extends ConsumerWidget {
                               await state._returnGroup(sendOut);
                             }
                           } else if (value == 'flag') {
-                            showFlagSheet(context, ref,
-                                target: {
-                                  'movement_id': sendFirst['id'],
-                                  'group_ref': sendGroupValue(sendFirst),
-                                });
+                            showFlagSheet(
+                              context,
+                              ref,
+                              target: {
+                                'movement_id': sendFirst['id'],
+                                'group_ref': sendGroupValue(sendFirst),
+                              },
+                            );
                           } else if (value == 'delete') {
                             final gone = await state._deleteGroup(full);
                             if (!context.mounted) return;
@@ -1660,9 +1835,10 @@ class _MovementDetails extends ConsumerWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w800)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 8),
           // one card per send, in the order the movement holds them
           for (final send in sends)
@@ -1686,8 +1862,10 @@ class _MovementDetails extends ConsumerWidget {
         sections.add(('Still out (${outRows.length})', outRows));
       }
       if (movedRows.isNotEmpty) {
-        sections.add(
-            ('Moved on with a later send (${movedRows.length})', movedRows));
+        sections.add((
+          'Moved on with a later send (${movedRows.length})',
+          movedRows,
+        ));
       }
       if (backRows.isNotEmpty) {
         sections.add(('Returned (${backRows.length})', backRows));
@@ -1707,33 +1885,46 @@ class _MovementDetails extends ConsumerWidget {
             Icon(icon, size: 20, color: scheme.primary),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(title,
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w800)),
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 4),
-        Text(subtitle,
-            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+        Text(
+          subtitle,
+          style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+        ),
         if (notes.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Text(notes,
-              style:
-                  TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+          Text(
+            notes,
+            style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+          ),
         ],
         if (back) ...[
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(Icons.check_circle_outline,
-                  size: 15, color: context.colors.success),
+              Icon(
+                Icons.check_circle_outline,
+                size: 15,
+                color: context.colors.success,
+              ),
               const SizedBox(width: 6),
-              Text('Back in inventory',
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: context.colors.success)),
+              Text(
+                'Back in inventory',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.success,
+                ),
+              ),
             ],
           ),
         ],
@@ -1828,7 +2019,8 @@ Future<void> showEditSendSheet(
     heightFraction: 0.8,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
       child: _EditSendSheet(rows: rows),
     ),
   );
@@ -1881,22 +2073,23 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
     _initialKind = _kind;
     _initialDemo = first['is_demo'] == true;
     _demo = _initialDemo;
-    _initialParty =
-        movementPartyMissing(first) ? '' : '${first['to_location'] ?? ''}'.trim();
+    _initialParty = movementPartyMissing(first)
+        ? ''
+        : '${first['to_location'] ?? ''}'.trim();
     _target = TextEditingController(text: _initialParty);
     // a mixed movement opens on a sold send's figures, so the fields read
     // what the sold part of the movement carries
-    final soldRow = widget.rows.firstWhere(movementSold,
-        orElse: () => first);
+    final soldRow = widget.rows.firstWhere(movementSold, orElse: () => first);
     final amount = soldAmountOf(soldRow);
     _initialAmount = amount;
     _initialSoldBy = movementSoldBy(soldRow);
     _amount = TextEditingController(
-        text: amount == null
-            ? ''
-            : amount == amount.roundToDouble()
-                ? amount.toStringAsFixed(0)
-                : '$amount');
+      text: amount == null
+          ? ''
+          : amount == amount.roundToDouble()
+          ? amount.toStringAsFixed(0)
+          : '$amount',
+    );
     _soldBy = TextEditingController(text: _initialSoldBy);
     _initialPaid = widget.rows.any(movementPaid);
     _initialSold = widget.rows.any(movementSold);
@@ -1915,7 +2108,8 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
   Future<void> _save() async {
     final date = _date.text.trim();
     final parts = date.split('-');
-    final usable = parts.length == 3 &&
+    final usable =
+        parts.length == 3 &&
         int.tryParse(parts[0]) != null &&
         int.tryParse(parts[1]) != null &&
         int.tryParse(parts[2]) != null;
@@ -1943,19 +2137,27 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
           if (!kindChanged && !partyChanged) {
             // only the demo mark moved — the party record on the send
             // stays the one it already points at
-            partyId = widget.rows.first[
-                    _kind == 'Dealer' ? 'dealer_id' : 'customer_id']
-                as int?;
+            partyId =
+                widget.rows.first[_kind == 'Dealer'
+                        ? 'dealer_id'
+                        : 'customer_id']
+                    as int?;
           } else {
             final (id, created) = await findOrCreateParty(
-                _kind == 'Dealer' ? 'dealers' : 'customers', partyName);
+              _kind == 'Dealer' ? 'dealers' : 'customers',
+              partyName,
+            );
             partyId = id;
             newParty = created;
           }
         }
         for (final send in groupSendRows(rows)) {
-          await setSendDestination(send.rows,
-              kind: _kind, partyId: partyId, demo: _demo);
+          await setSendDestination(
+            send.rows,
+            kind: _kind,
+            partyId: partyId,
+            demo: _demo,
+          );
         }
       }
       // date and notes are the whole movement's — every row takes them,
@@ -1977,11 +2179,14 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
         // alone and a plain notes edit never rewrites what a sold send
         // already carries — only a real change reaches them
         if (soldToggled) {
-          await setSendSold(sendRows, _sold,
-              amount: _sold ? amount : null, soldBy: soldBy);
+          await setSendSold(
+            sendRows,
+            _sold,
+            amount: _sold ? amount : null,
+            soldBy: soldBy,
+          );
         } else if (_sold && soldDetailsChanged) {
-          await setSendSold(sendRows, true,
-              amount: amount, soldBy: soldBy);
+          await setSendSold(sendRows, true, amount: amount, soldBy: soldBy);
         }
       }
       ref
@@ -2009,13 +2214,16 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
     final kind = '${widget.rows.first['movement_type'] ?? ''}';
     final outbound = isOutboundKind(kind);
     final soldKind = isSoldKind(kind);
-    final noun =
-        groupSendRows(widget.rows).length > 1 ? 'movement' : 'send';
-    final dealerNames = ref.watch(dealersProvider).maybeWhen(
+    final noun = groupSendRows(widget.rows).length > 1 ? 'movement' : 'send';
+    final dealerNames = ref
+        .watch(dealersProvider)
+        .maybeWhen(
           data: (rows) => rows.map((r) => r['name'].toString()).toList(),
           orElse: () => const <String>[],
         );
-    final customerNames = ref.watch(customersProvider).maybeWhen(
+    final customerNames = ref
+        .watch(customersProvider)
+        .maybeWhen(
           data: (rows) => rows.map((r) => r['name'].toString()).toList(),
           orElse: () => const <String>[],
         );
@@ -2028,9 +2236,13 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
           Row(
             children: [
               Expanded(
-                child: Text('Edit $noun',
-                    style:
-                        const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Edit $noun',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -2044,9 +2256,13 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Sent to',
-                      style: TextStyle(
-                          fontSize: 13, color: scheme.onSurfaceVariant)),
+                  Text(
+                    'Sent to',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   SendKindGrid(
                     selected: _kind,
@@ -2067,19 +2283,23 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                       controller: _target,
                       label: _kind == 'Dealer' ? 'Dealer' : 'Customer',
                       hint: 'Optional',
-                      options:
-                          _kind == 'Dealer' ? dealerNames : customerNames,
+                      options: _kind == 'Dealer' ? dealerNames : customerNames,
                       pickTitle: _kind == 'Dealer' ? 'dealers' : 'customers',
                     ),
                     SwitchListTile.adaptive(
                       value: _demo,
                       onChanged: (value) => setState(() => _demo = value),
                       dense: true,
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12),
-                      title: const Text('Send as demo',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 13.5)),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                      ),
+                      title: const Text(
+                        'Send as demo',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
+                      ),
                     ),
                   ],
                   DateField(controller: _date, label: 'Date'),
@@ -2098,19 +2318,26 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                             : context.colors.quietFill,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: _paid
-                                ? context.colors.success
-                                : scheme.outlineVariant),
+                          color: _paid
+                              ? context.colors.success
+                              : scheme.outlineVariant,
+                        ),
                       ),
                       child: SwitchListTile.adaptive(
                         value: _paid,
                         onChanged: (value) => setState(() => _paid = value),
                         dense: true,
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 2),
-                        title: const Text('Paid',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 14)),
+                          horizontal: 12,
+                          vertical: 2,
+                        ),
+                        title: const Text(
+                          'Paid',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -2123,18 +2350,24 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                             : context.colors.quietFill,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color:
-                                _sold ? scheme.primary : scheme.outlineVariant),
+                          color: _sold ? scheme.primary : scheme.outlineVariant,
+                        ),
                       ),
                       child: SwitchListTile.adaptive(
                         value: _sold,
                         onChanged: (value) => setState(() => _sold = value),
                         dense: true,
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 2),
-                        title: const Text('Sold',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 14)),
+                          horizontal: 12,
+                          vertical: 2,
+                        ),
+                        title: const Text(
+                          'Sold',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -2142,17 +2375,20 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _amount,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
-                          labelText: 'Sale amount (optional)'),
+                        labelText: 'Sale amount (optional)',
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _soldBy,
                       textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
-                          labelText: 'Sold by (optional)'),
+                        labelText: 'Sold by (optional)',
+                      ),
                     ),
                   ],
                 ],
@@ -2166,7 +2402,8 @@ class _EditSendSheetState extends ConsumerState<_EditSendSheet> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Save'),
           ),
         ],
@@ -2201,9 +2438,9 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     _date.text = DateField.format(DateTime.now());
     // everything still out with this send starts ticked, so a plain
     // "everything is back" case is one tap like it always was
-    final latest = _latestByItem();
+    final history = _historyByItem();
     for (final row in widget.rows) {
-      if (sendRowState(row, latest) == SendRowState.out) {
+      if (sendRowState(row, history) == SendRowState.out) {
         _selected.add(row['id'] as int);
       }
     }
@@ -2217,15 +2454,18 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     super.dispose();
   }
 
-  /// The newest movement of every item, as the list reads it.
-  Map<String, Map<String, dynamic>> _latestByItem() => latestMovementByItem(
-      ref.read(allMovementsProvider).maybeWhen(
-            data: (value) => value,
-            orElse: () => const <Map<String, dynamic>>[],
-          ));
+  /// Every item's movement history, as the list reads it.
+  Map<String, List<Map<String, dynamic>>> _historyByItem() =>
+      movementHistoryByItem(
+        ref
+            .read(allMovementsProvider)
+            .maybeWhen(
+              data: (value) => value,
+              orElse: () => const <Map<String, dynamic>>[],
+            ),
+      );
 
-  Future<void> _returnSelected(
-      Map<String, InventoryItem> itemsByKey) async {
+  Future<void> _returnSelected(Map<String, InventoryItem> itemsByKey) async {
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     var count = 0;
@@ -2237,8 +2477,11 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
         if (key == null) continue;
         final item = itemsByKey['${key.key}:${key.value}'];
         if (item == null) continue;
-        await returnToInventory(item,
-            date: _date.text.trim(), notes: _notes.text.trim());
+        await returnToInventory(
+          item,
+          date: _date.text.trim(),
+          notes: _notes.text.trim(),
+        );
         count++;
       }
     } catch (error) {
@@ -2250,9 +2493,13 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     }
     if (!mounted) return;
     Navigator.pop(context);
-    messenger.showSnackBar(SnackBar(
-        content: Text(failure ??
-            '$count item${count == 1 ? '' : 's'} back in inventory.')));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          failure ?? '$count item${count == 1 ? '' : 's'} back in inventory.',
+        ),
+      ),
+    );
   }
 
   /// The tick line above a send's items: one tap marks the whole send
@@ -2273,31 +2520,35 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
       onChanged: _saving
           ? null
           : (value) => setState(() {
-                if (value == true) {
-                  _selected.addAll(ids);
-                } else {
-                  _selected.removeAll(ids);
-                }
-              }),
+              if (value == true) {
+                _selected.addAll(ids);
+              } else {
+                _selected.removeAll(ids);
+              }
+            }),
       title: Text(
         sendRows.length == 1
             ? labelOf(sendRows.first)
             : onlySend
-                ? 'This send · ${sendRows.length} items'
-                : 'Send ${index + 1} · ${sendRows.length} items',
+            ? 'This send · ${sendRows.length} items'
+            : 'Send ${index + 1} · ${sendRows.length} items',
         style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
       ),
       subtitle: Text(
         '$ticked of ${ids.length} ticked',
         style: TextStyle(
-            fontSize: 12, color: Theme.of(context).colorScheme.outline),
+          fontSize: 12,
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = ref.watch(allItemsProvider).maybeWhen(
+    final items = ref
+        .watch(allItemsProvider)
+        .maybeWhen(
           data: (value) => value,
           orElse: () => const <InventoryItem>[],
         );
@@ -2310,14 +2561,16 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
       return labels['${key.key}:${key.value}'] ?? 'Unknown item';
     }
 
-    final latest = _latestByItem();
+    final history = _historyByItem();
     SendRowState stateOf(Map<String, dynamic> row) =>
-        sendRowState(row, latest);
-    final outRows =
-        widget.rows.where((r) => stateOf(r) == SendRowState.out).toList();
+        sendRowState(row, history);
+    final outRows = widget.rows
+        .where((r) => stateOf(r) == SendRowState.out)
+        .toList();
     final sendGroups = groupSendRows(outRows);
-    final backRows =
-        widget.rows.where((r) => stateOf(r) == SendRowState.back).toList();
+    final backRows = widget.rows
+        .where((r) => stateOf(r) == SendRowState.back)
+        .toList();
     final movedRows = widget.rows
         .where((r) => stateOf(r) == SendRowState.movedOn)
         .toList();
@@ -2325,7 +2578,8 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.8),
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
         child: ListView(
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -2333,9 +2587,10 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
             Row(
               children: [
                 const Expanded(
-                  child: Text('Back to inventory',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  child: Text(
+                    'Back to inventory',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -2347,8 +2602,12 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
             // a tick on the send's line takes all of it back at once;
             // single items still tick on their own underneath
             for (final (index, send) in sendGroups.indexed) ...[
-              _sendTickHeader(index, send.rows, labelOf,
-                  onlySend: sendGroups.length == 1),
+              _sendTickHeader(
+                index,
+                send.rows,
+                labelOf,
+                onlySend: sendGroups.length == 1,
+              ),
               for (final row in send.rows)
                 CheckboxListTile(
                   dense: true,
@@ -2358,34 +2617,62 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
                   onChanged: _saving
                       ? null
                       : (_) => setState(() {
-                            final id = row['id'] as int;
-                            if (!_selected.remove(id)) _selected.add(id);
-                          }),
-                  title: Text(labelOf(row),
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
+                          final id = row['id'] as int;
+                          if (!_selected.remove(id)) _selected.add(id);
+                        }),
+                  title: Text(
+                    labelOf(row),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
             ],
             for (final row in backRows)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                leading:
-                    Icon(Icons.check_circle, size: 20, color: context.colors.success),
-                title: Text(labelOf(row),
-                    style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                subtitle: Text('Already back in inventory',
-                    style: TextStyle(fontSize: 12, color: context.colors.success)),
+                leading: Icon(
+                  Icons.check_circle,
+                  size: 20,
+                  color: context.colors.success,
+                ),
+                title: Text(
+                  labelOf(row),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                subtitle: Text(
+                  'Already back in inventory',
+                  style: TextStyle(fontSize: 12, color: context.colors.success),
+                ),
               ),
             for (final row in movedRows)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.swap_horiz, size: 20, color: Theme.of(context).colorScheme.outline),
-                title: Text(labelOf(row),
-                    style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                subtitle: Text('Moved on with a later movement',
-                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline)),
+                leading: Icon(
+                  Icons.swap_horiz,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                title: Text(
+                  labelOf(row),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                subtitle: Text(
+                  'Moved on with a later movement',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
               ),
             const SizedBox(height: 8),
             DateField(controller: _date, label: 'Date they came back'),
@@ -2406,8 +2693,10 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
                       height: 22,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text('Return ${_selected.length} item'
-                      '${_selected.length == 1 ? '' : 's'}'),
+                  : Text(
+                      'Return ${_selected.length} item'
+                      '${_selected.length == 1 ? '' : 's'}',
+                    ),
             ),
           ],
         ),
@@ -2496,14 +2785,16 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
   /// Picking a machine also brings its probes and printer along, into
   /// the group it was picked for.
   Future<void> _pickGroupItems(
-      _GroupDraft group, List<InventoryItem> items) async {
+    _GroupDraft group,
+    List<InventoryItem> items,
+  ) async {
     final chosen = {
       for (final other in _groups)
-        for (final item in other.items) item.key
+        for (final item in other.items) item.key,
     };
     final offered = [
       for (final item in items)
-        if (!chosen.contains(item.key)) item
+        if (!chosen.contains(item.key)) item,
     ];
     if (offered.isEmpty) {
       showSnack(context, 'Every item is already in this movement.');
@@ -2516,8 +2807,9 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     );
     if (picked == null) return;
     setState(() {
-      final additions =
-          picked.kind == 'machine' ? kitFor(items, picked) : [picked];
+      final additions = picked.kind == 'machine'
+          ? kitFor(items, picked)
+          : [picked];
       for (final item in additions) {
         if (chosen.add(item.key)) group.items.add(item);
       }
@@ -2556,7 +2848,9 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                   child: Text(
                     multi ? 'Group ${index + 1}' : 'Items',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 14),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
                 if (multi)
@@ -2573,8 +2867,10 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
             ListTile(
               dense: true,
               leading: const Icon(Icons.search),
-              title: Text('Choose an item',
-                  style: TextStyle(color: scheme.outline)),
+              title: Text(
+                'Choose an item',
+                style: TextStyle(color: scheme.outline),
+              ),
               onTap: () => _pickGroupItems(group, items),
             )
           else ...[
@@ -2582,9 +2878,13 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               ListTile(
                 dense: true,
                 visualDensity: VisualDensity.compact,
-                title: Text('${item.code}  ${item.title}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13.5)),
+                title: Text(
+                  '${item.code}  ${item.title}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                  ),
+                ),
                 subtitle: Text('${item.kindLabel} · ${item.status}'),
                 trailing: IconButton(
                   tooltip: 'Remove',
@@ -2597,8 +2897,9 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               visualDensity: VisualDensity.compact,
               leading: const Icon(Icons.add, size: 20),
               title: Text(
-                  multi ? 'Add another item to this group' : 'Add another item',
-                  style: const TextStyle(fontSize: 14)),
+                multi ? 'Add another item to this group' : 'Add another item',
+                style: const TextStyle(fontSize: 14),
+              ),
               onTap: () => _pickGroupItems(group, items),
             ),
           ],
@@ -2608,11 +2909,14 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               value: group.sold,
               onChanged: (value) => setState(() => group.sold = value),
               dense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-              title: const Text('Sold',
-                  style:
-                      TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 0,
+              ),
+              title: const Text(
+                'Sold',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+              ),
             ),
             if (group.sold)
               Padding(
@@ -2622,18 +2926,21 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     TextField(
                       controller: group.amount,
                       keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
-                          labelText: 'Sale amount (optional)',
-                          isDense: true),
+                        labelText: 'Sale amount (optional)',
+                        isDense: true,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: group.soldBy,
                       textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
-                          labelText: 'Sold by (optional)',
-                          isDense: true),
+                        labelText: 'Sold by (optional)',
+                        isDense: true,
+                      ),
                     ),
                   ],
                 ),
@@ -2644,11 +2951,14 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               value: group.paid,
               onChanged: (value) => setState(() => group.paid = value),
               dense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-              title: const Text('Paid',
-                  style:
-                      TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 0,
+              ),
+              title: const Text(
+                'Paid',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+              ),
             ),
         ],
       ),
@@ -2660,7 +2970,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     // it actually carries
     final groups = [
       for (final group in _groups)
-        if (group.items.isNotEmpty) group
+        if (group.items.isNotEmpty) group,
     ];
     if (groups.isEmpty) {
       showSnack(context, 'Choose at least one item to send.', error: true);
@@ -2695,17 +3005,20 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       for (final group in groups) {
         final groupRef = _freshGroupRef();
         for (final item in group.items) {
-          await db.rpc('create_movement', params: {
-            'p_item_type': item.kind,
-            'p_item_id': item.id,
-            'p_kind': _kind,
-            ...destination,
-            if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
-            if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
-            'p_demo': _demo,
-            'p_paid': group.paid,
-            'p_group_ref': groupRef,
-          });
+          await db.rpc(
+            'create_movement',
+            params: {
+              'p_item_type': item.kind,
+              'p_item_id': item.id,
+              'p_kind': _kind,
+              ...destination,
+              if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
+              if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
+              'p_demo': _demo,
+              'p_paid': group.paid,
+              'p_group_ref': groupRef,
+            },
+          );
         }
         if (group.paid) paidGroups++;
         // the sold mark is an admin-only write, so it is applied after
@@ -2714,11 +3027,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
         if (soldKind && group.sold && isAdmin) {
           await setSendSold(
             [
-              {
-                'group_ref': groupRef,
-                'movement_type': _kind,
-                'is_demo': _demo,
-              }
+              {'group_ref': groupRef, 'movement_type': _kind, 'is_demo': _demo},
             ],
             true,
             amount: parseSaleAmount(group.amount.text),
@@ -2742,31 +3051,33 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       final where = _kind == 'Workshop'
           ? 'the workshop'
           : _kind == 'Branch'
-              ? 'the Lahore branch'
-              : target.isEmpty
-                  ? (_kind == 'Dealer' ? 'a dealer' : 'a customer')
-                  : target;
+          ? 'the Lahore branch'
+          : target.isEmpty
+          ? (_kind == 'Dealer' ? 'a dealer' : 'a customer')
+          : target;
       final added = newParty ? ' — $target added to the records' : '';
-      final pending =
-          target.isEmpty && _kind != 'Workshop' && _kind != 'Branch'
-              ? ' — add the name later'
-              : '';
-      final groupText =
-          groups.length == 1 ? '' : ' in ${groups.length} groups';
+      final pending = target.isEmpty && _kind != 'Workshop' && _kind != 'Branch'
+          ? ' — add the name later'
+          : '';
+      final groupText = groups.length == 1 ? '' : ' in ${groups.length} groups';
       final paidText = paidGroups == 0
           ? ''
           : paidGroups == groups.length
-              ? ' — paid'
-              : ' — $paidGroups of ${groups.length} paid';
+          ? ' — paid'
+          : ' — $paidGroups of ${groups.length} paid';
       final soldText = soldGroups == 0
           ? ''
           : soldGroups == groups.length
-              ? ' — sold'
-              : ' — $soldGroups of ${groups.length} sold';
-      messenger.showSnackBar(SnackBar(
+          ? ' — sold'
+          : ' — $soldGroups of ${groups.length} sold';
+      messenger.showSnackBar(
+        SnackBar(
           content: Text(
-              '$_itemCount item(s)$groupText sent to $where$added$pending'
-              '${_demo ? ' (demo)' : ''}$paidText$soldText.')));
+            '$_itemCount item(s)$groupText sent to $where$added$pending'
+            '${_demo ? ' (demo)' : ''}$paidText$soldText.',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -2779,16 +3090,23 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     final scheme = Theme.of(context).colorScheme;
     final isAdmin = ref.watch(isAdminProvider);
     final soldKind = isSoldKind(_kind);
-    final items = ref.watch(allItemsProvider).maybeWhen(
-          data: (rows) =>
-              rows.where((i) => i.status != 'Sold' && i.status != 'Archived').toList(),
+    final items = ref
+        .watch(allItemsProvider)
+        .maybeWhen(
+          data: (rows) => rows
+              .where((i) => i.status != 'Sold' && i.status != 'Archived')
+              .toList(),
           orElse: () => const <InventoryItem>[],
         );
-    final dealerNames = ref.watch(dealersProvider).maybeWhen(
+    final dealerNames = ref
+        .watch(dealersProvider)
+        .maybeWhen(
           data: (rows) => rows.map((r) => r['name'].toString()).toList(),
           orElse: () => const <String>[],
         );
-    final customerNames = ref.watch(customersProvider).maybeWhen(
+    final customerNames = ref
+        .watch(customersProvider)
+        .maybeWhen(
           data: (rows) => rows.map((r) => r['name'].toString()).toList(),
           orElse: () => const <String>[],
         );
@@ -2803,9 +3121,12 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
             children: [
               Expanded(
                 child: Text(
-                    widget.seedKind == null ? 'New movement' : 'Add a group',
-                    style:
-                        const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  widget.seedKind == null ? 'New movement' : 'Add a group',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -2819,9 +3140,13 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('What is going out *',
-                      style: TextStyle(
-                          fontSize: 13, color: scheme.onSurfaceVariant)),
+                  Text(
+                    'What is going out *',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   for (var i = 0; i < _groups.length; i++) ...[
                     if (i > 0) const SizedBox(height: 8),
@@ -2829,16 +3154,18 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                   ],
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: () =>
-                        setState(() => _groups.add(_GroupDraft())),
+                    onPressed: () => setState(() => _groups.add(_GroupDraft())),
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Add another group'),
                   ),
                   const SizedBox(height: 16),
-                  Text('Sent to *',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Sent to *',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   SendKindGrid(
                     selected: _kind,
@@ -2853,27 +3180,32 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                     Container(
                       decoration: BoxDecoration(
                         color: _demo
-                            ? Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.07)
+                            ? Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.07)
                             : context.colors.quietFill,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: _demo
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context).colorScheme.outlineVariant),
+                          color: _demo
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.outlineVariant,
+                        ),
                       ),
                       child: SwitchListTile.adaptive(
                         value: _demo,
-                        onChanged: (value) =>
-                            setState(() => _demo = value),
+                        onChanged: (value) => setState(() => _demo = value),
                         dense: true,
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 2),
-                        title: const Text('Send as demo',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 14)),
+                          horizontal: 12,
+                          vertical: 2,
+                        ),
+                        title: const Text(
+                          'Send as demo',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -2913,7 +3245,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Record movement'),
           ),
         ],
@@ -2935,8 +3268,10 @@ Future<void> showAddPartySheet(
   final isAdmin = ref.read(isAdminProvider);
   final labels = ref.read(itemLabelsProvider);
   final pending = rows
-      .where((row) =>
-          movementPartyMissing(row) && (isAdmin || row['actor_id'] == myId))
+      .where(
+        (row) =>
+            movementPartyMissing(row) && (isAdmin || row['actor_id'] == myId),
+      )
       .toList();
   if (pending.isEmpty) return;
 
@@ -2957,7 +3292,8 @@ Future<void> showAddPartySheet(
       builder: (sheetContext, setSheetState) {
         return Padding(
           padding: EdgeInsets.only(
-              bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
           child: SizedBox(
             height: MediaQuery.of(sheetContext).size.height * 0.6,
             child: Column(
@@ -2968,9 +3304,13 @@ Future<void> showAddPartySheet(
                   child: Row(
                     children: [
                       const Expanded(
-                        child: Text('Add the missing name',
-                            style: TextStyle(
-                                fontSize: 17, fontWeight: FontWeight.w700)),
+                        child: Text(
+                          'Add the missing name',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(sheetContext),
@@ -2992,29 +3332,41 @@ Future<void> showAddPartySheet(
                               dense: true,
                               leading: CircleAvatar(
                                 radius: 18,
-                                backgroundColor: context.colors.warningContainer,
-                                child: Icon(Icons.person_add_alt_outlined,
-                                    size: 20, color: kAmber),
+                                backgroundColor:
+                                    context.colors.warningContainer,
+                                child: Icon(
+                                  Icons.person_add_alt_outlined,
+                                  size: 20,
+                                  color: kAmber,
+                                ),
                               ),
                               title: Text(
                                 _sendTitle(entry.value, labels),
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w700, fontSize: 14),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
                               ),
-                              subtitle: Text([
-                                '${entry.value.length} item(s)',
-                                entry.value.first['movement_date'] ?? '',
-                                entry.value.first['movement_type'] ?? '',
-                              ].join(' · ')),
-                              trailing: Icon(Icons.chevron_right,
-                                  size: 20, color: Theme.of(context).colorScheme.outline),
+                              subtitle: Text(
+                                [
+                                  '${entry.value.length} item(s)',
+                                  entry.value.first['movement_date'] ?? '',
+                                  entry.value.first['movement_type'] ?? '',
+                                ].join(' · '),
+                              ),
+                              trailing: Icon(
+                                Icons.chevron_right,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
                               onTap: () async {
                                 final groupRows = entry.value;
-                                final isDealer = groupRows
-                                        .first['movement_type'] ==
+                                final isDealer =
+                                    groupRows.first['movement_type'] ==
                                     'Dealer';
-                                final table =
-                                    isDealer ? 'dealers' : 'customers';
+                                final table = isDealer
+                                    ? 'dealers'
+                                    : 'customers';
                                 final options = await db
                                     .from(table)
                                     .select('id, name')
@@ -3040,10 +3392,10 @@ Future<void> showAddPartySheet(
                                   // the name is not in the records yet —
                                   // add it here (any member may)
                                   final typed = await _askForNewName(
-                                      sheetContext,
-                                      isDealer ? 'dealer' : 'customer');
-                                  if (typed == null ||
-                                      !sheetContext.mounted) {
+                                    sheetContext,
+                                    isDealer ? 'dealer' : 'customer',
+                                  );
+                                  if (typed == null || !sheetContext.mounted) {
                                     return;
                                   }
                                   try {
@@ -3063,22 +3415,29 @@ Future<void> showAddPartySheet(
                                           .single();
                                       id = inserted['id'] as int;
                                       ref
-                                        ..invalidate(isDealer
-                                            ? dealersProvider
-                                            : customersProvider)
+                                        ..invalidate(
+                                          isDealer
+                                              ? dealersProvider
+                                              : customersProvider,
+                                        )
                                         ..invalidate(recentPartiesProvider);
                                     }
                                   } catch (error) {
                                     if (sheetContext.mounted) {
-                                      showSnack(sheetContext,
-                                          errorMessage(error),
-                                          error: true);
+                                      showSnack(
+                                        sheetContext,
+                                        errorMessage(error),
+                                        error: true,
+                                      );
                                     }
                                     return;
                                   }
                                 } else {
-                                  id = options.firstWhere(
-                                      (r) => r['name'] == picked)['id'] as int;
+                                  id =
+                                      options.firstWhere(
+                                            (r) => r['name'] == picked,
+                                          )['id']
+                                          as int;
                                 }
                                 String? failure;
                                 for (final row in groupRows) {
@@ -3098,8 +3457,7 @@ Future<void> showAddPartySheet(
                                   ..invalidate(oldStockItemsProvider);
                                 if (!sheetContext.mounted) return;
                                 if (failure != null) {
-                                  showSnack(sheetContext, failure,
-                                      error: true);
+                                  showSnack(sheetContext, failure, error: true);
                                 }
                                 setSheetState(() {
                                   for (final row in groupRows) {
@@ -3145,8 +3503,7 @@ Future<String?> _askForNewName(BuildContext context, String kind) async {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () =>
-              Navigator.pop(dialogContext, controller.text.trim()),
+          onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
           child: const Text('Add'),
         ),
       ],
@@ -3160,16 +3517,13 @@ Future<String?> _askForNewName(BuildContext context, String kind) async {
 String _sendTitle(List<Map<String, dynamic>> rows, Map<String, String> labels) {
   for (final row in rows) {
     final key = movementItemKey(row);
-    final label = key == null
-        ? null
-        : labels['${key.key}:${key.value}'];
+    final label = key == null ? null : labels['${key.key}:${key.value}'];
     if (label != null) {
       return '$label → ${row['to_location'] ?? ''}';
     }
   }
   return 'Sent to ${rows.first['to_location'] ?? ''}';
 }
-
 
 // ---------------------------------------------------------------------------
 // filters sheet
@@ -3269,12 +3623,15 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
   }
 
   Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -3291,9 +3648,10 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
           Row(
             children: [
               const Expanded(
-                child: Text('Filters',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Filters',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -3317,7 +3675,8 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
                         for (final option in _filters)
                           ChoiceChip(
                             label: Text(
-                                '$option (${widget.showCounts[option] ?? 0})'),
+                              '$option (${widget.showCounts[option] ?? 0})',
+                            ),
                             selected: _show == option,
                             onSelected: (_) => setState(() {
                               _show = option;
@@ -3334,8 +3693,7 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
                             backgroundColor: context.colors.isDark
                                 ? context.colors.quietFill
                                 : scheme.surface,
-                            side:
-                                BorderSide(color: scheme.outlineVariant),
+                            side: BorderSide(color: scheme.outlineVariant),
                           ),
                       ],
                     ),
@@ -3348,7 +3706,9 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
                       initialValue: _party,
                       items: [
                         DropdownMenuItem(
-                            value: 'All', child: Text(widget.partyLabel)),
+                          value: 'All',
+                          child: Text(widget.partyLabel),
+                        ),
                         for (final name in widget.partyOptions)
                           DropdownMenuItem(value: name, child: Text(name)),
                       ],
@@ -3362,7 +3722,9 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
                     initialValue: _actor,
                     items: [
                       const DropdownMenuItem(
-                          value: 'All', child: Text('Anyone')),
+                        value: 'All',
+                        child: Text('Anyone'),
+                      ),
                       for (final name in widget.actorOptions)
                         DropdownMenuItem(value: name, child: Text(name)),
                     ],
@@ -3375,10 +3737,11 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
                     initialValue: _kind,
                     items: [
                       const DropdownMenuItem(
-                          value: 'All', child: Text('Any item')),
+                        value: 'All',
+                        child: Text('Any item'),
+                      ),
                       for (final kind in widget.kindOptions)
-                        DropdownMenuItem(
-                            value: kind, child: Text('${kind}s')),
+                        DropdownMenuItem(value: kind, child: Text('${kind}s')),
                     ],
                     onChanged: (v) => setState(() => _kind = v ?? 'All'),
                   ),
@@ -3386,8 +3749,7 @@ class _MovementFilterSheetState extends State<_MovementFilterSheet> {
                   Row(
                     children: [
                       Expanded(
-                        child:
-                            DateField(controller: _from, label: 'Date from'),
+                        child: DateField(controller: _from, label: 'Date from'),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
