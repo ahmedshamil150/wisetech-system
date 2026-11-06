@@ -5,6 +5,15 @@ import '../../core/layout.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 
+/// Probes, printers and parts share the same CHECK set in the database.
+const _kitItemConditions = [
+  'Used',
+  'Good',
+  'Needs Inspection',
+  'Damaged',
+  'Under Repair',
+];
+
 /// Opens the "buy equipment from a local person" form.
 Future<void> showLocalPurchaseSheet(BuildContext context) {
   return showAppSheet<void>(
@@ -13,7 +22,8 @@ Future<void> showLocalPurchaseSheet(BuildContext context) {
     heightFraction: 0.85,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
       child: const LocalPurchaseForm(),
     ),
   );
@@ -87,14 +97,6 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
   bool _saving = false;
 
   static const _machineConditions = ['Used', 'Good', 'Faulty', 'Unknown'];
-  // Probes and printers share the same CHECK set in the database.
-  static const _kitItemConditions = [
-    'Used',
-    'Good',
-    'Needs Inspection',
-    'Damaged',
-    'Under Repair',
-  ];
 
   @override
   void initState() {
@@ -170,8 +172,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
         .select('brand_id')
         .eq('id', productId)
         .limit(1);
-    return (productId,
-        rows.isEmpty ? null : rows.first['brand_id'] as int?);
+    return (productId, rows.isEmpty ? null : rows.first['brand_id'] as int?);
   }
 
   Future<void> _save() async {
@@ -181,9 +182,12 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       return;
     }
     if (!_withMachine && !_withProbe && !_withPrinter && !_withPart) {
-      showSnack(context, 'Pick at least one item — machine, probe, printer '
-          'or part.',
-          error: true);
+      showSnack(
+        context,
+        'Pick at least one item — machine, probe, printer '
+        'or part.',
+        error: true,
+      );
       return;
     }
     if (_withMachine && _machineModel.text.trim().isEmpty) {
@@ -192,18 +196,22 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     }
     if (_withProbe) {
       if (_probeLines.isEmpty) {
-        showSnack(context, 'Add a probe model or turn the probe switch off.',
-            error: true);
+        showSnack(
+          context,
+          'Add a probe model or turn the probe switch off.',
+          error: true,
+        );
         return;
       }
       for (var i = 0; i < _probeLines.length; i++) {
         if (_probeLines[i].model.text.trim().isEmpty) {
           showSnack(
-              context,
-              _probeLines.length == 1
-                  ? 'Probe model is required.'
-                  : 'Probe ${i + 1} model is required.',
-              error: true);
+            context,
+            _probeLines.length == 1
+                ? 'Probe model is required.'
+                : 'Probe ${i + 1} model is required.',
+            error: true,
+          );
           return;
         }
       }
@@ -214,26 +222,32 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     }
     if (_withPart) {
       if (_partLines.isEmpty) {
-        showSnack(context, 'Add a part name or turn the part switch off.',
-            error: true);
+        showSnack(
+          context,
+          'Add a part name or turn the part switch off.',
+          error: true,
+        );
         return;
       }
       for (var i = 0; i < _partLines.length; i++) {
         if (_partLines[i].model.text.trim().isEmpty) {
           showSnack(
-              context,
-              _partLines.length == 1
-                  ? 'Part name is required.'
-                  : 'Part ${i + 1} name is required.',
-              error: true);
+            context,
+            _partLines.length == 1
+                ? 'Part name is required.'
+                : 'Part ${i + 1} name is required.',
+            error: true,
+          );
           return;
         }
       }
     }
     if (_batchId == null) {
-      showSnack(context,
-          'The BATCH-LOCAL batch is missing — migration 0017 was not run.',
-          error: true);
+      showSnack(
+        context,
+        'The BATCH-LOCAL batch is missing — migration 0017 was not run.',
+        error: true,
+      );
       return;
     }
     if (_withMachine && _code.text.trim().isEmpty) {
@@ -260,22 +274,26 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       if (_withMachine) {
         final model = _machineModel.text.trim();
         final (productId, brandId) = await _productFor(model, 'Machine');
-        final row = await db.from('machines').insert({
-          'machine_id': _code.text.trim(),
-          'model': model,
-          'catalog_product_id': productId,
-          'batch_id': _batchId,
-          'vendor_id': sellerId,
-          'status': 'In Stock',
-          'current_location': 'Company',
-          'acquisition_date': date,
-          'condition': _machineCondition,
-          'brand_id': ?brandId,
-          if (_machineSerial.text.trim().isNotEmpty)
-            'serial_number': _machineSerial.text.trim(),
-          'purchase_price': ?price,
-          if (notes.isNotEmpty) 'notes': notes,
-        }).select('id').single();
+        final row = await db
+            .from('machines')
+            .insert({
+              'machine_id': _code.text.trim(),
+              'model': model,
+              'catalog_product_id': productId,
+              'batch_id': _batchId,
+              'vendor_id': sellerId,
+              'status': 'In Stock',
+              'current_location': 'Company',
+              'acquisition_date': date,
+              'condition': _machineCondition,
+              'brand_id': ?brandId,
+              if (_machineSerial.text.trim().isNotEmpty)
+                'serial_number': _machineSerial.text.trim(),
+              'purchase_price': ?price,
+              if (notes.isNotEmpty) 'notes': notes,
+            })
+            .select('id')
+            .single();
         machineId = row['id'] as int;
         machineCode = _code.text.trim();
         created.add(machineCode);
@@ -380,7 +398,8 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
       if (!mounted) return;
       Navigator.pop(context);
       messenger.showSnackBar(
-          SnackBar(content: Text('${created.join(', ')} added to stock.')));
+        SnackBar(content: Text('${created.join(', ')} added to stock.')),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -388,8 +407,12 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     }
   }
 
-  Widget _itemChip(BuildContext context, String label, bool selected,
-      VoidCallback onTap) {
+  Widget _itemChip(
+    BuildContext context,
+    String label,
+    bool selected,
+    VoidCallback onTap,
+  ) {
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -409,8 +432,10 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
     );
   }
 
-  Widget _sectionTitle(String text) => Text(text,
-      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800));
+  Widget _sectionTitle(String text) => Text(
+    text,
+    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+  );
 
   Widget _conditionField({
     required String value,
@@ -446,9 +471,13 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
           Row(
             children: [
               Expanded(
-                child: Text('Probe ${i + 1}',
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700)),
+                child: Text(
+                  'Probe ${i + 1}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               IconButton(
                 tooltip: 'Remove this probe',
@@ -504,9 +533,13 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
           Row(
             children: [
               Expanded(
-                child: Text('Part ${i + 1}',
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700)),
+                child: Text(
+                  'Part ${i + 1}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               IconButton(
                 tooltip: 'Remove this part',
@@ -545,7 +578,9 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
 
   @override
   Widget build(BuildContext context) {
-    final products = ref.watch(productsProvider).maybeWhen(
+    final products = ref
+        .watch(productsProvider)
+        .maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
@@ -568,9 +603,10 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
           Row(
             children: [
               const Expanded(
-                child: Text('Buy local equipment',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Buy local equipment',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -585,7 +621,9 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
               child: Text(
                 'The BATCH-LOCAL batch is missing — migration 0017 was not run.',
                 style: TextStyle(
-                    color: Theme.of(context).colorScheme.error, fontSize: 13),
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 13,
+                ),
               ),
             ),
           Flexible(
@@ -599,22 +637,40 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _itemChip(context, 'Machine', _withMachine,
-                          () => setState(() => _withMachine = !_withMachine)),
-                      _itemChip(context, 'Probe', _withProbe, () => setState(() {
-                            _withProbe = !_withProbe;
-                            if (_withProbe && _probeLines.isEmpty) {
-                              _probeLines.add(_ProbeLine());
-                            }
-                          })),
-                      _itemChip(context, 'Printer', _withPrinter,
-                          () => setState(() => _withPrinter = !_withPrinter)),
-                      _itemChip(context, 'Part', _withPart, () => setState(() {
-                            _withPart = !_withPart;
-                            if (_withPart && _partLines.isEmpty) {
-                              _partLines.add(_PartLine());
-                            }
-                          })),
+                      _itemChip(
+                        context,
+                        'Machine',
+                        _withMachine,
+                        () => setState(() => _withMachine = !_withMachine),
+                      ),
+                      _itemChip(
+                        context,
+                        'Probe',
+                        _withProbe,
+                        () => setState(() {
+                          _withProbe = !_withProbe;
+                          if (_withProbe && _probeLines.isEmpty) {
+                            _probeLines.add(_ProbeLine());
+                          }
+                        }),
+                      ),
+                      _itemChip(
+                        context,
+                        'Printer',
+                        _withPrinter,
+                        () => setState(() => _withPrinter = !_withPrinter),
+                      ),
+                      _itemChip(
+                        context,
+                        'Part',
+                        _withPart,
+                        () => setState(() {
+                          _withPart = !_withPart;
+                          if (_withPart && _partLines.isEmpty) {
+                            _partLines.add(_PartLine());
+                          }
+                        }),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -669,10 +725,12 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                             ? const Padding(
                                 padding: EdgeInsets.all(12),
                                 child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2)),
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
                               )
                             : const Icon(Icons.lock_outline, size: 18),
                       ),
@@ -680,8 +738,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                   ],
                   if (_withProbe) ...[
                     const SizedBox(height: 16),
-                    _sectionTitle(
-                        _probeLines.length > 1 ? 'Probes' : 'Probe'),
+                    _sectionTitle(_probeLines.length > 1 ? 'Probes' : 'Probe'),
                     if (_withMachine)
                       Padding(
                         padding: const EdgeInsets.only(top: 2, bottom: 8),
@@ -690,10 +747,11 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                               ? "Each comes with the machine — they share the machine's ID and travel with it."
                               : "Comes with the machine — shares the machine's ID and travels with it.",
                           style: TextStyle(
-                              fontSize: 12.5,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant),
+                            fontSize: 12.5,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       )
                     else
@@ -717,10 +775,11 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                         child: Text(
                           "Comes with the machine — shares the machine's ID and travels with it.",
                           style: TextStyle(
-                              fontSize: 12.5,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant),
+                            fontSize: 12.5,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       )
                     else
@@ -771,7 +830,8 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                         child: TextField(
                           controller: _price,
                           keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                            decimal: true,
+                          ),
                           decoration: const InputDecoration(
                             labelText: 'Price paid',
                           ),
@@ -782,9 +842,7 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _notes,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Notes'),
                   ),
                 ],
               ),
@@ -797,8 +855,224 @@ class _LocalPurchaseFormState extends ConsumerState<LocalPurchaseForm> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens the form that adds one more probe to a machine that was bought
+/// locally. The probe joins that machine's purchase — same seller, date
+/// and batch — instead of starting a new purchase.
+Future<void> showAddProbeToPurchaseSheet(
+  BuildContext context,
+  InventoryItem machine,
+) {
+  return showAppSheet<void>(
+    context: context,
+    title: 'Probe for ${machine.code}',
+    heightFraction: 0.72,
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
+      child: AddProbeToPurchaseForm(machine: machine),
+    ),
+  );
+}
+
+class AddProbeToPurchaseForm extends ConsumerStatefulWidget {
+  const AddProbeToPurchaseForm({super.key, required this.machine});
+
+  final InventoryItem machine;
+
+  @override
+  ConsumerState<AddProbeToPurchaseForm> createState() =>
+      _AddProbeToPurchaseFormState();
+}
+
+class _AddProbeToPurchaseFormState
+    extends ConsumerState<AddProbeToPurchaseForm> {
+  final _model = TextEditingController();
+  final _serial = TextEditingController();
+  final _notes = TextEditingController();
+  String _condition = 'Used';
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    for (final c in [_model, _serial, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final machine = widget.machine;
+    final model = _model.text.trim();
+    if (model.isEmpty) {
+      showSnack(context, 'Model is required.', error: true);
+      return;
+    }
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final productId = await resolveReferenceId(
+        table: 'catalog_products',
+        name: model,
+        payload: {'category': 'Probe'},
+      );
+      final productRows = await db
+          .from('catalog_products')
+          .select('brand_id')
+          .eq('id', productId)
+          .limit(1);
+      final brandId = productRows.isEmpty
+          ? null
+          : productRows.first['brand_id'] as int?;
+      final batchRows = await db
+          .from('batches')
+          .select('id')
+          .eq('code', machine.batch ?? '')
+          .limit(1);
+      final batchId = batchRows.isEmpty ? null : batchRows.first['id'] as int;
+      final serial = _serial.text.trim();
+      final notes = _notes.text.trim();
+      final row = await db
+          .from('probes')
+          .insert({
+            // A probe that travels with the machine shares its ID.
+            'internal_id': machine.code,
+            'model': model,
+            'catalog_product_id': productId,
+            'batch_id': ?batchId,
+            'vendor_id': ?machine.vendorId,
+            'acquisition_date': ?machine.date,
+            'status': 'With Machine',
+            'current_location': machine.location,
+            'condition': _condition,
+            'assigned_machine_id': machine.id,
+            'brand_id': ?brandId,
+            if (serial.isNotEmpty) 'serial_number': serial,
+            if (notes.isNotEmpty) 'notes': notes,
+          })
+          .select('serial_number')
+          .single();
+      ref.invalidate(inventoryProvider);
+      ref.invalidate(productsProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Probe ${row['serial_number']} added to ${machine.code}.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final productNames = ref
+        .watch(productsProvider)
+        .maybeWhen(
+          data: (rows) => rows.map((r) => r['name_model'].toString()).toList(),
+          orElse: () => const <String>[],
+        );
+    final machine = widget.machine;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  machine.code,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          Text(
+            [
+              if ((machine.batch ?? '').isNotEmpty) machine.batch!,
+              if ((machine.date ?? '').isNotEmpty) machine.date!,
+            ].join(' · '),
+            style: TextStyle(
+              fontSize: 12.5,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PickyField(
+                    controller: _model,
+                    label: 'Model *',
+                    options: productNames,
+                    pickTitle: 'models',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _serial,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Serial number',
+                      hintText: 'Auto if empty',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _condition,
+                    decoration: const InputDecoration(labelText: 'Condition'),
+                    items: _kitItemConditions
+                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                        .toList(),
+                    onChanged: (v) => setState(
+                      () => _condition = v ?? _kitItemConditions.first,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notes,
+                    decoration: const InputDecoration(labelText: 'Notes'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Add to this purchase'),
           ),
         ],
       ),

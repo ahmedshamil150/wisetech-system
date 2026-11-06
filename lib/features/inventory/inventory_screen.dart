@@ -22,7 +22,14 @@ class InventoryScreen extends ConsumerStatefulWidget {
 /// "Equipment" = machines, probes and printers. Parts are so numerous that
 /// they only show up under their own chip. Boxes shows where the leftover
 /// probes are kept.
-const _typeFilters = ['Equipment', 'Machine', 'Probe', 'Printer', 'Part', 'Boxes'];
+const _typeFilters = [
+  'Equipment',
+  'Machine',
+  'Probe',
+  'Printer',
+  'Part',
+  'Boxes',
+];
 
 /// Status row under the type row. "In Stock" covers both words the app
 /// uses for stock — machines say "In Stock", everything else says
@@ -41,17 +48,18 @@ const _statusFilters = [
 
 /// Newest item first, the order the whole list already uses.
 int _newestFirst(InventoryItem a, InventoryItem b) {
-  final byDate =
-      (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0));
+  final byDate = (b.createdAt ?? DateTime(0)).compareTo(
+    a.createdAt ?? DateTime(0),
+  );
   return byDate != 0 ? byDate : b.id.compareTo(a.id);
 }
 
 /// Inside one machine: printer, then probes, then anything else.
 int _kitRank(InventoryItem item) => switch (item.kind) {
-      'printer' => 0,
-      'probe' => 1,
-      _ => 2,
-    };
+  'printer' => 0,
+  'probe' => 1,
+  _ => 2,
+};
 
 /// Arranges the visible rows as kits - a machine followed by its printer and
 /// its probes, then the next machine, and so on. The bool says whether the
@@ -81,8 +89,9 @@ List<(InventoryItem, bool)> arrangeAsKits(List<InventoryItem> items) {
   // Items with no machine shown here stay together, grouped by the machine
   // they are assigned to; completely loose ones come last.
   loose.sort((a, b) {
-    final byMachine =
-        (b.assignedMachineId ?? -1).compareTo(a.assignedMachineId ?? -1);
+    final byMachine = (b.assignedMachineId ?? -1).compareTo(
+      a.assignedMachineId ?? -1,
+    );
     if (byMachine != 0) return byMachine;
     final byKind = _kitRank(a).compareTo(_kitRank(b));
     return byKind != 0 ? byKind : _newestFirst(a, b);
@@ -176,12 +185,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   /// Everything the Filters sheet decides, checked straight against the
   /// item. Only ever narrows the in-memory list — nothing is fetched.
-  bool _matchesAux(InventoryItem item,
-      {bool skipReview = false, bool skipFlag = false}) {
+  bool _matchesAux(
+    InventoryItem item, {
+    bool skipReview = false,
+    bool skipFlag = false,
+  }) {
     if (_location.isNotEmpty &&
-        !item.location
-            .toLowerCase()
-            .contains(_location.trim().toLowerCase())) {
+        !item.location.toLowerCase().contains(_location.trim().toLowerCase())) {
       return false;
     }
     if (_batch.isNotEmpty && item.batch != _batch) return false;
@@ -215,10 +225,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   /// The review-dot filter: the green dot is every review flag that is
   /// not the serial audit, the red dot is review_kind 'serial'.
   bool _matchesReview(InventoryItem item) => switch (_review) {
-        'Red' => item.needsReview && item.reviewKind == 'serial',
-        'Green' => item.needsReview && item.reviewKind != 'serial',
-        _ => true,
-      };
+    'Red' => item.needsReview && item.reviewKind == 'serial',
+    'Green' => item.needsReview && item.reviewKind != 'serial',
+    _ => true,
+  };
 
   /// Counts for the review chips — everything the list would show if the
   /// review filter itself were off, so an active choice cannot zero the
@@ -247,8 +257,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Map<String, List<Map<String, dynamic>>> _flagCache = const {};
 
   Map<String, List<Map<String, dynamic>>> _flagIndex() {
-    final flags = ref.read(flagsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final flags = ref
+        .read(flagsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     if (!identical(flags, _flagSource)) {
       _flagSource = flags;
       _flagCache = flagIndex(flags);
@@ -265,8 +279,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     if (_flagFilter == 'any') return onItem.isNotEmpty;
     for (final flag in onItem) {
       final note = '${flag['note'] ?? ''}'.trim();
-      if (_flagFilter.startsWith('note:') &&
-          note == _flagFilter.substring(5)) {
+      if (_flagFilter.startsWith('note:') && note == _flagFilter.substring(5)) {
         return true;
       }
       if (_flagFilter.startsWith('color:') &&
@@ -311,37 +324,33 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         );
       }
     }
-    final flagEntry = (
-      key: 'any',
-      label: 'Flagged',
-      color: '',
-      count: any,
-    );
+    final flagEntry = (key: 'any', label: 'Flagged', color: '', count: any);
     // descriptions in reading order, then the description-less colors
-    final rest = <_FlagGroup>[
-      for (final entry in grouped.entries)
-        (
-          key: entry.key,
-          label: entry.value.label,
-          color: entry.value.color,
-          count: entry.value.count,
-        ),
-    ]..sort((a, b) {
-        final aNote = a.key.startsWith('note:');
-        final bNote = b.key.startsWith('note:');
-        if (aNote != bNote) return aNote ? -1 : 1;
-        return a.label.toLowerCase().compareTo(b.label.toLowerCase());
-      });
+    final rest =
+        <_FlagGroup>[
+          for (final entry in grouped.entries)
+            (
+              key: entry.key,
+              label: entry.value.label,
+              color: entry.value.color,
+              count: entry.value.count,
+            ),
+        ]..sort((a, b) {
+          final aNote = a.key.startsWith('note:');
+          final bNote = b.key.startsWith('note:');
+          if (aNote != bNote) return aNote ? -1 : 1;
+          return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+        });
     return [flagEntry, ...rest];
   }
 
   bool _matchesFilter(InventoryItem item) => switch (_type) {
-        'Equipment' => item.kind != 'part',
-        'Machine' => item.kind == 'machine',
-        'Probe' => item.kind == 'probe',
-        'Printer' => item.kind == 'printer',
-        _ => item.kind == 'part',
-      };
+    'Equipment' => item.kind != 'part',
+    'Machine' => item.kind == 'machine',
+    'Probe' => item.kind == 'probe',
+    'Printer' => item.kind == 'printer',
+    _ => item.kind == 'part',
+  };
 
   bool _matchesQuery(InventoryItem item) {
     if (_query.isEmpty) return true;
@@ -366,24 +375,27 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final name = (box['name'] ?? '').toString().toLowerCase();
     final type = (box['probe_type'] ?? '').toString().toLowerCase();
     if (name.contains(_query) || type.contains(_query)) return true;
-    return items.any((item) =>
-        item.kind == 'probe' &&
-        !item.isSold &&
-        item.boxId == box['id'] &&
-        _matchesQuery(item));
+    return items.any(
+      (item) =>
+          item.kind == 'probe' &&
+          !item.isSold &&
+          item.boxId == box['id'] &&
+          _matchesQuery(item),
+    );
   }
 
   bool _matchesStatus(InventoryItem item) => switch (_status) {
-        'All' => true,
-        'In Stock' =>
-          item.status == 'In Stock' || item.status == 'Available',
-        _ => item.status == _status,
-      };
+    'All' => true,
+    'In Stock' => item.status == 'In Stock' || item.status == 'Available',
+    _ => item.status == _status,
+  };
 
   /// Numbers for the type chips — counted after the status filter and
   /// the search, so the number always matches what a tap would show.
   Map<String, int> _typeCounts(
-      List<InventoryItem> rows, List<Map<String, dynamic>> boxes) {
+    List<InventoryItem> rows,
+    List<Map<String, dynamic>> boxes,
+  ) {
     final counts = <String, int>{
       'Machine': 0,
       'Probe': 0,
@@ -434,17 +446,23 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return counts;
   }
 
-  Widget _filterChip(BuildContext context, String label, int count,
-      {required bool selected, required VoidCallback onTap}) {
+  Widget _filterChip(
+    BuildContext context,
+    String label,
+    int count, {
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
     return ChoiceChip(
       label: Text('$label ($count)'),
       selected: selected,
       onSelected: (_) => onTap(),
-      visualDensity:
-          isPhoneLayout(context) ? VisualDensity.compact : null,
+      visualDensity: isPhoneLayout(context) ? VisualDensity.compact : null,
       selectedColor: Theme.of(context).colorScheme.primary,
       labelStyle: TextStyle(
-        color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+        color: selected
+            ? Colors.white
+            : Theme.of(context).colorScheme.onSurfaceVariant,
         fontWeight: FontWeight.w700,
         fontSize: isPhoneLayout(context) ? 12 : 13,
       ),
@@ -459,21 +477,28 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   /// the date range, location, batch, vendor and price. The sheet only
   /// narrows the list already in memory; nothing is fetched or written.
   Future<void> _openFilters() async {
-    final rows = ref.read(inventoryProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <InventoryItem>[]);
+    final rows = ref
+        .read(inventoryProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <InventoryItem>[],
+        );
     final statusCounts = _statusCounts(rows);
     final batchOptions = <String>{
       for (final item in rows)
         if (item.batch != null && item.batch!.isNotEmpty) item.batch!,
-    }.toList()
-      ..sort();
+    }.toList()..sort();
     // a choice from an earlier visit must still be selectable, even when
     // the rows behind it have changed
     if (_batch.isNotEmpty && !batchOptions.contains(_batch)) {
       batchOptions.add(_batch);
     }
-    final vendors = ref.read(vendorsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final vendors = ref
+        .read(vendorsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     final vendorOptions = [
       for (final vendor in vendors)
         ((vendor['id'] as int?) ?? -1, (vendor['name'] ?? '').toString()),
@@ -527,9 +552,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final isAdmin = ref.watch(isAdminProvider);
     final items = ref.watch(inventoryProvider);
     final allRows = items.maybeWhen(
-        data: (rows) => rows, orElse: () => const <InventoryItem>[]);
-    final boxes = ref.watch(probeBoxesProvider).maybeWhen(
-        data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[]);
+      data: (rows) => rows,
+      orElse: () => const <InventoryItem>[],
+    );
+    final boxes = ref
+        .watch(probeBoxesProvider)
+        .maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     // the flag filter reads the flags — watch so the list refines the
     // moment they arrive
     ref.watch(flagsProvider);
@@ -621,12 +652,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           child: Row(
             children: [
               Text(
-                  _type == 'Boxes'
-                      ? '$shownCount box${shownCount == 1 ? '' : 'es'}'
-                      : '$shownCount item${shownCount == 1 ? '' : 's'}',
-                  style: TextStyle(
-                      fontSize: isPhoneLayout(context) ? 11.5 : 12.5,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                _type == 'Boxes'
+                    ? '$shownCount box${shownCount == 1 ? '' : 'es'}'
+                    : '$shownCount item${shownCount == 1 ? '' : 's'}',
+                style: TextStyle(
+                  fontSize: isPhoneLayout(context) ? 11.5 : 12.5,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
               if (_status != 'All') ...[
                 const SizedBox(width: 8),
                 InkWell(
@@ -636,8 +669,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     ref.read(inventoryStatusFilterProvider.notifier).set('All');
                   },
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: context.colors.errorContainer,
                       borderRadius: BorderRadius.circular(12),
@@ -646,15 +681,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_status,
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Theme.of(context).colorScheme.error)),
+                        Text(
+                          _status,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
                         const SizedBox(width: 4),
-                        Icon(Icons.close,
-                            size: 13,
-                            color: Theme.of(context).colorScheme.error),
+                        Icon(
+                          Icons.close,
+                          size: 13,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                       ],
                     ),
                   ),
@@ -674,20 +714,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         loading: () =>
                             const Center(child: CircularProgressIndicator()),
                         error: (error, _) => EmptyState(
-                            icon: Icons.error_outline,
-                            message: errorMessage(error)),
+                          icon: Icons.error_outline,
+                          message: errorMessage(error),
+                        ),
                         data: (rows) {
                           final entries = arrangeAsKits(filtered);
                           if (entries.isEmpty) {
                             return const EmptyState(
-                                icon: Icons.inventory_2_outlined,
-                                message: 'No items match this filter.');
+                              icon: Icons.inventory_2_outlined,
+                              message: 'No items match this filter.',
+                            );
                           }
                           return AppRefresh(
                             child: ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 4, 16, 84),
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 84),
                               itemCount: entries.length,
                               itemBuilder: (context, index) => _itemTile(
                                 context,
@@ -724,9 +765,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           heightFraction: 0.85,
                           builder: (sheetContext) => Padding(
                             padding: EdgeInsets.only(
-                                bottom: MediaQuery.of(sheetContext)
-                                    .viewInsets
-                                    .bottom),
+                              bottom: MediaQuery.of(
+                                sheetContext,
+                              ).viewInsets.bottom,
+                            ),
                             child: const _AddItemForm(),
                           ),
                         ),
@@ -744,10 +786,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   /// The Boxes chip: every box, its probe type and how many probes are in it.
   Widget _boxesList(BuildContext context) {
     final boxes = ref.watch(probeBoxesProvider);
-    final items = ref.watch(inventoryProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <InventoryItem>[],
-        );
+    final items = ref
+        .watch(inventoryProvider)
+        .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
 
     return boxes.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -759,20 +800,24 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         final matchingProbes = _query.isEmpty
             ? const <InventoryItem>[]
             : (items
-                .where((item) =>
-                    item.kind == 'probe' &&
-                    !item.isSold &&
-                    _matchesQuery(item))
-                .toList()
-                  ..sort(_newestFirst));
-        final filtered =
-            rows.where((box) => _boxMatchesQuery(box, items)).toList();
+                  .where(
+                    (item) =>
+                        item.kind == 'probe' &&
+                        !item.isSold &&
+                        _matchesQuery(item),
+                  )
+                  .toList()
+                ..sort(_newestFirst));
+        final filtered = rows
+            .where((box) => _boxMatchesQuery(box, items))
+            .toList();
         if (filtered.isEmpty && matchingProbes.isEmpty) {
           return EmptyState(
-              icon: Icons.inbox_outlined,
-              message: _query.isEmpty
-                  ? 'No boxes yet.'
-                  : 'No boxes or probes match this search.');
+            icon: Icons.inbox_outlined,
+            message: _query.isEmpty
+                ? 'No boxes yet.'
+                : 'No boxes or probes match this search.',
+          );
         }
         return AppRefresh(
           child: ListView(
@@ -794,17 +839,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           BoxFlagDot(boxId: box['id'] as int),
                           const SizedBox(width: 6),
                           Expanded(
-                            child: Text((box['name'] ?? '').toString(),
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700)),
+                            child: Text(
+                              (box['name'] ?? '').toString(),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      subtitle:
-                          Text('${box['probe_type']} · ${items.where((item) =>
-                              item.kind == 'probe' &&
-                              item.boxId == box['id']).length} probes'),
+                      subtitle: Text(
+                        '${box['probe_type']} · ${items.where((item) => item.kind == 'probe' && item.boxId == box['id']).length} probes',
+                      ),
                       trailing: const Icon(Icons.chevron_right, size: 20),
                       onTap: () => showBoxSheet(context, ref, box),
                     ),
@@ -817,8 +864,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
-  Widget _itemTile(BuildContext context, InventoryItem item,
-      {bool indented = false}) {
+  Widget _itemTile(
+    BuildContext context,
+    InventoryItem item, {
+    bool indented = false,
+  }) {
     final icon = _kindIcon(item.kind);
     final phone = isPhoneLayout(context);
     return Padding(
@@ -830,17 +880,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             backgroundColor: context.colors.tintBlue,
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
-          title: Text(item.code.isNotEmpty
-              ? item.code
-              : (item.serial ?? item.title),
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: phone ? 13.5 : 14)),
+          title: Text(
+            item.code.isNotEmpty ? item.code : (item.serial ?? item.title),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: phone ? 13.5 : 14,
+            ),
+          ),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.title,
-                  style: TextStyle(fontSize: phone ? 12 : 13)),
+              Text(item.title, style: TextStyle(fontSize: phone ? 12 : 13)),
               const SizedBox(height: 4),
               Row(
                 children: [
@@ -864,8 +914,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     child: Text(
                       '${item.location}${item.date == null ? '' : ' · ${item.date}'}',
                       overflow: TextOverflow.ellipsis,
-                      style:
-                          TextStyle(fontSize: phone ? 11.5 : 12, color: Theme.of(context).colorScheme.outline),
+                      style: TextStyle(
+                        fontSize: phone ? 11.5 : 12,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
                   ),
                 ],
@@ -882,17 +934,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final (label, color) = item.boxId != null
         ? ('In box', context.colors.tintBlue)
         : item.assignedMachineId != null
-            ? ('With machine', Theme.of(context).colorScheme.primary)
-            : ('In stock', context.colors.success);
+        ? ('With machine', Theme.of(context).colorScheme.primary)
+        : ('In stock', context.colors.success);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -910,19 +967,24 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text('Moved',
-          style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      child: Text(
+        'Moved',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
     );
   }
 }
 
 IconData _kindIcon(String kind) => switch (kind) {
-      'machine' => Icons.monitor_outlined,
-      'probe' => Icons.cable_outlined,
-      'printer' => Icons.print_outlined,
-      _ => Icons.settings_outlined,
-    };
+  'machine' => Icons.monitor_outlined,
+  'probe' => Icons.cable_outlined,
+  'printer' => Icons.print_outlined,
+  _ => Icons.settings_outlined,
+};
 
 /// Sorts machine ids the way a person counts: 23T before 60T before
 /// 100T, letters staying together.
@@ -948,7 +1010,8 @@ const _stockKinds = [
   ('box', 'Boxes'),
 ];
 
-String _stockStatusFor(String kind) => kind == 'machine' ? 'In Stock' : 'Available';
+String _stockStatusFor(String kind) =>
+    kind == 'machine' ? 'In Stock' : 'Available';
 
 /// Admin tool for a physical count: pick a category, type the ids of
 /// the items you can see in the room, and the sheet lists everything
@@ -1017,11 +1080,15 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
   /// An item matches a typed token by its code or its serial, so the
   /// count works whether the label shows the WT number or the maker's.
   static InventoryItem? _matchTokenExact(
-      String token, Iterable<InventoryItem> pool) {
+    String token,
+    Iterable<InventoryItem> pool,
+  ) {
     for (final item in pool) {
       if (item.code.toUpperCase() == token) return item;
       final serial = item.serial;
-      if (serial != null && serial.isNotEmpty && serial.toUpperCase() == token) {
+      if (serial != null &&
+          serial.isNotEmpty &&
+          serial.toUpperCase() == token) {
         return item;
       }
     }
@@ -1056,8 +1123,10 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
   /// match on its last characters (last 4 or 5 of a serial), else
   /// "did you mean" candidates when it is off by a digit or two, or the
   /// suffix is shared by more than one item.
-  static ({InventoryItem? item, List<InventoryItem> suggestions})
-      _matchToken(String token, Iterable<InventoryItem> pool) {
+  static ({InventoryItem? item, List<InventoryItem> suggestions}) _matchToken(
+    String token,
+    Iterable<InventoryItem> pool,
+  ) {
     final items = pool.toList();
     final exact = _matchTokenExact(token, items);
     if (exact != null) return (item: exact, suggestions: const []);
@@ -1081,23 +1150,27 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
 
     final scored = <(int, InventoryItem)>[];
     for (final item in items) {
-      final target =
-          (item.serial?.isNotEmpty ?? false) ? item.serial! : item.code;
+      final target = (item.serial?.isNotEmpty ?? false)
+          ? item.serial!
+          : item.code;
       if (target.isEmpty) continue;
       final d = _editDistance(token, target.toUpperCase(), 2);
       if (d <= 2) scored.add((d, item));
     }
-    scored.sort((x, y) => x.$1 != y.$1
-        ? x.$1.compareTo(y.$1)
-        : _naturalCompare(x.$2.code, y.$2.code));
+    scored.sort(
+      (x, y) => x.$1 != y.$1
+          ? x.$1.compareTo(y.$1)
+          : _naturalCompare(x.$2.code, y.$2.code),
+    );
     return (item: null, suggestions: [for (final s in scored.take(3)) s.$2]);
   }
 
   /// Swap a mistyped token for the real serial right where it was typed,
   /// so the count picks it up on the next rebuild.
   void _applySuggestion(String token, InventoryItem item) {
-    final correct =
-        (item.serial?.isNotEmpty ?? false) ? item.serial! : item.code;
+    final correct = (item.serial?.isNotEmpty ?? false)
+        ? item.serial!
+        : item.code;
     if (correct.isEmpty) return;
     final idx = _input.text.toLowerCase().indexOf(token.toLowerCase());
     if (idx >= 0) {
@@ -1126,16 +1199,21 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: context.colors.errorBorder),
             ),
-            child: Text(token,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.error)),
+            child: Text(
+              token,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: scheme.error,
+              ),
+            ),
           ),
           if (hints.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('Did you mean…',
-                style: TextStyle(fontSize: 12, color: scheme.outline)),
+            Text(
+              'Did you mean…',
+              style: TextStyle(fontSize: 12, color: scheme.outline),
+            ),
             const SizedBox(height: 4),
             Wrap(
               spacing: 8,
@@ -1147,19 +1225,22 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                     onTap: () => _applySuggestion(token, item),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: context.colors.primaryTint,
                         borderRadius: BorderRadius.circular(20),
-                        border:
-                            Border.all(color: context.colors.primaryBorder),
+                        border: Border.all(color: context.colors.primaryBorder),
                       ),
                       child: Text(
-                          '${(item.serial?.isNotEmpty ?? false) ? item.serial : item.code} · ${item.name}',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: scheme.primary)),
+                        '${(item.serial?.isNotEmpty ?? false) ? item.serial : item.code} · ${item.name}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.primary,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -1172,17 +1253,23 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final items = ref.watch(inventoryProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <InventoryItem>[],
-        );
-    final boxes = ref.watch(probeBoxesProvider).maybeWhen(
+    final items = ref
+        .watch(inventoryProvider)
+        .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
+    final boxes = ref
+        .watch(probeBoxesProvider)
+        .maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
     final isBox = _kind == 'box';
-    final stockStatus = _kind == 'probe' ? _probeStatus : _stockStatusFor(_kind);
-    final sameKind = [for (final item in items) if (item.kind == _kind) item];
+    final stockStatus = _kind == 'probe'
+        ? _probeStatus
+        : _stockStatusFor(_kind);
+    final sameKind = [
+      for (final item in items)
+        if (item.kind == _kind) item,
+    ];
     final expected = [
       for (final item in sameKind)
         if (item.status == stockStatus) item,
@@ -1240,8 +1327,7 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
 
     final kindWord =
         _kind[0].toUpperCase() + _kind.substring(1); // Machine, Probe, …
-    const sectionStyle =
-        TextStyle(fontSize: 15, fontWeight: FontWeight.w800);
+    const sectionStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w800);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -1249,8 +1335,10 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
         Row(
           children: [
             const Expanded(
-              child: Text('Stock check',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              child: Text(
+                'Stock check',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -1265,9 +1353,10 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           children: [
             for (final (kind, label) in _stockKinds)
               ChoiceChip(
-                label: Text('$label (${kind == 'box'
-                    ? boxes.length
-                    : [for (final item in items) if (item.kind == kind && item.status == (kind == 'probe' ? _probeStatus : _stockStatusFor(kind))) item].length})'),
+                label: Text(
+                  '$label (${kind == 'box' ? boxes.length : [for (final item in items)
+                          if (item.kind == kind && item.status == (kind == 'probe' ? _probeStatus : _stockStatusFor(kind))) item].length})',
+                ),
                 selected: _kind == kind,
                 onSelected: (_) => setState(() {
                   if (_kind != kind) {
@@ -1284,9 +1373,11 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                   fontSize: 13,
                 ),
                 backgroundColor: context.colors.isDark
-              ? context.colors.quietFill
-              : Theme.of(context).colorScheme.surface,
-                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                    ? context.colors.quietFill
+                    : Theme.of(context).colorScheme.surface,
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               ),
           ],
         ),
@@ -1298,7 +1389,10 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
             children: [
               for (final status in _probeStatuses)
                 ChoiceChip(
-                  label: Text('$status (${[for (final item in sameKind) if (item.status == status) item].length})'),
+                  label: Text(
+                    '$status (${[for (final item in sameKind)
+                      if (item.status == status) item].length})',
+                  ),
                   selected: _probeStatus == status,
                   onSelected: (_) => setState(() {
                     if (_probeStatus != status) {
@@ -1317,7 +1411,9 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                   backgroundColor: context.colors.isDark
                       ? context.colors.quietFill
                       : Theme.of(context).colorScheme.surface,
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                  side: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                 ),
             ],
           ),
@@ -1331,13 +1427,14 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           textCapitalization: TextCapitalization.characters,
           onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
-            labelText:
-                isBox ? 'Box names you can see' : '$kindWord IDs you can see',
+            labelText: isBox
+                ? 'Box names you can see'
+                : '$kindWord IDs you can see',
             hintText: isBox
                 ? 'T14\nT11 (2)\nH5'
                 : _kind == 'machine'
-                    ? '23T\n60T\n71T'
-                    : 'Serial or WT number',
+                ? '23T\n60T\n71T'
+                : 'Serial or WT number',
           ),
         ),
         const SizedBox(height: 16),
@@ -1346,27 +1443,37 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           child: Column(
             children: [
               KeyValue(
-                  label: isBox ? 'Boxes in the app' : 'App expects in stock',
-                  value: '${isBox ? boxes.length : expected.length}'),
+                label: isBox ? 'Boxes in the app' : 'App expects in stock',
+                value: '${isBox ? boxes.length : expected.length}',
+              ),
               KeyValue(label: 'You typed', value: '${entered.length}'),
               KeyValue(
-                  label: 'Missing',
-                  value: '${isBox ? missingBoxes.length : missing.length}'),
+                label: 'Missing',
+                value: '${isBox ? missingBoxes.length : missing.length}',
+              ),
             ],
           ),
         ),
         const SizedBox(height: 16),
         if (entered.isEmpty)
-          Text('Nothing typed yet.',
-              style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: 13))
+          Text(
+            'Nothing typed yet.',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.outline,
+              fontSize: 13,
+            ),
+          )
         else if (isBox) ...[
           Text(
-              'Missing — the app has these but you did not type them (${missingBoxes.length})',
-              style: sectionStyle),
+            'Missing — the app has these but you did not type them (${missingBoxes.length})',
+            style: sectionStyle,
+          ),
           const SizedBox(height: 8),
           if (missingBoxes.isEmpty)
-            Text('Every box was counted.',
-                style: TextStyle(color: context.colors.success, fontSize: 13.5))
+            Text(
+              'Every box was counted.',
+              style: TextStyle(color: context.colors.success, fontSize: 13.5),
+            )
           else
             AppCard(
               padding: const EdgeInsets.all(4),
@@ -1376,14 +1483,17 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                     ListTile(
                       dense: true,
                       leading: const Icon(Icons.inbox_outlined, size: 20),
-                      title: Text((box['name'] ?? '').toString(),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 14)),
+                      title: Text(
+                        (box['name'] ?? '').toString(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
                       subtitle: Text(
-                          '${box['probe_type']} · ${items.where((item) =>
-                              item.kind == 'probe' &&
-                              item.boxId == box['id']).length} probes',
-                          style: const TextStyle(fontSize: 12.5)),
+                        '${box['probe_type']} · ${items.where((item) => item.kind == 'probe' && item.boxId == box['id']).length} probes',
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
                       trailing: const Icon(Icons.chevron_right, size: 20),
                       onTap: () => showBoxSheet(context, ref, box),
                     ),
@@ -1392,19 +1502,24 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
             ),
           if (unknown.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Not found in the app (${unknown.length})',
-                style: sectionStyle),
+            Text(
+              'Not found in the app (${unknown.length})',
+              style: sectionStyle,
+            ),
             const SizedBox(height: 8),
             for (final token in unknown) _unknownEntry(token, const []),
           ],
         ] else ...[
-          Text('Missing — should be in stock (${missing.length})',
-              style: sectionStyle),
+          Text(
+            'Missing — should be in stock (${missing.length})',
+            style: sectionStyle,
+          ),
           const SizedBox(height: 8),
           if (missing.isEmpty)
             Text(
-                'Everything the app expects in stock was counted.',
-                style: TextStyle(color: context.colors.success, fontSize: 13.5))
+              'Everything the app expects in stock was counted.',
+              style: TextStyle(color: context.colors.success, fontSize: 13.5),
+            )
           else
             AppCard(
               padding: const EdgeInsets.all(4),
@@ -1414,11 +1529,17 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                     ListTile(
                       dense: true,
                       leading: const Icon(Icons.help_outline, size: 20),
-                      title: Text(item.code,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 14)),
-                      subtitle: Text('${item.title} · ${item.location}',
-                          style: const TextStyle(fontSize: 12.5)),
+                      title: Text(
+                        item.code,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${item.title} · ${item.location}',
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
                       trailing: const Icon(Icons.chevron_right, size: 20),
                       onTap: () => showItemDetails(context, ref, item),
                     ),
@@ -1427,8 +1548,10 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
             ),
           if (seenOut.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('You typed these — the app says they are out (${seenOut.length})',
-                style: sectionStyle),
+            Text(
+              'You typed these — the app says they are out (${seenOut.length})',
+              style: sectionStyle,
+            ),
             const SizedBox(height: 8),
             AppCard(
               padding: const EdgeInsets.all(4),
@@ -1438,11 +1561,17 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
                     ListTile(
                       dense: true,
                       leading: const Icon(Icons.outbox_outlined, size: 20),
-                      title: Text(item.code,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 14)),
-                      subtitle: Text('${item.status} · ${item.location}',
-                          style: const TextStyle(fontSize: 12.5)),
+                      title: Text(
+                        item.code,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${item.status} · ${item.location}',
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
                       trailing: const Icon(Icons.chevron_right, size: 20),
                       onTap: () => showItemDetails(context, ref, item),
                     ),
@@ -1453,8 +1582,9 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
           if (wrongKind.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
-                'Found, but not a ${kindWord.toLowerCase()} (${wrongKind.length})',
-                style: sectionStyle),
+              'Found, but not a ${kindWord.toLowerCase()} (${wrongKind.length})',
+              style: sectionStyle,
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -1462,26 +1592,33 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
               children: [
                 for (final item in wrongKind)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: context.colors.primaryTint,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: context.colors.primaryBorder),
                     ),
-                    child: Text('${item.code} · ${item.kindLabel}',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.primary)),
+                    child: Text(
+                      '${item.code} · ${item.kindLabel}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
                   ),
               ],
             ),
           ],
           if (unknown.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Not found in the app (${unknown.length})',
-                style: sectionStyle),
+            Text(
+              'Not found in the app (${unknown.length})',
+              style: sectionStyle,
+            ),
             const SizedBox(height: 8),
             for (final token in unknown)
               _unknownEntry(token, suggestions[token] ?? const []),
@@ -1494,14 +1631,18 @@ class _StockCheckSheetState extends ConsumerState<_StockCheckSheet> {
 
 /// Sheet for one box: the probes inside it and a way to put more in.
 Future<void> showBoxSheet(
-    BuildContext context, WidgetRef ref, Map<String, dynamic> box) {
+  BuildContext context,
+  WidgetRef ref,
+  Map<String, dynamic> box,
+) {
   return showAppSheet<void>(
     context: context,
     title: (box['name'] ?? 'Box').toString(),
     heightFraction: 0.75,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
       child: _BoxSheet(box: box),
     ),
   );
@@ -1565,8 +1706,10 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
     if (serial.isNotEmpty) {
       final existing = await db
           .from('probes')
-          .select('id, internal_id, model, serial_number, status, '
-              'current_location, box_id')
+          .select(
+            'id, internal_id, model, serial_number, status, '
+            'current_location, box_id',
+          )
           .ilike('serial_number', serial)
           .order('id')
           .limit(5);
@@ -1584,8 +1727,9 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
           builder: (dialogContext) => AlertDialog(
             title: const Text('Probe already in inventory'),
             content: Text(
-                'Serial $serial is already ${found['status'] == 'With Machine' ? 'on a machine' : 'in stock'} '
-                '(${found['internal_id'] ?? found['model']}).'),
+              'Serial $serial is already ${found['status'] == 'With Machine' ? 'on a machine' : 'in stock'} '
+              '(${found['internal_id'] ?? found['model']}).',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
@@ -1618,9 +1762,13 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
               _model.clear();
               _serial.clear();
             });
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
                 content: Text(
-                    '${item.code.isEmpty ? item.name : item.code} added to ${widget.box['name']}.')));
+                  '${item.code.isEmpty ? item.name : item.code} added to ${widget.box['name']}.',
+                ),
+              ),
+            );
           } catch (error) {
             if (!mounted) return;
             showSnack(context, errorMessage(error), error: true);
@@ -1639,21 +1787,22 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
       final productId = await resolveReferenceId(
         table: 'catalog_products',
         name: model,
-        payload: {
-          'category': 'Probe',
-          if (type.isNotEmpty) 'probe_type': type,
-        },
+        payload: {'category': 'Probe', if (type.isNotEmpty) 'probe_type': type},
       );
       final wantSerial = serial.isEmpty;
-      final row = await db.from('probes').insert({
-        'internal_id': _id,
-        'model': model,
-        'catalog_product_id': productId,
-        'status': 'Available',
-        'current_location': (widget.box['name'] ?? '').toString(),
-        'box_id': widget.box['id'],
-        if (!wantSerial) 'serial_number': serial,
-      }).select('serial_number').single();
+      final row = await db
+          .from('probes')
+          .insert({
+            'internal_id': _id,
+            'model': model,
+            'catalog_product_id': productId,
+            'status': 'Available',
+            'current_location': (widget.box['name'] ?? '').toString(),
+            'box_id': widget.box['id'],
+            if (!wantSerial) 'serial_number': serial,
+          })
+          .select('serial_number')
+          .single();
       ref.invalidate(inventoryProvider);
       if (!mounted) return;
       setState(() {
@@ -1662,15 +1811,59 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
         _model.clear();
         _serial.clear();
       });
-      final serialNote = wantSerial
-          ? ' — serial ${row['serial_number']}'
-          : '';
-      messenger.showSnackBar(SnackBar(
-          content:
-              Text('$_id added to ${widget.box['name']}$serialNote.')));
+      final serialNote = wantSerial ? ' — serial ${row['serial_number']}' : '';
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('$_id added to ${widget.box['name']}$serialNote.'),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  Future<void> _takeOutOfBox(InventoryItem probe) async {
+    try {
+      await takeProbeOutOfBox(probe);
+      ref.invalidate(inventoryProvider);
+      ref.invalidate(oldStockItemsProvider);
+    } catch (error) {
+      if (!mounted) return;
+      showSnack(context, errorMessage(error), error: true);
+    }
+  }
+
+  Future<void> _attachToMachine(InventoryItem probe) async {
+    final machines = ref
+        .read(inventoryProvider)
+        .maybeWhen(
+          data: (rows) => rows
+              .where(
+                (item) =>
+                    item.kind == 'machine' &&
+                    !item.isSold &&
+                    item.status != 'Archived' &&
+                    item.status != 'With Customer',
+              )
+              .toList(),
+          orElse: () => const <InventoryItem>[],
+        );
+    if (machines.isEmpty) {
+      showSnack(context, 'No machine to attach this probe to.', error: true);
+      return;
+    }
+    final machine = await showPickItem(context, items: machines);
+    if (machine == null) return;
+    try {
+      await attachProbeToMachine(probe, machine);
+      ref.invalidate(inventoryProvider);
+      ref.invalidate(oldStockItemsProvider);
+      if (!mounted) return;
+      showSnack(context, '${probe.code} attached to ${machine.code}.');
+    } catch (error) {
+      if (!mounted) return;
       showSnack(context, errorMessage(error), error: true);
     }
   }
@@ -1680,11 +1873,12 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
     final isAdmin = ref.watch(isAdminProvider);
     // both sides share the box: an old probe boxed here disappears from
     // the old stock list and shows again when it is taken out
-    final items = ref.watch(allItemsProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <InventoryItem>[],
-        );
-    final productNames = ref.watch(productsProvider).maybeWhen(
+    final items = ref
+        .watch(allItemsProvider)
+        .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
+    final productNames = ref
+        .watch(productsProvider)
+        .maybeWhen(
           data: (rows) => rows.map((r) => r['name_model'].toString()).toList(),
           orElse: () => const <String>[],
         );
@@ -1701,39 +1895,56 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
         Row(
           children: [
             Expanded(
-              child: Text((box['name'] ?? '').toString(),
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800)),
+              child: Text(
+                (box['name'] ?? '').toString(),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.12),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(type,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.primary)),
+              child: Text(
+                type,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
             ),
           ],
         ),
         if (((box['notes'] ?? '') as String).isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text((box['notes'] ?? '').toString(),
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Text(
+            (box['notes'] ?? '').toString(),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
         const SizedBox(height: 16),
-        const Text('Probes in this box',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        const Text(
+          'Probes in this box',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 8),
         if (inBox.isEmpty)
-          Text('Empty — no probes in it yet.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))
+          Text(
+            'Empty — no probes in it yet.',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 13,
+            ),
+          )
         else
           AppCard(
             padding: const EdgeInsets.all(4),
@@ -1743,9 +1954,13 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                   ListTile(
                     dense: true,
                     leading: const Icon(Icons.cable_outlined, size: 20),
-                    title: Text('${item.code}  ${item.title}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13.5)),
+                    title: Text(
+                      '${item.code}  ${item.title}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
                     subtitle: Row(
                       children: [
                         if (item.needsReview) ...[
@@ -1758,20 +1973,23 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                       ],
                     ),
                     trailing: isAdmin
-                        ? IconButton(
-                            tooltip: 'Take out of the box',
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () async {
-                              try {
-                                await takeProbeOutOfBox(item);
-                                ref.invalidate(inventoryProvider);
-                                ref.invalidate(oldStockItemsProvider);
-                              } catch (error) {
-                                if (!context.mounted) return;
-                                showSnack(context, errorMessage(error),
-                                    error: true);
-                              }
+                        ? PopupMenuButton<String>(
+                            tooltip: 'Probe actions',
+                            icon: const Icon(Icons.more_vert, size: 18),
+                            onSelected: (value) {
+                              if (value == 'out') _takeOutOfBox(item);
+                              if (value == 'machine') _attachToMachine(item);
                             },
+                            itemBuilder: (menuContext) => const [
+                              PopupMenuItem(
+                                value: 'out',
+                                child: Text('Take out of the box'),
+                              ),
+                              PopupMenuItem(
+                                value: 'machine',
+                                child: Text('Attach to machine'),
+                              ),
+                            ],
                           )
                         : null,
                   ),
@@ -1784,8 +2002,10 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
             onPressed: candidates.isEmpty
                 ? null
                 : () async {
-                    final picked =
-                        await showPickItem(context, items: candidates);
+                    final picked = await showPickItem(
+                      context,
+                      items: candidates,
+                    );
                     if (picked == null) return;
                     try {
                       await putProbeInBox(picked, box);
@@ -1797,16 +2017,22 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                     }
                   },
             icon: const Icon(Icons.add),
-            label: Text(candidates.isEmpty
-                ? 'No probe available'
-                : 'Add probe (${candidates.length})'),
+            label: Text(
+              candidates.isEmpty
+                  ? 'No probe available'
+                  : 'Add probe (${candidates.length})',
+            ),
           ),
           if (candidates.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                  'No probe free to box.',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5)),
+                'No probe free to box.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12.5,
+                ),
+              ),
             ),
           const SizedBox(height: 8),
           if (!_adding)
@@ -1824,9 +2050,13 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('New ${type.isEmpty ? 'probe' : type} probe',
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w800)),
+                  Text(
+                    'New ${type.isEmpty ? 'probe' : type} probe',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   PickyField(
                     controller: _model,
@@ -1839,20 +2069,27 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                     controller: _serial,
                     autocorrect: false,
                     decoration: const InputDecoration(
-                        labelText: 'Serial number (optional)',
-                        hintText: 'Auto if empty'),
+                      labelText: 'Serial number (optional)',
+                      hintText: 'Auto if empty',
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Icon(Icons.lock_outline, size: 16, color: Theme.of(context).colorScheme.outline),
+                      Icon(
+                        Icons.lock_outline,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         _loadingId
                             ? 'Generating ID…'
                             : 'ID: ${_id ?? 'not available'}',
-                        style:
-                            TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -1870,14 +2107,17 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: FilledButton(
-                          onPressed:
-                              _saving || _loadingId ? null : _createProbe,
+                          onPressed: _saving || _loadingId
+                              ? null
+                              : _createProbe,
                           child: _saving
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2))
+                                    strokeWidth: 2,
+                                  ),
+                                )
                               : const Text('Create'),
                         ),
                       ),
@@ -1895,7 +2135,10 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
 
 /// Read-only sheet with everything we know about one item.
 Future<void> showItemDetails(
-    BuildContext context, WidgetRef ref, InventoryItem item) {
+  BuildContext context,
+  WidgetRef ref,
+  InventoryItem item,
+) {
   return showAppSheet<void>(
     context: context,
     title: item.code.isNotEmpty ? item.code : item.title,
@@ -1913,42 +2156,55 @@ class _ItemDetails extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // always use the freshest copy so status and location refresh
     // right after a return
-    final all = ref.watch(inventoryProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <InventoryItem>[],
-        );
-    final item = all.firstWhere((i) => i.key == this.item.key,
-        orElse: () => this.item);
+    final all = ref
+        .watch(inventoryProvider)
+        .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
+    final item = all.firstWhere(
+      (i) => i.key == this.item.key,
+      orElse: () => this.item,
+    );
     final history = ref
         .watch(allMovementsProvider)
         .maybeWhen(
-            data: (rows) => rows, orElse: () => const <Map<String, dynamic>>[])
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        )
         .where((row) => row['${item.kind}_id'] == item.id)
         .toList();
     final canReturn =
         history.isNotEmpty && history.first['movement_type'] != 'Return';
     final isAdmin = ref.watch(isAdminProvider);
     final myId = ref.read(authControllerProvider).currentUser?.id;
-    final linked = ref.watch(inventoryProvider).maybeWhen(
+    final linked = ref
+        .watch(inventoryProvider)
+        .maybeWhen(
           data: (rows) => linkedItems(rows, item),
           orElse: () => const <InventoryItem>[],
         );
-    final boxName = ref.watch(probeBoxesProvider).maybeWhen(
+    final boxName = ref
+        .watch(probeBoxesProvider)
+        .maybeWhen(
           data: (boxes) => boxes
               .where((row) => row['id'] == item.boxId)
               .map((row) => (row['name'] ?? '').toString())
               .join(),
           orElse: () => '',
         );
-    final vendorName = ref.watch(vendorsProvider).maybeWhen(
+    final vendorName = ref
+        .watch(vendorsProvider)
+        .maybeWhen(
           data: (vendors) => vendors
               .where((row) => row['id'] == item.vendorId)
               .map((row) => (row['name'] ?? '').toString())
               .join(),
           orElse: () => '',
         );
-    final flags = ref.watch(flagsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final flags = ref
+        .watch(flagsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     final itemFlags =
         flagIndex(flags)[flagItemKey(item.kind, item.id)] ?? const [];
     // A moved part belongs to whichever side its latest movement sits on.
@@ -1963,14 +2219,23 @@ class _ItemDetails extends ConsumerWidget {
         Row(
           children: [
             Expanded(
-              child: Text(item.code,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800)),
+              child: Text(
+                item.code,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
             StatusChip(status: item.status),
           ],
         ),
-        Text(item.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        Text(
+          item.title,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(height: 12),
         AppCard(
           padding: const EdgeInsets.all(12),
@@ -1983,10 +2248,11 @@ class _ItemDetails extends ConsumerWidget {
                 KeyValue(label: 'Box', value: boxName),
               if (item.needsReview)
                 KeyValue(
-                    label: 'Review',
-                    value: item.reviewKind == 'serial'
-                        ? 'Flagged — serial not found in the old stock; verify by hand'
-                        : 'Flagged — this serial also appears in the old sales records'),
+                  label: 'Review',
+                  value: item.reviewKind == 'serial'
+                      ? 'Flagged — serial not found in the old stock; verify by hand'
+                      : 'Flagged — this serial also appears in the old sales records',
+                ),
               if (itemFlags.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1995,10 +2261,13 @@ class _ItemDetails extends ConsumerWidget {
                     children: [
                       SizedBox(
                         width: 110,
-                        child: Text('Flag',
-                            style: TextStyle(
-                                color: Theme.of(context).colorScheme.outline,
-                                fontSize: 13)),
+                        child: Text(
+                          'Flag',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.outline,
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
                       Expanded(
                         child: Column(
@@ -2010,8 +2279,9 @@ class _ItemDetails extends ConsumerWidget {
                                 child: Text(
                                   flagNoteText(flag),
                                   style: TextStyle(
-                                      fontSize: 13.5,
-                                      color: colorFromHex('${flag['color']}')),
+                                    fontSize: 13.5,
+                                    color: colorFromHex('${flag['color']}'),
+                                  ),
                                 ),
                               ),
                           ],
@@ -2038,13 +2308,13 @@ class _ItemDetails extends ConsumerWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => showAppSheet<void>(
                     context: context,
-                    title: 'Edit ${item.code.isNotEmpty ? item.code : item.title}',
+                    title:
+                        'Edit ${item.code.isNotEmpty ? item.code : item.title}',
                     heightFraction: 0.85,
                     builder: (sheetContext) => Padding(
                       padding: EdgeInsets.only(
-                          bottom: MediaQuery.of(sheetContext)
-                              .viewInsets
-                              .bottom),
+                        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+                      ),
                       child: _EditItemForm(item: item),
                     ),
                   ),
@@ -2072,15 +2342,25 @@ class _ItemDetails extends ConsumerWidget {
               ref,
               target: {'item_kind': item.kind, 'item_id': item.id},
             ),
-            icon: Icon(Icons.flag_outlined,
-                size: 18,
-                color: itemFlags.isEmpty
-                    ? null
-                    : colorFromHex('${itemFlags.first['color']}')),
-            label: Text(itemFlags.isEmpty
-                ? 'Flag'
-                : 'Flags (${itemFlags.length})'),
+            icon: Icon(
+              Icons.flag_outlined,
+              size: 18,
+              color: itemFlags.isEmpty
+                  ? null
+                  : colorFromHex('${itemFlags.first['color']}'),
+            ),
+            label: Text(
+              itemFlags.isEmpty ? 'Flag' : 'Flags (${itemFlags.length})',
+            ),
           ),
+          if (item.kind == 'machine' && item.batch == 'BATCH-LOCAL') ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => showAddProbeToPurchaseSheet(context, item),
+              icon: const Icon(Icons.cable_outlined, size: 18),
+              label: const Text('Add probe to this purchase'),
+            ),
+          ],
         ],
         if (canReturn) ...[
           const SizedBox(height: 12),
@@ -2092,8 +2372,10 @@ class _ItemDetails extends ConsumerWidget {
         ],
         if (linked.isNotEmpty) ...[
           const SizedBox(height: 16),
-          const Text('Linked items',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const Text(
+            'Linked items',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 8),
           AppCard(
             padding: const EdgeInsets.all(4),
@@ -2102,13 +2384,19 @@ class _ItemDetails extends ConsumerWidget {
                 for (final other in linked)
                   ListTile(
                     dense: true,
-                    leading: Icon(_kindIcon(other.kind),
-                        size: 20, color: Theme.of(context).colorScheme.primary),
-                    title: Text('${other.code}  ${other.title}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13.5)),
-                    subtitle:
-                        Text('${other.kindLabel} · ${other.status}'),
+                    leading: Icon(
+                      _kindIcon(other.kind),
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: Text(
+                      '${other.code}  ${other.title}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    subtitle: Text('${other.kindLabel} · ${other.status}'),
                     trailing: const Icon(Icons.chevron_right, size: 20),
                     onTap: () => showItemDetails(context, ref, other),
                   ),
@@ -2117,12 +2405,19 @@ class _ItemDetails extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 16),
-        const Text('Movements',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        const Text(
+          'Movements',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 8),
         if (history.isEmpty)
-          Text('No movements recorded for this item.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))
+          Text(
+            'No movements recorded for this item.',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 13,
+            ),
+          )
         else
           AppCard(
             padding: const EdgeInsets.all(4),
@@ -2131,18 +2426,24 @@ class _ItemDetails extends ConsumerWidget {
                 for (final row in history)
                   ListTile(
                     dense: true,
-                    leading: Icon(_historyIcon('${row['movement_type']}'),
-                        size: 20,
-                        color: row['movement_type'] == 'Return'
-                            ? context.colors.success
-                            : Theme.of(context).colorScheme.primary),
+                    leading: Icon(
+                      _historyIcon('${row['movement_type']}'),
+                      size: 20,
+                      color: row['movement_type'] == 'Return'
+                          ? context.colors.success
+                          : Theme.of(context).colorScheme.primary,
+                    ),
                     title: Row(
                       children: [
                         Flexible(
-                          child: Text(_historyTitle(row),
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 13.5)),
+                          child: Text(
+                            _historyTitle(row),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13.5,
+                            ),
+                          ),
                         ),
                         if (isOldSideMovement(row)) ...[
                           const SizedBox(width: 6),
@@ -2153,23 +2454,32 @@ class _ItemDetails extends ConsumerWidget {
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_historyMeta(row),
-                            style: TextStyle(
-                                fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                        Text(
+                          _historyMeta(row),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                         if ('${row['notes'] ?? ''}'.trim().isNotEmpty)
-                          Text('${row['notes']}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 12, color: Theme.of(context).colorScheme.outline)),
+                          Text(
+                            '${row['notes']}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                          ),
                       ],
                     ),
                     trailing: isAdmin || row['actor_id'] == myId
                         ? IconButton(
                             tooltip: 'Delete this movement',
                             icon: const Icon(Icons.delete_outline, size: 18),
-                            onPressed: () =>
-                                _deleteMovement(context, ref, row),
+                            onPressed: () => _deleteMovement(context, ref, row),
                           )
                         : null,
                   ),
@@ -2217,7 +2527,10 @@ class _ItemDetails extends ConsumerWidget {
   /// and the item takes its status from the history that is left, so an
   /// accidental move falls out of the record (0014).
   Future<void> _deleteMovement(
-      BuildContext context, WidgetRef ref, Map<String, dynamic> row) async {
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> row,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -2243,7 +2556,8 @@ class _ItemDetails extends ConsumerWidget {
         ..invalidate(inventoryProvider);
       if (context.mounted) {
         messenger.showSnackBar(
-            const SnackBar(content: Text('Movement deleted.')));
+          const SnackBar(content: Text('Movement deleted.')),
+        );
       }
     } catch (error) {
       if (context.mounted) showSnack(context, errorMessage(error), error: true);
@@ -2278,8 +2592,7 @@ class _ItemDetails extends ConsumerWidget {
         ..invalidate(allMovementsProvider);
       if (!context.mounted) return;
       Navigator.pop(context);
-      messenger
-          .showSnackBar(SnackBar(content: Text('${item.code} deleted.')));
+      messenger.showSnackBar(SnackBar(content: Text('${item.code} deleted.')));
     } catch (error) {
       if (context.mounted) showSnack(context, errorMessage(error), error: true);
     }
@@ -2287,11 +2600,11 @@ class _ItemDetails extends ConsumerWidget {
 }
 
 String _tableForKind(String kind) => switch (kind) {
-      'machine' => 'machines',
-      'probe' => 'probes',
-      'printer' => 'printers',
-      _ => 'parts',
-    };
+  'machine' => 'machines',
+  'probe' => 'probes',
+  'printer' => 'printers',
+  _ => 'parts',
+};
 
 String _nameColumnForKind(String kind) =>
     kind == 'machine' || kind == 'probe' ? 'model' : 'name_model';
@@ -2361,24 +2674,27 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
     final notes = _notes.text.trim();
     // clearing an existing serial makes the database generate a fresh
     // system number (0012_auto_serials.sql) — say so in the message
-    final regenerated =
-        serial.isEmpty && (item.serial ?? '').trim().isNotEmpty;
+    final regenerated = serial.isEmpty && (item.serial ?? '').trim().isNotEmpty;
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await db.from(_tableForKind(item.kind)).update({
-        _nameColumnForKind(item.kind): name,
-        'status': _status,
-        'serial_number': serial.isEmpty ? null : serial,
-        if (location.isNotEmpty) 'current_location': location,
-        'notes': notes.isEmpty ? null : notes,
-      }).eq('id', item.id);
+      await db
+          .from(_tableForKind(item.kind))
+          .update({
+            _nameColumnForKind(item.kind): name,
+            'status': _status,
+            'serial_number': serial.isEmpty ? null : serial,
+            if (location.isNotEmpty) 'current_location': location,
+            'notes': notes.isEmpty ? null : notes,
+          })
+          .eq('id', item.id);
       ref.invalidate(inventoryProvider);
       if (!mounted) return;
       Navigator.pop(context);
       final note = regenerated ? ' — new serial generated' : '';
       messenger.showSnackBar(
-          SnackBar(content: Text('${item.code} updated$note.')));
+        SnackBar(content: Text('${item.code} updated$note.')),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -2389,8 +2705,12 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final flags = ref.watch(flagsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
+    final flags = ref
+        .watch(flagsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
     final editFlags =
         flagIndex(flags)[flagItemKey(item.kind, item.id)] ?? const [];
     return Padding(
@@ -2402,9 +2722,13 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
           Row(
             children: [
               Expanded(
-                child: Text('Edit ${item.code}',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Edit ${item.code}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -2421,26 +2745,32 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                   TextField(
                     controller: _name,
                     decoration: InputDecoration(
-                        labelText: '${item.kindLabel} name *'),
+                      labelText: '${item.kindLabel} name *',
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _serial,
                     autocorrect: false,
                     decoration: const InputDecoration(
-                        labelText: 'Serial number',
-                        hintText: 'Auto if empty'),
+                      labelText: 'Serial number',
+                      hintText: 'Auto if empty',
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  Text('Status',
-                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Status',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('edit-status-$_status'),
                     initialValue: _status,
                     items: statusOptions(item.kind)
-                        .map((s) =>
-                            DropdownMenuItem(value: s, child: Text(s)))
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                         .toList(),
                     onChanged: (v) =>
                         setState(() => _status = v ?? item.status),
@@ -2454,8 +2784,9 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                   TextField(
                     controller: _notes,
                     maxLines: 2,
-                    decoration:
-                        const InputDecoration(labelText: 'Notes (optional)'),
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                    ),
                   ),
                 ],
               ),
@@ -2468,14 +2799,18 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
               ref,
               target: {'item_kind': item.kind, 'item_id': item.id},
             ),
-            icon: Icon(Icons.flag_outlined,
-                size: 18,
-                color: editFlags.isEmpty
-                    ? null
-                    : colorFromHex('${editFlags.first['color']}')),
-            label: Text(editFlags.isEmpty
-                ? 'Flag this item'
-                : 'Flags (${editFlags.length})'),
+            icon: Icon(
+              Icons.flag_outlined,
+              size: 18,
+              color: editFlags.isEmpty
+                  ? null
+                  : colorFromHex('${editFlags.first['color']}'),
+            ),
+            label: Text(
+              editFlags.isEmpty
+                  ? 'Flag this item'
+                  : 'Flags (${editFlags.length})',
+            ),
           ),
           const SizedBox(height: 16),
           FilledButton(
@@ -2484,7 +2819,8 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Save changes'),
           ),
         ],
@@ -2514,14 +2850,14 @@ Widget _reviewDot(BuildContext context, InventoryItem item) {
 }
 
 IconData _historyIcon(String type) => switch (type) {
-      'Return' => Icons.undo_outlined,
-      'Workshop' => Icons.build_outlined,
-      'Branch' => Icons.storefront_outlined,
-      'Dealer' => Icons.handshake_outlined,
-      'Box' => Icons.inventory_2_outlined,
-      'Unbox' => Icons.archive_outlined,
-      _ => Icons.person_outline,
-    };
+  'Return' => Icons.undo_outlined,
+  'Workshop' => Icons.build_outlined,
+  'Branch' => Icons.storefront_outlined,
+  'Dealer' => Icons.handshake_outlined,
+  'Box' => Icons.inventory_2_outlined,
+  'Unbox' => Icons.archive_outlined,
+  _ => Icons.person_outline,
+};
 
 /// "Sent to X" / "Sold to X" / "Returned to X" / "Placed in box X" —
 /// shared with the data layer so both sides stay in step.
@@ -2536,9 +2872,10 @@ Widget _oldChip(BuildContext context) {
       color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(10),
     ),
-    child: Text('Old',
-        style: TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    child: Text(
+      'Old',
+      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+    ),
   );
 }
 
@@ -2609,11 +2946,11 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
   }
 
   String _categoryFor(String kind) => switch (kind) {
-        'machine' => 'Machine',
-        'probe' => 'Probe',
-        'printer' => 'Printer',
-        _ => 'Part',
-      };
+    'machine' => 'Machine',
+    'probe' => 'Probe',
+    'printer' => 'Printer',
+    _ => 'Part',
+  };
 
   Future<void> _save(Map<String, dynamic>? batch) async {
     final product = _product.text.trim();
@@ -2622,9 +2959,11 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
       return;
     }
     if (batch == null) {
-      showSnack(context,
-          'Create a batch first — Records → Batches → New batch.',
-          error: true);
+      showSnack(
+        context,
+        'Create a batch first — Records → Batches → New batch.',
+        error: true,
+      );
       return;
     }
     if (_code.text.trim().isEmpty) {
@@ -2644,8 +2983,9 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
           .select('brand_id')
           .eq('id', productId)
           .limit(1);
-      final brandId =
-          productRows.isEmpty ? null : productRows.first['brand_id'] as int?;
+      final brandId = productRows.isEmpty
+          ? null
+          : productRows.first['brand_id'] as int?;
 
       final table = switch (_kind) {
         'machine' => 'machines',
@@ -2654,12 +2994,12 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
         _ => 'parts',
       };
       final idColumn = _kind == 'machine' ? 'machine_id' : 'internal_id';
-      final nameColumn =
-          _kind == 'machine' || _kind == 'probe' ? 'model' : 'name_model';
+      final nameColumn = _kind == 'machine' || _kind == 'probe'
+          ? 'model'
+          : 'name_model';
 
       final linked = _needsMachineLink && _machine != null;
-      final status =
-          linked ? 'With Machine' : defaultStatus(_kind);
+      final status = linked ? 'With Machine' : defaultStatus(_kind);
       // machines, probes and printers get a system serial from the
       // database when none is typed (0012_auto_serials.sql)
       final wantSerial = _kind != 'part' && _serial.text.trim().isEmpty;
@@ -2693,11 +3033,10 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
       ref.invalidate(inventoryProvider);
       if (!mounted) return;
       Navigator.pop(context);
-      final serialNote = wantSerial
-          ? ' — serial ${row['serial_number']}'
-          : '';
-      messenger.showSnackBar(SnackBar(
-          content: Text('${_code.text.trim()} added$serialNote.')));
+      final serialNote = wantSerial ? ' — serial ${row['serial_number']}' : '';
+      messenger.showSnackBar(
+        SnackBar(content: Text('${_code.text.trim()} added$serialNote.')),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -2707,24 +3046,29 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
 
   @override
   Widget build(BuildContext context) {
-    final productNames = ref.watch(productsProvider).maybeWhen(
+    final productNames = ref
+        .watch(productsProvider)
+        .maybeWhen(
           data: (rows) => rows.map((r) => r['name_model'].toString()).toList(),
           orElse: () => const <String>[],
         );
-    final batches = ref.watch(batchesProvider).maybeWhen(
+    final batches = ref
+        .watch(batchesProvider)
+        .maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
-    final current = ref.watch(currentBatchProvider).maybeWhen(
-          data: (row) => row,
-          orElse: () => null,
-        );
+    final current = ref
+        .watch(currentBatchProvider)
+        .maybeWhen(data: (row) => row, orElse: () => null);
     final batchId = _batchId ?? current?['id'] as int?;
     Map<String, dynamic>? batch;
     for (final row in batches) {
       if (row['id'] == batchId) batch = row;
     }
-    final machines = ref.watch(inventoryProvider).maybeWhen(
+    final machines = ref
+        .watch(inventoryProvider)
+        .maybeWhen(
           data: (rows) => rows
               .where((item) => item.kind == 'machine' && !item.isSold)
               .toList(),
@@ -2752,9 +3096,10 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
           Row(
             children: [
               const Expanded(
-                child: Text('Add product',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Add product',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -2768,15 +3113,24 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Item type',
-                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Item type',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('kind-$_kind'),
                     initialValue: _kind,
                     items: kItemKinds
-                        .map((k) => DropdownMenuItem(
-                            value: k, child: Text(itemKindLabel(k))))
+                        .map(
+                          (k) => DropdownMenuItem(
+                            value: k,
+                            child: Text(itemKindLabel(k)),
+                          ),
+                        )
                         .toList(),
                     onChanged: (value) {
                       final kind = value ?? 'machine';
@@ -2790,8 +3144,13 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  Text('Batch',
-                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Batch',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   if (batches.isEmpty)
                     AppCard(
@@ -2800,9 +3159,14 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                              'No batch yet.',
-                              style:
-                                  TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
+                            'No batch yet.',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontSize: 13.5,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           FilledButton.tonal(
                             onPressed: () {
@@ -2822,11 +3186,13 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                         for (final row in batches)
                           DropdownMenuItem(
                             value: row['id'] as int,
-                            child: Text([
-                              if ((row['letter'] ?? '').toString().isNotEmpty)
-                                'Batch ${row['letter']}',
-                              row['arrival_date'] ?? '',
-                            ].join(' · ')),
+                            child: Text(
+                              [
+                                if ((row['letter'] ?? '').toString().isNotEmpty)
+                                  'Batch ${row['letter']}',
+                                row['arrival_date'] ?? '',
+                              ].join(' · '),
+                            ),
                           ),
                       ],
                       onChanged: (value) => setState(() => _batchId = value),
@@ -2835,9 +3201,12 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                     if (batch != null)
                       Text(
                         'Vendor: '
-                            '${((batch['vendors'] as Map?)?['name'] ?? '').toString().isEmpty ? '—' : ((batch['vendors'] as Map?)?['name'] ?? '')}  ·  '
-                            'Arrived: ${batch['arrival_date'] ?? '—'}',
-                        style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        '${((batch['vendors'] as Map?)?['name'] ?? '').toString().isEmpty ? '—' : ((batch['vendors'] as Map?)?['name'] ?? '')}  ·  '
+                        'Arrived: ${batch['arrival_date'] ?? '—'}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                   ],
                   const SizedBox(height: 16),
@@ -2862,9 +3231,7 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                       controller: _machineCode,
                       label: 'Belongs to machine (optional)',
                       hint: 'e.g. 12T',
-                      options: [
-                        for (final item in machines) item.code,
-                      ],
+                      options: [for (final item in machines) item.code],
                       pickTitle: 'machines',
                       onChanged: (value) {
                         InventoryItem? found;
@@ -2893,10 +3260,12 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                           ? const Padding(
                               padding: EdgeInsets.all(12),
                               child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2)),
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
                             )
                           : const Icon(Icons.lock_outline, size: 18),
                     ),
@@ -2912,7 +3281,8 @@ class _AddItemFormState extends ConsumerState<_AddItemForm> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Save'),
           ),
         ],
@@ -3033,19 +3403,22 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
   }
 
   Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 
   /// The little colour dot shown inside the review chips.
   Widget _dot(Color color) => Container(
-        width: 9,
-        height: 9,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
+    width: 9,
+    height: 9,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 
   Widget _reviewChip({
     required String value,
@@ -3112,9 +3485,10 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
           Row(
             children: [
               const Expanded(
-                child: Text('Filters',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Filters',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -3135,7 +3509,8 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                       for (final label in _statusFilters)
                         ChoiceChip(
                           label: Text(
-                              '$label (${widget.statusCounts[label] ?? 0})'),
+                            '$label (${widget.statusCounts[label] ?? 0})',
+                          ),
                           selected: _status == label,
                           onSelected: (_) => setState(() => _status = label),
                           selectedColor: scheme.primary,
@@ -3168,13 +3543,15 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                         value: 'Green',
                         dotColor: context.colors.success,
                         label: Text(
-                            'Green dot (${widget.reviewCounts['Green'] ?? 0})'),
+                          'Green dot (${widget.reviewCounts['Green'] ?? 0})',
+                        ),
                       ),
                       _reviewChip(
                         value: 'Red',
                         dotColor: scheme.error,
                         label: Text(
-                            'Red dot (${widget.reviewCounts['Red'] ?? 0})'),
+                          'Red dot (${widget.reviewCounts['Red'] ?? 0})',
+                        ),
                       ),
                     ],
                   ),
@@ -3191,9 +3568,11 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                           dotColor: group.key == 'any'
                               ? scheme.primary
                               : colorFromHex(group.color),
-                          label: Text(group.label.isEmpty
-                              ? '${group.count}'
-                              : '${group.label} (${group.count})'),
+                          label: Text(
+                            group.label.isEmpty
+                                ? '${group.count}'
+                                : '${group.label} (${group.count})',
+                          ),
                         ),
                     ],
                   ),
@@ -3202,7 +3581,9 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                     children: [
                       Expanded(
                         child: DateField(
-                            controller: _from, label: 'Acquired from'),
+                          controller: _from,
+                          label: 'Acquired from',
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -3215,8 +3596,9 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                     controller: _location,
                     textCapitalization: TextCapitalization.sentences,
                     decoration: const InputDecoration(
-                        labelText: 'Location contains',
-                        hintText: 'e.g. Lahore'),
+                      labelText: 'Location contains',
+                      hintText: 'e.g. Lahore',
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _label('Batch'),
@@ -3225,7 +3607,9 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                     initialValue: _batch,
                     items: [
                       const DropdownMenuItem(
-                          value: '', child: Text('Any batch')),
+                        value: '',
+                        child: Text('Any batch'),
+                      ),
                       for (final code in widget.batchOptions)
                         DropdownMenuItem(value: code, child: Text(code)),
                     ],
@@ -3238,7 +3622,9 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                     initialValue: _vendorId,
                     items: [
                       const DropdownMenuItem(
-                          value: null, child: Text('Any vendor')),
+                        value: null,
+                        child: Text('Any vendor'),
+                      ),
                       for (final (id, name) in widget.vendorOptions)
                         DropdownMenuItem(value: id, child: Text(name)),
                     ],
@@ -3251,9 +3637,11 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                         child: TextField(
                           controller: _priceFrom,
                           keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                            decimal: true,
+                          ),
                           decoration: const InputDecoration(
-                              labelText: 'Price paid from'),
+                            labelText: 'Price paid from',
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -3261,9 +3649,11 @@ class _InventoryFilterSheetState extends State<_InventoryFilterSheet> {
                         child: TextField(
                           controller: _priceTo,
                           keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                            decimal: true,
+                          ),
                           decoration: const InputDecoration(
-                              labelText: 'Price paid to'),
+                            labelText: 'Price paid to',
+                          ),
                         ),
                       ),
                     ],

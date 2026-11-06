@@ -1475,6 +1475,35 @@ Future<void> takeProbeOutOfBox(InventoryItem probe) async {
   });
 }
 
+/// Takes a boxed probe straight onto a machine: it leaves the box, becomes
+/// With Machine at the machine's location, and an 'Unbox' movement records
+/// the move from the box to the machine.
+Future<void> attachProbeToMachine(
+  InventoryItem probe,
+  InventoryItem machine,
+) async {
+  final from = probe.location;
+  final to = machine.location;
+  await _db
+      .from('probes')
+      .update({
+        'box_id': null,
+        'assigned_machine_id': machine.id,
+        'status': 'With Machine',
+        'current_location': to,
+      })
+      .eq('id', probe.id);
+  await _db.from('movements').insert({
+    'movement_type': 'Unbox',
+    'movement_date': movementToday(),
+    'probe_id': probe.id,
+    'from_location': from,
+    'to_location': to,
+    'notes': 'Attached to ${machine.code}',
+    'actor_id': _db.auth.currentUser?.id,
+  });
+}
+
 /// Probes that may be added to [box]. Any probe type fits any box — the
 /// box's probe_type is just a label — and a probe that currently sits
 /// With Machine is included so it can be taken off its machine and boxed
