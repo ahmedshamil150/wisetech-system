@@ -1611,6 +1611,57 @@ Future<String> suggestedBatchLetter() async {
   return code as String;
 }
 
+/// Looks for an item carrying exactly [serial] in any equipment table,
+/// old stock included. Null when no row has it — the movement form uses
+/// this before offering to add a serial that is not in the inventory.
+Future<InventoryItem?> findItemBySerial(String serial) async {
+  final value = serial.trim();
+  if (value.isEmpty) return null;
+  const fields = 'id, serial_number, status, current_location';
+  final results = await Future.wait([
+    _db
+        .from('machines')
+        .select('$fields, machine_id, model')
+        .ilike('serial_number', value)
+        .limit(1),
+    _db
+        .from('probes')
+        .select('$fields, internal_id, model')
+        .ilike('serial_number', value)
+        .limit(1),
+    _db
+        .from('printers')
+        .select('$fields, internal_id, name_model')
+        .ilike('serial_number', value)
+        .limit(1),
+    _db
+        .from('parts')
+        .select('$fields, internal_id, name_model')
+        .ilike('serial_number', value)
+        .limit(1),
+  ]);
+  const kinds = ['machine', 'probe', 'printer', 'part'];
+  for (var i = 0; i < results.length; i++) {
+    if (results[i].isEmpty) continue;
+    final row = results[i].first;
+    final kind = kinds[i];
+    return InventoryItem(
+      kind: kind,
+      id: row['id'] as int,
+      code: (row[kind == 'machine' ? 'machine_id' : 'internal_id'] ?? '')
+          .toString(),
+      name:
+          (row[kind == 'machine' || kind == 'probe' ? 'model' : 'name_model'] ??
+                  '')
+              .toString(),
+      serial: row['serial_number'] as String?,
+      status: (row['status'] ?? '').toString(),
+      location: (row['current_location'] ?? '').toString(),
+    );
+  }
+  return null;
+}
+
 /// Finds an existing record or (admin only) creates it, then returns its id.
 Future<int> resolveReferenceId({
   required String table,

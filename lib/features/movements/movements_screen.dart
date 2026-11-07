@@ -1170,7 +1170,11 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       return;
     }
     if (!mounted) return;
-    final picked = await showPickItem(context, items: available);
+    final picked = await showPickItem(
+      context,
+      items: available,
+      allowCreate: ref.read(isAdminProvider),
+    );
     if (picked == null) return;
     final additions = picked.kind == 'machine'
         ? kitFor(available, picked)
@@ -2804,6 +2808,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       context,
       items: offered,
       selectedKey: group.items.isEmpty ? null : group.items.first.key,
+      allowCreate: ref.read(isAdminProvider),
     );
     if (picked == null) return;
     setState(() {
