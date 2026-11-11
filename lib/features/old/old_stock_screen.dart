@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../common/flag_sheet.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import 'old_data.dart';
@@ -22,6 +23,7 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tab = TabController(length: 4, vsync: this);
   String _query = '';
+  String _machineFlagFilter = '';
   int _page = 0;
 
   @override
@@ -68,12 +70,21 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
             _page = 0;
           }),
         ),
+        if (_tab.index == 0)
+          _OldMachineFlagFilter(
+            value: _machineFlagFilter,
+            onChanged: (value) => setState(() {
+              _machineFlagFilter = value;
+              _page = 0;
+            }),
+          ),
         Expanded(
           child: TabBarView(
             controller: _tab,
             children: [
               _MachinesPane(
                 search: _query,
+                flagFilter: _machineFlagFilter,
                 page: _page,
                 onPage: (p) => setState(() => _page = p),
               ),
@@ -210,20 +221,88 @@ Widget _oldItemTile(
   );
 }
 
+class _OldMachineFlagFilter extends ConsumerWidget {
+  const _OldMachineFlagFilter({required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final flags = ref
+        .watch(flagsProvider)
+        .maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final groups = <String, ({String label, String color})>{};
+    for (final flag in flags) {
+      if (flag['item_kind'] != 'machine') continue;
+      final note = '${flag['note'] ?? ''}'.trim();
+      final color = '${flag['color'] ?? ''}';
+      final key = note.isEmpty ? 'color:$color' : 'note:$note';
+      groups[key] = (label: note, color: color);
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          ChoiceChip(
+            label: const Text('All'),
+            selected: value.isEmpty,
+            onSelected: (_) => onChanged(''),
+          ),
+          if (flags.any((f) => f['item_kind'] == 'machine')) ...[
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('Flagged'),
+              selected: value == 'any',
+              onSelected: (_) => onChanged('any'),
+            ),
+          ],
+          for (final entry in groups.entries) ...[
+            const SizedBox(width: 8),
+            ChoiceChip(
+              avatar: entry.value.color.isEmpty
+                  ? null
+                  : CircleAvatar(
+                      backgroundColor: colorFromHex(entry.value.color),
+                    ),
+              label: Text(
+                entry.value.label.isEmpty ? 'Unlabeled' : entry.value.label,
+              ),
+              selected: value == entry.key,
+              onSelected: (_) => onChanged(entry.key),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _MachinesPane extends ConsumerWidget {
   const _MachinesPane({
     required this.search,
+    required this.flagFilter,
     required this.page,
     required this.onPage,
   });
   final String search;
+  final String flagFilter;
   final int page;
   final ValueChanged<int> onPage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(
-      oldMachinesProvider((page: page, search: search, status: 'All')),
+      oldMachinesProvider((
+        page: page,
+        search: search,
+        status: 'All',
+        flagFilter: flagFilter,
+      )),
     );
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -260,7 +339,12 @@ class _ProbesPane extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(
-      oldProbesProvider((page: page, search: search, status: 'All')),
+      oldProbesProvider((
+        page: page,
+        search: search,
+        status: 'All',
+        flagFilter: '',
+      )),
     );
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -297,7 +381,12 @@ class _PrintersPane extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(
-      oldPrintersProvider((page: page, search: search, status: 'All')),
+      oldPrintersProvider((
+        page: page,
+        search: search,
+        status: 'All',
+        flagFilter: '',
+      )),
     );
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),

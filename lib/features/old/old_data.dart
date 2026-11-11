@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../data/data.dart' show kOldBatchId;
+import '../data/data.dart' show flagsProvider, kOldBatchId;
 
 export '../data/data.dart' show kOldBatchId;
 
@@ -12,7 +12,7 @@ SupabaseClient get _db => Supabase.instance.client;
 typedef OldPage = ({List<Map<String, dynamic>> rows, int total});
 
 /// One page of the 50 rows shown at a time in every old-data table.
-typedef OldArgs = ({int page, String search, String status});
+typedef OldArgs = ({int page, String search, String status, String flagFilter});
 
 /// Runs [build] as a paged select: applies the filters, orders newest
 /// first, takes one page of 50, and fetches the total count in parallel.
@@ -39,7 +39,10 @@ Future<OldPage> _paged(
 final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
   ref,
   args,
-) {
+) async {
+  final flaggedIds = args.flagFilter.isEmpty
+      ? null
+      : await _oldMachineFlagIds(ref, args.flagFilter);
   return _paged(
     () {
       PostgrestFilterBuilder<PostgrestList> query = _db
@@ -52,6 +55,9 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
       if (args.status != 'All') {
         query = query.eq('status', args.status);
       }
+      if (flaggedIds != null) {
+        query = query.inFilter('id', flaggedIds);
+      }
       if (args.search.isNotEmpty) {
         final t = args.search;
         query = query.or(
@@ -62,15 +68,46 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
     },
     page: args.page,
     countSource: () async {
-      final res = await _db
+      PostgrestFilterBuilder<PostgrestList> query = _db
           .from('machines')
           .select('id')
-          .eq('batch_id', kOldBatchId)
-          .count(CountOption.exact);
+          .eq('batch_id', kOldBatchId);
+      if (args.status != 'All') {
+        query = query.eq('status', args.status);
+      }
+      if (flaggedIds != null) {
+        query = query.inFilter('id', flaggedIds);
+      }
+      final res = await query.count(CountOption.exact);
       return res.count;
     },
   );
 });
+
+Future<List<int>> _oldMachineFlagIds(Ref ref, String filter) async {
+  final flags = await ref.watch(flagsProvider.future);
+  final ids = <int>{};
+  for (final flag in flags) {
+    if (flag['item_kind'] != 'machine' || flag['item_id'] is! int) {
+      continue;
+    }
+    if (filter == 'any') {
+      ids.add(flag['item_id'] as int);
+      continue;
+    }
+    final note = '${flag['note'] ?? ''}'.trim();
+    final color = '${flag['color'] ?? ''}';
+    if (filter.startsWith('note:') &&
+        note == filter.substring('note:'.length)) {
+      ids.add(flag['item_id'] as int);
+    } else if (filter.startsWith('color:') &&
+        note.isEmpty &&
+        color == filter.substring('color:'.length)) {
+      ids.add(flag['item_id'] as int);
+    }
+  }
+  return ids.toList();
+}
 
 final oldProbesProvider = FutureProvider.family<OldPage, OldArgs>((ref, args) {
   return _paged(
