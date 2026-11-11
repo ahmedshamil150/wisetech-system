@@ -12,7 +12,12 @@ SupabaseClient get _db => Supabase.instance.client;
 typedef OldPage = ({List<Map<String, dynamic>> rows, int total});
 
 /// One page of the 50 rows shown at a time in every old-data table.
-typedef OldArgs = ({int page, String search, String status, String flagFilter});
+typedef OldArgs = ({
+  int page,
+  String search,
+  String status,
+  Set<String> flagFilters,
+});
 
 /// Runs [build] as a paged select: applies the filters, orders newest
 /// first, takes one page of 50, and fetches the total count in parallel.
@@ -40,9 +45,9 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
   ref,
   args,
 ) async {
-  final flaggedIds = args.flagFilter.isEmpty
+  final flaggedIds = args.flagFilters.isEmpty
       ? null
-      : await _oldMachineFlagIds(ref, args.flagFilter);
+      : await _oldMachineFlagIds(ref, args.flagFilters);
   return _paged(
     () {
       PostgrestFilterBuilder<PostgrestList> query = _db
@@ -84,29 +89,28 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
   );
 });
 
-Future<List<int>> _oldMachineFlagIds(Ref ref, String filter) async {
+Future<List<int>> _oldMachineFlagIds(Ref ref, Set<String> filters) async {
   final flags = await ref.watch(flagsProvider.future);
-  final ids = <int>{};
+  final byItem = <int, Set<String>>{};
   for (final flag in flags) {
     if (flag['item_kind'] != 'machine' || flag['item_id'] is! int) {
       continue;
     }
-    if (filter == 'any') {
-      ids.add(flag['item_id'] as int);
-      continue;
-    }
+    final itemId = flag['item_id'] as int;
     final note = '${flag['note'] ?? ''}'.trim();
     final color = '${flag['color'] ?? ''}';
-    if (filter.startsWith('note:') &&
-        note == filter.substring('note:'.length)) {
-      ids.add(flag['item_id'] as int);
-    } else if (filter.startsWith('color:') &&
-        note.isEmpty &&
-        color == filter.substring('color:'.length)) {
-      ids.add(flag['item_id'] as int);
+    final itemFilters = byItem[itemId] ??= <String>{};
+    itemFilters.add('any');
+    if (note.isNotEmpty) {
+      itemFilters.add('note:$note');
+    } else {
+      itemFilters.add('color:$color');
     }
   }
-  return ids.toList();
+  return [
+    for (final entry in byItem.entries)
+      if (filters.every(entry.value.contains)) entry.key,
+  ];
 }
 
 final oldProbesProvider = FutureProvider.family<OldPage, OldArgs>((ref, args) {
