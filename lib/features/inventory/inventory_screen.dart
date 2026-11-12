@@ -64,9 +64,17 @@ int _kitRank(InventoryItem item) => switch (item.kind) {
 /// Arranges the visible rows as kits - a machine followed by its printer and
 /// its probes, then the next machine, and so on. The bool says whether the
 /// row belongs under the machine above it (drawn indented).
-List<(InventoryItem, bool)> arrangeAsKits(List<InventoryItem> items) {
+List<(InventoryItem, bool)> arrangeAsKits(
+  List<InventoryItem> items, {
+  Map<int, int> machineAreaRanks = const {},
+}) {
   final machines = items.where((item) => item.kind == 'machine').toList()
-    ..sort(_newestFirst);
+    ..sort((a, b) {
+      final byArea = (machineAreaRanks[a.id] ?? 2).compareTo(
+        machineAreaRanks[b.id] ?? 2,
+      );
+      return byArea != 0 ? byArea : _newestFirst(a, b);
+    });
   final machineIds = machines.map((machine) => machine.id).toSet();
 
   final kits = <int, List<InventoryItem>>{};
@@ -561,9 +569,27 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
-    // the flag filter reads the flags — watch so the list refines the
-    // moment they arrive
-    ref.watch(flagsProvider);
+    // The audit flags also determine the requested Basement/Display order.
+    final flags = ref
+        .watch(flagsProvider)
+        .maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final machineAreaRanks = <int, int>{};
+    for (final flag in flags) {
+      if (flag['item_kind'] != 'machine') continue;
+      final note = (flag['note'] ?? '').toString();
+      if (note.contains('Not found in physical stock')) continue;
+      final itemId = flag['item_id'];
+      if (itemId is! int) continue;
+      if (note.contains('Basement')) {
+        machineAreaRanks[itemId] = 0;
+      } else if (note.contains('Display') &&
+          (machineAreaRanks[itemId] ?? 2) > 1) {
+        machineAreaRanks[itemId] = 1;
+      }
+    }
     final typeCounts = _typeCounts(allRows, boxes);
     // Everything that survives the filters — the same predicates the list
     // uses, so the count always matches what is shown.
@@ -718,7 +744,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           message: errorMessage(error),
                         ),
                         data: (rows) {
-                          final entries = arrangeAsKits(filtered);
+                          final entries = arrangeAsKits(
+                            filtered,
+                            machineAreaRanks: machineAreaRanks,
+                          );
                           if (entries.isEmpty) {
                             return const EmptyState(
                               icon: Icons.inventory_2_outlined,

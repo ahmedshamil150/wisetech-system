@@ -20,7 +20,8 @@ Future<Set<int>> _currentBatchIds() async {
     for (final row in rows)
       if (row['code'] == 'BATCH-3' ||
           row['code'] == 'BATCH-PARTS' ||
-          row['code'] == 'BATCH-LOCAL')
+          row['code'] == 'BATCH-LOCAL' ||
+          row['code'] == 'BATCH-PHYSICAL-2026-11-12')
         row['id'] as int,
   };
 }
