@@ -10,6 +10,7 @@ import '../old/data_side.dart';
 import '../old/old_shell.dart';
 import '../repairs/repairs_screen.dart';
 import '../sales/sales_screen.dart';
+import '../workshop/workshop_screen.dart';
 import 'dashboard_screen.dart';
 import 'navigation_providers.dart';
 import 'profile_screen.dart';
@@ -40,6 +41,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     'Movements',
     'Sales',
     'Repairs',
+    'Workshop',
   ];
 
   static const _destinations = [
@@ -48,6 +50,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     (Icons.swap_horiz_outlined, Icons.swap_horiz, 'Movements'),
     (Icons.receipt_long_outlined, Icons.receipt_long, 'Sales'),
     (Icons.build_outlined, Icons.build, 'Repairs'),
+    (Icons.handyman_outlined, Icons.handyman, 'Workshop'),
   ];
 
   late final List<Widget> _pages = [
@@ -56,6 +59,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     const MovementsScreen(),
     const SalesScreen(),
     const RepairsScreen(),
+    const WorkshopScreen(),
   ];
 
   /// Pages build the first time their tab is opened and stay alive
@@ -131,15 +135,15 @@ class _ProfileMenuButton extends ConsumerWidget {
     final auth = ref.read(authControllerProvider);
     final themeMode = ref.watch(themeModeProvider);
     final name = profile.maybeWhen(
-          data: (p) => (p?['display_name'] ?? p?['username'] ?? '') as String,
-          orElse: () => '',
-        );
+      data: (p) => (p?['display_name'] ?? p?['username'] ?? '') as String,
+      orElse: () => '',
+    );
     return PopupMenuButton<String>(
       onSelected: (value) {
         if (value == 'profile') {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ProfileScreen()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
         } else if (value == 'theme') {
           ref.read(themeModeProvider.notifier).toggle();
         } else if (value == 'old') {

@@ -186,47 +186,40 @@ final oldPrintersProvider = FutureProvider.family<OldPage, OldArgs>((
   );
 });
 
-/// Workshop items from both the imported old stock and current inventory.
-/// The workshop page is a combined view; it does not move or duplicate rows.
+/// Workshop machines from the PDF audit in both imported and current data.
+/// Room flags identify the PDF rows; this keeps unrelated workshop items out.
 final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
-  Future<List<Map<String, dynamic>>> rows(
-    String table,
-    String code,
-    String name,
-  ) {
-    return fetchAllPages(
-      () => _db
-          .from(table)
-          .select(
-            'id, $code, $name, serial_number, status, current_location, '
-            'notes, acquisition_date, purchase_price, vendor_id, condition',
-          )
-          .eq('status', 'With Workshop')
-          .order('id', ascending: false),
-    );
-  }
-
-  final results = await Future.wait([
-    rows('machines', 'machine_id', 'model'),
-    rows('probes', 'internal_id', 'model'),
-    rows('printers', 'internal_id', 'name_model'),
-    rows('parts', 'internal_id', 'name_model'),
-  ]);
+  final flags = await ref.watch(flagsProvider.future);
+  final pdfWorkshopIds = {
+    for (final flag in flags)
+      if (flag['item_kind'] == 'machine' &&
+          flag['item_id'] is int &&
+          const {
+            'Room 1',
+            'Room 2',
+            'Room 3',
+            'Workarea',
+          }.contains('${flag['note']}'.trim()))
+        flag['item_id'] as int,
+  };
+  final rows = await fetchAllPages(
+    () => _db
+        .from('machines')
+        .select(
+          'id, machine_id, model, serial_number, status, current_location, '
+          'notes, acquisition_date, purchase_price, vendor_id, condition',
+        )
+        .eq('status', 'With Workshop')
+        .order('id', ascending: false),
+  );
   return [
-    for (var index = 0; index < results.length; index++)
-      for (final row in results[index])
-        {
-          ...row,
-          'kind': switch (index) {
-            0 => 'machine',
-            1 => 'probe',
-            2 => 'printer',
-            _ => 'part',
-          },
-        },
-  ]..sort((a, b) => (b['id'] as int).compareTo(a['id'] as int));
+    for (final row in rows)
+      if (pdfWorkshopIds.contains(row['id']) &&
+          '${row['model']}'.trim().toUpperCase() != '110M')
+        {...row, 'kind': 'machine'},
+  ];
 });
 
 // ---------------------------------------------------------------------------

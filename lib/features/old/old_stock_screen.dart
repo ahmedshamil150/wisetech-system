@@ -21,7 +21,7 @@ class OldStockScreen extends ConsumerStatefulWidget {
 
 class _OldStockScreenState extends ConsumerState<OldStockScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 5, vsync: this);
+  late final TabController _tab = TabController(length: 4, vsync: this);
   String _query = '';
   Set<String> _machineFlagFilters = {};
   int _page = 0;
@@ -59,7 +59,6 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
               Tab(text: 'Probes'),
               Tab(text: 'Printers'),
               Tab(text: 'Parts'),
-              Tab(text: 'Workshop'),
             ],
           ),
         ),
@@ -100,11 +99,6 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
                 onPage: (p) => setState(() => _page = p),
               ),
               _PartsPane(
-                search: _query,
-                page: _page,
-                onPage: (p) => setState(() => _page = p),
-              ),
-              _WorkshopPane(
                 search: _query,
                 page: _page,
                 onPage: (p) => setState(() => _page = p),
@@ -505,64 +499,5 @@ class _PartsPane extends ConsumerWidget {
         .limit(1);
     if (!context.mounted || rows.isEmpty) return;
     await showOldItemForm(context, kind: 'part', row: rows.first);
-  }
-}
-
-class _WorkshopPane extends ConsumerWidget {
-  const _WorkshopPane({
-    required this.search,
-    required this.page,
-    required this.onPage,
-  });
-
-  final String search;
-  final int page;
-  final ValueChanged<int> onPage;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(workshopItemsProvider);
-    return data.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
-      data: (all) {
-        final term = search.toLowerCase();
-        final filtered = term.isEmpty
-            ? all
-            : all.where((row) {
-                final kind = row['kind'] as String;
-                final values = [
-                  row[codeColumnFor(kind)],
-                  row[nameColumnFor(kind)],
-                  row['serial_number'],
-                ];
-                return values.any(
-                  (value) => '${value ?? ''}'.toLowerCase().contains(term),
-                );
-              }).toList();
-        final start = page * 50;
-        final rows = start >= filtered.length
-            ? const <Map<String, dynamic>>[]
-            : filtered.skip(start).take(50).toList();
-        return OldTable(
-          rows: rows,
-          total: filtered.length,
-          page: page,
-          onPageChanged: onPage,
-          emptyMessage: 'No workshop items match this search.',
-          rowBuilder: (row) {
-            final kind = row['kind'] as String;
-            return _oldItemTile(
-              context,
-              row,
-              code: (row[codeColumnFor(kind)] ?? '').toString(),
-              name: (row[nameColumnFor(kind)] ?? '').toString(),
-              onTap: () => showOldItemForm(context, kind: kind, row: row),
-            );
-          },
-        );
-      },
-    );
   }
 }
