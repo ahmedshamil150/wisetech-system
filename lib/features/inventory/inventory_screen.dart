@@ -589,7 +589,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
-    // The audit flags also determine the requested Basement/Display order.
+    // The audit flags also determine the requested reverse stock order.
     final flags = ref
         .watch(flagsProvider)
         .maybeWhen(
@@ -604,10 +604,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       final itemId = flag['item_id'];
       if (itemId is! int) continue;
       if (note.contains('Basement')) {
-        machineAreaRanks[itemId] = 0;
+        machineAreaRanks[itemId] = 3;
       } else if (note.contains('Display') &&
-          (machineAreaRanks[itemId] ?? 2) > 1) {
-        machineAreaRanks[itemId] = 1;
+          (machineAreaRanks[itemId] ?? 2) > 2) {
+        machineAreaRanks[itemId] = 2;
       }
     }
     for (final item in allRows) {
@@ -615,8 +615,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         continue;
       }
       machineAreaRanks[item.id] = switch (item.batch) {
-        'BATCH-3' => 2,
-        'BATCH-LOCAL' => 3,
+        'BATCH-3' => 1,
+        'BATCH-LOCAL' => 0,
         _ => 4,
       };
     }

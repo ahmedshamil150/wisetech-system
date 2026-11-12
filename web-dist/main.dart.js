@@ -115647,15 +115647,15 @@ o=J.P(s==null?"":s)
 if(B.m.n(o,"Not found in physical stock"))continue
 n=a1.h(0,"item_id")
 if(!A.ej(n))continue
-if(B.m.n(o,"Basement"))p.m(0,n,0)
+if(B.m.n(o,"Basement"))p.m(0,n,3)
 else{if(B.m.n(o,"Display")){a1=p.h(0,n)
-a1=(a1==null?2:a1)>1}else a1=!1
-if(a1)p.m(0,n,1)}}for(b=J.bP(a2),a1=b.gU(a2);a1.p();){s=a1.gH()
+a1=(a1==null?2:a1)>2}else a1=!1
+if(a1)p.m(0,n,2)}}for(b=J.bP(a2),a1=b.gU(a2);a1.p();){s=a1.gH()
 if(s.a!=="machine"||p.aG(s.b))continue
 q=s.b
 m=s.x
-A:{if("BATCH-3"===m){s=2
-break A}if("BATCH-LOCAL"===m){s=3
+A:{if("BATCH-3"===m){s=1
+break A}if("BATCH-LOCAL"===m){s=0
 break A}s=4
 break A}p.m(0,q,s)}l=d.aA4(a2,r)
 b=b.jF(a2,new A.aLc(d))
