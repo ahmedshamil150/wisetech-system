@@ -70,8 +70,8 @@ List<(InventoryItem, bool)> arrangeAsKits(
 }) {
   final machines = items.where((item) => item.kind == 'machine').toList()
     ..sort((a, b) {
-      final byArea = (machineAreaRanks[a.id] ?? 2).compareTo(
-        machineAreaRanks[b.id] ?? 2,
+      final byArea = (machineAreaRanks[a.id] ?? 1).compareTo(
+        machineAreaRanks[b.id] ?? 1,
       );
       return byArea != 0 ? byArea : _newestFirst(a, b);
     });
@@ -238,13 +238,30 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     _ => true,
   };
 
+  bool _isPhysicalStockMachine(InventoryItem item) {
+    if (item.kind != 'machine') return false;
+    final onItem = _flagIndex()[flagItemKey(item.kind, item.id)] ?? const [];
+    if (onItem.any(
+      (flag) => '${flag['note'] ?? ''}'.trim() == 'Sent after audit',
+    )) {
+      return false;
+    }
+    return onItem.any((flag) {
+      final note = '${flag['note'] ?? ''}'.trim();
+      return note == 'Basement' || note == 'Display';
+    });
+  }
+
+  bool _isHiddenFromInventory(InventoryItem item) =>
+      item.isSold && item.kind != 'part' && !_isPhysicalStockMachine(item);
+
   /// Counts for the review chips — everything the list would show if the
   /// review filter itself were off, so an active choice cannot zero the
   /// other chips.
   Map<String, int> _reviewCounts(List<InventoryItem> rows) {
     final tallied = {'Green': 0, 'Red': 0};
     for (final item in rows) {
-      if ((item.isSold && item.kind != 'part') ||
+      if (_isHiddenFromInventory(item) ||
           !_matchesFilter(item) ||
           !_matchesStatus(item) ||
           !_matchesAux(item, skipReview: true) ||
@@ -308,7 +325,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     var any = 0;
     final index = _flagIndex();
     for (final item in rows) {
-      if ((item.isSold && item.kind != 'part') ||
+      if (_isHiddenFromInventory(item) ||
           !_matchesFilter(item) ||
           !_matchesStatus(item) ||
           !_matchesAux(item, skipReview: true, skipFlag: true) ||
@@ -394,7 +411,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   bool _matchesStatus(InventoryItem item) => switch (_status) {
     'All' => true,
-    'In Stock' => item.status == 'In Stock' || item.status == 'Available',
+    'In Stock' =>
+      item.status == 'In Stock' ||
+          item.status == 'Available' ||
+          _isPhysicalStockMachine(item),
     _ => item.status == _status,
   };
 
@@ -413,7 +433,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     };
     for (final item in rows) {
       // Moved parts stay listed, so they are counted too.
-      if ((item.isSold && item.kind != 'part') ||
+      if (_isHiddenFromInventory(item) ||
           !_matchesStatus(item) ||
           !_matchesAux(item) ||
           !_matchesQuery(item)) {
@@ -438,7 +458,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final counts = <String, int>{for (final f in _statusFilters) f: 0};
     for (final item in rows) {
       // Moved parts stay listed, so they are counted too.
-      if ((item.isSold && item.kind != 'part') ||
+      if (_isHiddenFromInventory(item) ||
           !_matchesFilter(item) ||
           !_matchesAux(item) ||
           !_matchesQuery(item)) {
@@ -584,10 +604,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       final itemId = flag['item_id'];
       if (itemId is! int) continue;
       if (note.contains('Basement')) {
-        machineAreaRanks[itemId] = 0;
+        machineAreaRanks[itemId] = 2;
       } else if (note.contains('Display') &&
-          (machineAreaRanks[itemId] ?? 2) > 1) {
-        machineAreaRanks[itemId] = 1;
+          (machineAreaRanks[itemId] ?? 1) > 0) {
+        machineAreaRanks[itemId] = 0;
       }
     }
     final typeCounts = _typeCounts(allRows, boxes);
@@ -597,7 +617,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       // A sold machine already belongs to the dealer or customer,
       // so it must not show up in the inventory any more. Moved
       // parts stay visible so their stock history is reachable.
-      if (item.isSold && item.kind != 'part') return false;
+      if (_isHiddenFromInventory(item)) return false;
       if (!_matchesFilter(item)) return false;
       if (!_matchesStatus(item)) return false;
       if (!_matchesAux(item)) return false;
