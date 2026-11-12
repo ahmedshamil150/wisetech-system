@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../data/data.dart' show flagsProvider, kOldBatchId;
+import '../data/data.dart' show fetchAllPages, flagsProvider, kOldBatchId;
 
 export '../data/data.dart' show kOldBatchId;
 
@@ -184,6 +184,49 @@ final oldPrintersProvider = FutureProvider.family<OldPage, OldArgs>((
       return res.count;
     },
   );
+});
+
+/// Workshop items from both the imported old stock and current inventory.
+/// The workshop page is a combined view; it does not move or duplicate rows.
+final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  Future<List<Map<String, dynamic>>> rows(
+    String table,
+    String code,
+    String name,
+  ) {
+    return fetchAllPages(
+      () => _db
+          .from(table)
+          .select(
+            'id, $code, $name, serial_number, status, current_location, '
+            'notes, acquisition_date, purchase_price, vendor_id, condition',
+          )
+          .eq('status', 'With Workshop')
+          .order('id', ascending: false),
+    );
+  }
+
+  final results = await Future.wait([
+    rows('machines', 'machine_id', 'model'),
+    rows('probes', 'internal_id', 'model'),
+    rows('printers', 'internal_id', 'name_model'),
+    rows('parts', 'internal_id', 'name_model'),
+  ]);
+  return [
+    for (var index = 0; index < results.length; index++)
+      for (final row in results[index])
+        {
+          ...row,
+          'kind': switch (index) {
+            0 => 'machine',
+            1 => 'probe',
+            2 => 'printer',
+            _ => 'part',
+          },
+        },
+  ]..sort((a, b) => (b['id'] as int).compareTo(a['id'] as int));
 });
 
 // ---------------------------------------------------------------------------
