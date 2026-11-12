@@ -2729,12 +2729,27 @@ class _GroupDraft {
   }
 }
 
+Future<void> showWorkshopMovement(BuildContext context, InventoryItem item) {
+  return showAppSheet<void>(
+    context: context,
+    title: 'Move workshop item',
+    heightFraction: 0.85,
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
+      child: _NewMovementForm(initialItems: [item]),
+    ),
+  );
+}
+
 class _NewMovementForm extends ConsumerStatefulWidget {
   const _NewMovementForm({
     this.seedKind,
     this.seedParty,
     this.seedDate,
     this.seedNotes,
+    this.initialItems = const [],
   });
 
   /// Opened from a movement card: the send's own kind, party, date and
@@ -2744,6 +2759,7 @@ class _NewMovementForm extends ConsumerStatefulWidget {
   final String? seedParty;
   final String? seedDate;
   final String? seedNotes;
+  final List<InventoryItem> initialItems;
 
   @override
   ConsumerState<_NewMovementForm> createState() => _NewMovementFormState();
@@ -2755,6 +2771,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
   /// movement with a group per machine, sold and paid on their own.
   final List<_GroupDraft> _groups = [_GroupDraft()];
   String _kind = 'Workshop';
+  String? _workshopRoom;
   bool _demo = false;
   final _target = TextEditingController();
   final _date = TextEditingController();
@@ -2770,6 +2787,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     if (widget.seedNotes != null) _notes.text = widget.seedNotes!;
     final date = widget.seedDate?.trim() ?? '';
     _date.text = date.isNotEmpty ? date : DateField.format(DateTime.now());
+    _groups.first.items.addAll(widget.initialItems);
   }
 
   @override
@@ -3024,6 +3042,13 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               'p_group_ref': groupRef,
             },
           );
+          if (_kind == 'Workshop' && _workshopRoom != null) {
+            await setWorkshopRoom(
+              kind: item.kind,
+              id: item.id,
+              room: _workshopRoom!,
+            );
+          }
         }
         if (group.paid) paidGroups++;
         // the sold mark is an admin-only write, so it is applied after
@@ -3099,7 +3124,12 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
         .watch(allItemsProvider)
         .maybeWhen(
           data: (rows) => rows
-              .where((i) => i.status != 'Sold' && i.status != 'Archived')
+              .where(
+                (i) =>
+                    i.status != 'Sold' &&
+                    i.status != 'Archived' &&
+                    i.status != 'With Workshop',
+              )
               .toList(),
           orElse: () => const <InventoryItem>[],
         );
@@ -3178,8 +3208,24 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
                       _kind = value;
                       _target.clear();
                       _demo = false;
+                      _workshopRoom = null;
                     }),
                   ),
+                  if (_kind == 'Workshop') ...[
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _workshopRoom,
+                      decoration: const InputDecoration(
+                        labelText: 'Workshop room (optional)',
+                      ),
+                      items: [
+                        for (final room in kWorkshopRooms)
+                          DropdownMenuItem(value: room, child: Text(room)),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _workshopRoom = value),
+                    ),
+                  ],
                   if (_kind == 'Dealer' || _kind == 'Customer') ...[
                     const SizedBox(height: 8),
                     Container(

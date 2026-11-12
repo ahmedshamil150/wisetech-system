@@ -1085,6 +1085,38 @@ Future<void> deleteFlag(int id) async {
   await _db.from('flags').delete().eq('id', id);
 }
 
+const kWorkshopRooms = <String>[
+  'Room 1',
+  'Room 2',
+  'Room 3',
+  'Workarea',
+  'Unassigned',
+];
+
+Future<void> setWorkshopRoom({
+  required String kind,
+  required int id,
+  required String room,
+}) async {
+  final existing = await _db
+      .from('flags')
+      .select('id, note')
+      .eq('item_kind', kind)
+      .eq('item_id', id);
+  for (final flag in existing) {
+    if (kWorkshopRooms.contains('${flag['note']}'.trim())) {
+      await deleteFlag(flag['id'] as int);
+    }
+  }
+  if (room != 'Unassigned') {
+    await setFlag(
+      {'item_kind': kind, 'item_id': id},
+      color: '#039BE5',
+      note: room,
+    );
+  }
+}
+
 /// Deletes a customer/dealer together with the sends that point at it —
 /// admin only, blocked while sales or repairs still use the record.
 Future<void> deleteParty(String table, int id) async {

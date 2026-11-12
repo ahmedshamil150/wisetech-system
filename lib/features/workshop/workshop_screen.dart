@@ -2,18 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/data.dart';
+import '../movements/movements_screen.dart';
 import '../old/old_data.dart';
 import '../old/old_item_form.dart';
-
-const workshopRooms = <String>[
-  'Room 1',
-  'Room 2',
-  'Room 3',
-  'Workarea',
-  'Unassigned',
-];
-
-const _workshopRoomColor = '#039BE5';
 
 String _workshopRoom(
   Map<String, dynamic> row,
@@ -22,7 +13,7 @@ String _workshopRoom(
   for (final flag in flags) {
     if (flag['item_kind'] == row['kind'] &&
         flag['item_id'] == row['id'] &&
-        workshopRooms.contains(flag['note'])) {
+        kWorkshopRooms.contains(flag['note'])) {
       return '${flag['note']}';
     }
   }
@@ -36,23 +27,7 @@ Future<void> _assignWorkshopRoom(
 ) async {
   final kind = row['kind'] as String;
   final id = row['id'] as int;
-  final existing = [
-    for (final flag in flags)
-      if (flag['item_kind'] == kind &&
-          flag['item_id'] == id &&
-          workshopRooms.contains(flag['note']))
-        flag,
-  ];
-  for (final flag in existing) {
-    await deleteFlag(flag['id'] as int);
-  }
-  if (room != 'Unassigned') {
-    await setFlag(
-      {'item_kind': kind, 'item_id': id},
-      color: _workshopRoomColor,
-      note: room,
-    );
-  }
+  await setWorkshopRoom(kind: kind, id: id, room: room);
 }
 
 class WorkshopScreen extends ConsumerStatefulWidget {
@@ -85,6 +60,23 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text(errorMessage(error))));
     }
+  }
+
+  Future<void> _moveItem(Map<String, dynamic> row) async {
+    final kind = row['kind'] as String;
+    await showWorkshopMovement(
+      context,
+      InventoryItem(
+        kind: kind,
+        id: row['id'] as int,
+        code: '${row[codeColumnFor(kind)] ?? ''}',
+        name: '${row[nameColumnFor(kind)] ?? ''}',
+        serial: '${row['serial_number'] ?? ''}',
+        status: '${row['status'] ?? ''}',
+        location: '${row['current_location'] ?? ''}',
+      ),
+    );
+    if (mounted) ref.invalidate(workshopItemsProvider);
   }
 
   @override
@@ -140,7 +132,7 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
-              for (final room in workshopRooms)
+              for (final room in kWorkshopRooms)
                 _WorkshopRoom(
                   room: room,
                   rows: [
@@ -149,6 +141,7 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
                   ],
                   flags: flags,
                   onRoomChanged: _changeRoom,
+                  onMove: _moveItem,
                 ),
             ],
           ),
@@ -164,6 +157,7 @@ class _WorkshopRoom extends StatelessWidget {
     required this.rows,
     required this.flags,
     required this.onRoomChanged,
+    required this.onMove,
   });
 
   final String room;
@@ -175,6 +169,7 @@ class _WorkshopRoom extends StatelessWidget {
     List<Map<String, dynamic>> flags,
   )
   onRoomChanged;
+  final Future<void> Function(Map<String, dynamic> row) onMove;
 
   @override
   Widget build(BuildContext context) {
@@ -199,6 +194,7 @@ class _WorkshopRoom extends StatelessWidget {
               room: room,
               flags: flags,
               onRoomChanged: onRoomChanged,
+              onMove: onMove,
             ),
         ],
       ),
@@ -212,6 +208,7 @@ class _WorkshopItem extends StatelessWidget {
     required this.room,
     required this.flags,
     required this.onRoomChanged,
+    required this.onMove,
   });
 
   final Map<String, dynamic> row;
@@ -223,6 +220,7 @@ class _WorkshopItem extends StatelessWidget {
     List<Map<String, dynamic>> flags,
   )
   onRoomChanged;
+  final Future<void> Function(Map<String, dynamic> row) onMove;
 
   @override
   Widget build(BuildContext context) {
@@ -242,17 +240,27 @@ class _WorkshopItem extends StatelessWidget {
       ),
       leading: CircleAvatar(child: Text(kindLabel(kind)[0])),
       onTap: () => showOldItemForm(context, kind: kind, row: row),
-      trailing: DropdownButton<String>(
-        value: room,
-        underline: const SizedBox.shrink(),
-        onChanged: (value) {
-          if (value != null && value != room) {
-            onRoomChanged(row, value, flags);
-          }
-        },
-        items: [
-          for (final option in workshopRooms)
-            DropdownMenuItem(value: option, child: Text(option)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButton<String>(
+            value: room,
+            underline: const SizedBox.shrink(),
+            onChanged: (value) {
+              if (value != null && value != room) {
+                onRoomChanged(row, value, flags);
+              }
+            },
+            items: [
+              for (final option in kWorkshopRooms)
+                DropdownMenuItem(value: option, child: Text(option)),
+            ],
+          ),
+          IconButton(
+            tooltip: 'Move from workshop',
+            icon: const Icon(Icons.local_shipping_outlined),
+            onPressed: () => onMove(row),
+          ),
         ],
       ),
     );

@@ -253,7 +253,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   bool _isHiddenFromInventory(InventoryItem item) =>
-      item.isSold && item.kind != 'part' && !_isPhysicalStockMachine(item);
+      item.status == 'With Workshop' ||
+      (item.isSold && item.kind != 'part' && !_isPhysicalStockMachine(item));
 
   /// Counts for the review chips — everything the list would show if the
   /// review filter itself were off, so an active choice cannot zero the

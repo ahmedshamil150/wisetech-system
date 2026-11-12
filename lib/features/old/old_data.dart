@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../data/data.dart' show fetchAllPages, flagsProvider, kOldBatchId;
+import '../data/data.dart'
+    show allMovementsProvider, fetchAllPages, flagsProvider, kOldBatchId;
 
 export '../data/data.dart' show kOldBatchId;
 
@@ -201,6 +202,7 @@ final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   final flags = await ref.watch(flagsProvider.future);
+  final movements = await ref.watch(allMovementsProvider.future);
   final pdfWorkshopIds = {
     for (final flag in flags)
       if (flag['item_kind'] == 'machine' &&
@@ -213,6 +215,14 @@ final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
           }.contains('${flag['note']}'.trim()))
         flag['item_id'] as int,
   };
+  final movedWorkshopKeys = <String>{};
+  for (final movement in movements) {
+    if (movement['movement_type'] != 'Workshop') continue;
+    for (final kind in const ['machine', 'probe', 'printer', 'part']) {
+      final id = movement['${kind}_id'];
+      if (id is int) movedWorkshopKeys.add('$kind:$id');
+    }
+  }
   final rows = await fetchAllPages(
     () => _db
         .from('machines')
@@ -225,9 +235,46 @@ final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
   );
   return [
     for (final row in rows)
-      if (pdfWorkshopIds.contains(row['id']) &&
+      if ((pdfWorkshopIds.contains(row['id']) ||
+              movedWorkshopKeys.contains('machine:${row['id']}')) &&
           '${row['model']}'.trim().toUpperCase() != '110M')
         {...row, 'kind': 'machine'},
+    for (final row in await fetchAllPages(
+      () => _db
+          .from('probes')
+          .select(
+            'id, internal_id, model, serial_number, status, current_location, '
+            'notes, acquisition_date, purchase_price, vendor_id, condition',
+          )
+          .eq('status', 'With Workshop')
+          .order('id', ascending: false),
+    ))
+      if (movedWorkshopKeys.contains('probe:${row['id']}'))
+        {...row, 'kind': 'probe'},
+    for (final row in await fetchAllPages(
+      () => _db
+          .from('printers')
+          .select(
+            'id, internal_id, name_model, serial_number, status, current_location, '
+            'notes, acquisition_date, purchase_price, vendor_id, condition',
+          )
+          .eq('status', 'With Workshop')
+          .order('id', ascending: false),
+    ))
+      if (movedWorkshopKeys.contains('printer:${row['id']}'))
+        {...row, 'kind': 'printer'},
+    for (final row in await fetchAllPages(
+      () => _db
+          .from('parts')
+          .select(
+            'id, internal_id, name_model, serial_number, status, current_location, '
+            'notes, acquisition_date, purchase_price, vendor_id, condition',
+          )
+          .eq('status', 'With Workshop')
+          .order('id', ascending: false),
+    ))
+      if (movedWorkshopKeys.contains('part:${row['id']}'))
+        {...row, 'kind': 'part'},
   ];
 });
 
