@@ -45,6 +45,7 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
   ref,
   args,
 ) async {
+  final missingIds = await _oldMachineFlagIds(ref, {'note:Missing'});
   final flaggedIds = args.flagFilters.isEmpty
       ? null
       : await _oldMachineFlagIds(ref, args.flagFilters);
@@ -59,6 +60,10 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
           .eq('batch_id', kOldBatchId);
       if (args.status != 'All') {
         query = query.eq('status', args.status);
+      } else if (missingIds.isEmpty) {
+        query = query.eq('status', 'Sold');
+      } else {
+        query = query.or('status.eq.Sold,id.in.(${missingIds.join(',')})');
       }
       if (flaggedIds != null) {
         query = query.inFilter('id', flaggedIds);
@@ -79,6 +84,10 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
           .eq('batch_id', kOldBatchId);
       if (args.status != 'All') {
         query = query.eq('status', args.status);
+      } else if (missingIds.isEmpty) {
+        query = query.eq('status', 'Sold');
+      } else {
+        query = query.or('status.eq.Sold,id.in.(${missingIds.join(',')})');
       }
       if (flaggedIds != null) {
         query = query.inFilter('id', flaggedIds);
