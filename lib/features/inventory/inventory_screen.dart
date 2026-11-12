@@ -70,8 +70,8 @@ List<(InventoryItem, bool)> arrangeAsKits(
 }) {
   final machines = items.where((item) => item.kind == 'machine').toList()
     ..sort((a, b) {
-      final byArea = (machineAreaRanks[a.id] ?? 1).compareTo(
-        machineAreaRanks[b.id] ?? 1,
+      final byArea = (machineAreaRanks[a.id] ?? 4).compareTo(
+        machineAreaRanks[b.id] ?? 4,
       );
       return byArea != 0 ? byArea : _newestFirst(a, b);
     });
@@ -604,11 +604,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       final itemId = flag['item_id'];
       if (itemId is! int) continue;
       if (note.contains('Basement')) {
-        machineAreaRanks[itemId] = 2;
-      } else if (note.contains('Display') &&
-          (machineAreaRanks[itemId] ?? 1) > 0) {
         machineAreaRanks[itemId] = 0;
+      } else if (note.contains('Display') &&
+          (machineAreaRanks[itemId] ?? 2) > 1) {
+        machineAreaRanks[itemId] = 1;
       }
+    }
+    for (final item in allRows) {
+      if (item.kind != 'machine' || machineAreaRanks.containsKey(item.id)) {
+        continue;
+      }
+      machineAreaRanks[item.id] = switch (item.batch) {
+        'BATCH-3' => 2,
+        'BATCH-LOCAL' => 3,
+        _ => 4,
+      };
     }
     final typeCounts = _typeCounts(allRows, boxes);
     // Everything that survives the filters — the same predicates the list
