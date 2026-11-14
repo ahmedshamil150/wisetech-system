@@ -89,6 +89,37 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
     final printerCount = rows.where((row) => row['kind'] == 'printer').length;
     final partCount = rows.where((row) => row['kind'] == 'part').length;
 
+    // machines sent through the app read first; the rows that only carry
+    // a Lahore location follow, under their own heading, at the end
+    final listChildren = <Widget>[];
+    var locationHeading = false;
+    for (final machine in machines) {
+      if (machine['viaLocation'] == true && !locationHeading) {
+        locationHeading = true;
+        listChildren.add(
+          const _SectionHeader('At Lahore — recorded location'),
+        );
+      }
+      listChildren.add(_BranchTile(row: machine));
+      for (final member in _sortedKit(kit[machine['id']] ?? const [])) {
+        listChildren.add(
+          _BranchTile(
+            row: member,
+            indented: true,
+            withCode: '${machine['machine_id'] ?? ''}',
+          ),
+        );
+      }
+    }
+    if (loose.isNotEmpty) {
+      listChildren.add(
+        const _SectionHeader('Other branch items'),
+      );
+      for (final row in _latestFirst(loose)) {
+        listChildren.add(_BranchTile(row: row));
+      }
+    }
+
     return Column(
       children: [
         Padding(
@@ -141,40 +172,36 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
                   icon: Icons.storefront_outlined,
                   message: 'No items at the branch yet.',
                 )
-              : ListView(
+              : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  children: [
-                    for (final machine in machines) ...[
-                      _BranchTile(row: machine),
-                      for (final member in _sortedKit(
-                        kit[machine['id']] ?? const [],
-                      ))
-                        _BranchTile(
-                          row: member,
-                          indented: true,
-                          withCode: '${machine['machine_id'] ?? ''}',
-                        ),
-                    ],
-                    if (loose.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          'Other branch items',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                        ),
-                      ),
-                      for (final row in _latestFirst(loose))
-                        _BranchTile(row: row),
-                    ],
-                  ],
+                  itemCount: listChildren.length,
+                  itemBuilder: (_, index) => listChildren[index],
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// Heading that separates the machines sent through the app from the
+/// older stock that only carries a Lahore location.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 13,
+          color: Theme.of(context).colorScheme.outline,
+        ),
+      ),
     );
   }
 }

@@ -283,11 +283,34 @@ final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) a
   ];
 });
 
-/// Everything the shop has sent to the Lahore branch: every machine with
-/// the With Branch status, plus the probes, printers and parts that
-/// travelled with it. Same row shape as [workshopItemsProvider] — each
-/// row carries its `kind` and the kit keeps `assigned_machine_id`, so the
-/// Branch page can tuck a machine's kit right under it.
+/// Locations that mean our own Lahore branch. A person or dealer whose
+/// name merely mentions Lahore ("jahangir sb lahore",
+/// "MUBASHER DEALER LAHORE") is not the branch and stays where it is.
+bool _isBranchLocation(Object? raw) {
+  final text = '${raw ?? ''}'.trim().toUpperCase();
+  return text == 'LAHORE' ||
+      text == 'LAHORE BRANCH' ||
+      text == 'LAHORE OFFICE(WTS)BRANCH';
+}
+
+/// Stock recorded as sitting at the Lahore branch. Sold and retired rows
+/// never count, so an old sold machine cannot come back as branch stock.
+bool _atBranchByLocation(Map<String, dynamic> row) {
+  final status = '${row['status'] ?? ''}';
+  return status != 'Sold' &&
+      status != 'Archived' &&
+      _isBranchLocation(row['current_location']);
+}
+
+/// Everything that sits at the Lahore branch, shaped like the Workshop
+/// list — each row carries its `kind`, and the kit keeps
+/// `assigned_machine_id` so the Branch page can tuck a machine's probes,
+/// printer and parts right under it.
+///
+/// Two groups share the page: the machines sent there through the app
+/// (status With Branch, newest first), then whatever is recorded at a
+/// Lahore location. Rows in the second group carry `viaLocation: true`
+/// so the screen can list them last.
 final branchItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
@@ -301,34 +324,34 @@ final branchItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
     }
   }
 
-  final machineRows = await fetchAllPages(
+  const machineCols =
+      'id, machine_id, model, serial_number, status, current_location, '
+      'notes, acquisition_date, purchase_price, vendor_id, condition';
+  final sentRows = await fetchAllPages(
     () => _db
         .from('machines')
-        .select(
-          'id, machine_id, model, serial_number, status, current_location, '
-          'notes, acquisition_date, purchase_price, vendor_id, condition',
-        )
+        .select(machineCols)
         .eq('status', 'With Branch')
         .order('id', ascending: false),
   );
-  final branchMachines = <Map<String, dynamic>>[
-    for (final row in machineRows) {...row, 'kind': 'machine'},
+  final locatedRows = await fetchAllPages(
+    () => _db
+        .from('machines')
+        .select(machineCols)
+        .ilike('current_location', '%lahore%')
+        .order('id', ascending: false),
+  );
+  final sentMachines = <Map<String, dynamic>>[
+    for (final row in sentRows) {...row, 'kind': 'machine'},
   ];
-  final branchMachineIds = {
-    for (final machine in branchMachines) machine['id'] as int,
+  final sentMachineIds = {
+    for (final machine in sentMachines) machine['id'] as int,
   };
-
-  /// A kit member is branch stock when it was sent there itself, carries
-  /// the With Branch status, or is physically at the branch with a
-  /// machine that lives there now. A probe the machine left behind at a
-  /// dealer stays off this page.
-  bool atBranch(Map<String, dynamic> row, String kind) {
-    if (movedBranchKeys.contains('$kind:${row['id']}')) return true;
-    if (row['status'] == 'With Branch') return true;
-    final machineId = row['assigned_machine_id'];
-    return machineId is int &&
-        branchMachineIds.contains(machineId) &&
-        '${row['current_location'] ?? ''}'.toLowerCase().contains('lahore');
+  final locatedMachines = <Map<String, dynamic>>[];
+  for (final row in locatedRows) {
+    final id = row['id'] as int;
+    if (sentMachineIds.contains(id) || !_atBranchByLocation(row)) continue;
+    locatedMachines.add({...row, 'kind': 'machine', 'viaLocation': true});
   }
 
   Future<List<Map<String, dynamic>>> kit(
@@ -336,25 +359,47 @@ final branchItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
     String kind,
     String nameColumn,
   ) async {
-    final rows = await fetchAllPages(
+    const cols =
+        'id, internal_id, serial_number, status, current_location, notes, '
+        'acquisition_date, purchase_price, vendor_id, condition, '
+        'assigned_machine_id';
+    final statusRows = await fetchAllPages(
       () => _db
           .from(table)
-          .select(
-            'id, internal_id, $nameColumn, serial_number, status, '
-            'current_location, notes, acquisition_date, purchase_price, '
-            'vendor_id, condition, assigned_machine_id',
-          )
+          .select('$cols, $nameColumn')
           .inFilter('status', const ['With Branch', 'With Machine'])
           .order('id', ascending: false),
     );
-    return [
-      for (final row in rows)
-        if (atBranch(row, kind)) {...row, 'kind': kind},
-    ];
+    final locatedKit = await fetchAllPages(
+      () => _db
+          .from(table)
+          .select('$cols, $nameColumn')
+          .ilike('current_location', '%lahore%')
+          .order('id', ascending: false),
+    );
+    final seen = <int>{};
+    final out = <Map<String, dynamic>>[];
+    for (final row in [...statusRows, ...locatedKit]) {
+      if (!seen.add(row['id'] as int)) continue;
+      final machineId = row['assigned_machine_id'];
+      final sent =
+          movedBranchKeys.contains('$kind:${row['id']}') ||
+          row['status'] == 'With Branch' ||
+          (machineId is int &&
+              sentMachineIds.contains(machineId) &&
+              _isBranchLocation(row['current_location']));
+      if (sent) {
+        out.add({...row, 'kind': kind});
+      } else if (_atBranchByLocation(row)) {
+        out.add({...row, 'kind': kind, 'viaLocation': true});
+      }
+    }
+    return out;
   }
 
   return [
-    ...branchMachines,
+    ...sentMachines,
+    ...locatedMachines,
     ...await kit('probes', 'probe', 'model'),
     ...await kit('printers', 'printer', 'name_model'),
     ...await kit('parts', 'part', 'name_model'),
@@ -411,6 +456,10 @@ final missingItemsProvider =
       continue;
     }
     for (final row in rows) {
+      // stock sitting at the Lahore branch is not missing — it is on the
+      // Branch page, last section, and must stay out of this list and its
+      // PDF even when an old audit left a Missing flag on it
+      if (_atBranchByLocation(row)) continue;
       out.add({
         ...row,
         'kind': kind,
