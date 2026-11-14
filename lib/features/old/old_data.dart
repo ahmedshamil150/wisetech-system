@@ -308,20 +308,30 @@ final missingItemsProvider =
     final kind = entry.key;
     final (table, codeCol, nameCol) = entry.value;
     final ids = flagged[kind] ?? const <int>{};
-    final rows = await fetchAllPages(
-      () => _db
-          .from(table)
-          .select(
-            'id, status, current_location, notes, acquisition_date, '
-            'purchase_price, vendor_id, condition, serial_number, '
-            'assigned_machine_id, $codeCol, $nameCol',
-          )
-          .or(
-            'status.eq.Missing'
-            '${ids.isEmpty ? '' : ',id.in.(${ids.join(',')})'}',
-          )
-          .order('id', ascending: false),
-    );
+    // machines carry no assigned_machine_id — asking for it would fail
+    // the whole request, so each kind asks only for what it has
+    final shared = 'id, status, current_location, notes, acquisition_date, '
+        'purchase_price, vendor_id, condition, serial_number, $codeCol, '
+        '$nameCol';
+    final select = kind == 'machine'
+        ? shared
+        : '$shared, assigned_machine_id';
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await fetchAllPages(
+        () => _db
+            .from(table)
+            .select(select)
+            .or(
+              'status.eq.Missing'
+              '${ids.isEmpty ? '' : ',id.in.(${ids.join(',')})'}',
+            )
+            .order('id', ascending: false),
+      );
+    } catch (_) {
+      // one kind failing never blanks the whole Missing list
+      continue;
+    }
     for (final row in rows) {
       out.add({
         ...row,

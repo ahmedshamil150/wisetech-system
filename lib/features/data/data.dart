@@ -1119,10 +1119,13 @@ const kWorkshopRooms = <String>[
   'Room 3',
   'Lounge',
   'Workarea',
-  'Capasse II',
-  'Apron',
   'Unassigned',
 ];
+
+/// Names the 14 Nov PDF listed like places, but the shop confirmed they
+/// are machines (APRON, CAPASSE II). They no longer form sections; the
+/// notes stay on the rows, and a room change clears them.
+const kRetiredWorkshopRooms = <String>['Capasse II', 'Apron'];
 
 Future<void> setWorkshopRoom({
   required String kind,
@@ -1135,7 +1138,9 @@ Future<void> setWorkshopRoom({
       .eq('item_kind', kind)
       .eq('item_id', id);
   for (final flag in existing) {
-    if (kWorkshopRooms.contains('${flag['note']}'.trim())) {
+    final note = '${flag['note']}'.trim();
+    if (kWorkshopRooms.contains(note) ||
+        kRetiredWorkshopRooms.contains(note)) {
       await deleteFlag(flag['id'] as int);
     }
   }
