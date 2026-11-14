@@ -1085,6 +1085,32 @@ Future<void> deleteFlag(int id) async {
   await _db.from('flags').delete().eq('id', id);
 }
 
+/// Keeps the Missing flag in step with the Missing status: giving an
+/// item the status puts it on the Missing tab, taking the status away
+/// (found, sold, sent to the workshop…) takes it off again. The flag is
+/// what every Missing query reads, so the two can never drift.
+Future<void> syncMissingFlag(String kind, int id, String status) async {
+  final existing = await _db
+      .from('flags')
+      .select('id')
+      .eq('item_kind', kind)
+      .eq('item_id', id)
+      .eq('note', 'Missing');
+  if (status == 'Missing') {
+    if (existing.isEmpty) {
+      await setFlag(
+        {'item_kind': kind, 'item_id': id},
+        color: '#E53935',
+        note: 'Missing',
+      );
+    }
+    return;
+  }
+  for (final flag in existing) {
+    await deleteFlag(flag['id'] as int);
+  }
+}
+
 /// Every room the workshop page shows, in the order the shop walks
 /// them. 'Unassigned' is the catch-all for an item with no room flag.
 const kWorkshopRooms = <String>[
@@ -1597,6 +1623,7 @@ List<String> statusOptions(String kind) => kind == 'machine'
         'With Branch',
         'With Dealer',
         'With Customer',
+        'Missing',
         'Sold',
         'Archived',
       ]
@@ -1607,6 +1634,7 @@ List<String> statusOptions(String kind) => kind == 'machine'
         'With Branch',
         'With Dealer',
         'With Customer',
+        'Missing',
         'Sold',
         'Archived',
       ];
@@ -1620,6 +1648,7 @@ String defaultLocationFor(String status) => switch (status) {
   'With Dealer' => 'Dealer',
   'With Customer' => 'Customer',
   'Sold' => 'Customer',
+  'Missing' => 'Unknown',
   _ => 'Company',
 };
 

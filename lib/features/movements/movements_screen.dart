@@ -1201,10 +1201,13 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             'p_paid': movementPaid(first),
           },
         );
+        // an item that moved is no longer Missing
+        await syncMissingFlag(item.kind, item.id, kind);
       }
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
       ref.invalidate(oldStockItemsProvider);
+      ref.invalidate(flagsProvider);
       if (!mounted) return;
       showSnack(
         context,
@@ -3049,6 +3052,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               room: _workshopRoom!,
             );
           }
+          // an item that moved is no longer Missing
+          await syncMissingFlag(item.kind, item.id, _kind);
         }
         if (group.paid) paidGroups++;
         // the sold mark is an admin-only write, so it is applied after
@@ -3070,7 +3075,8 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
       ref
         ..invalidate(allMovementsProvider)
         ..invalidate(inventoryProvider)
-        ..invalidate(oldStockItemsProvider);
+        ..invalidate(oldStockItemsProvider)
+        ..invalidate(flagsProvider);
       if (newParty) {
         ref
           ..invalidate(_kind == 'Dealer' ? dealersProvider : customersProvider)

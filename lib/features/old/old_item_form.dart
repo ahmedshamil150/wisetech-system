@@ -164,11 +164,20 @@ class _OldItemFormState extends ConsumerState<_OldItemForm> {
       if (!_isEdit && widget.kind != 'part') 'batch_id': kOldBatchId,
     };
     try {
+      int savedId;
       if (_isEdit) {
-        await db.from(table).update(values).eq('id', widget.row!['id']);
+        savedId = widget.row!['id'] as int;
+        await db.from(table).update(values).eq('id', savedId);
       } else {
-        await db.from(table).insert(values);
+        final inserted = await db
+            .from(table)
+            .insert(values)
+            .select('id')
+            .single();
+        savedId = inserted['id'] as int;
       }
+      // the Missing status and the Missing flag move together
+      await syncMissingFlag(widget.kind, savedId, _status);
       _invalidate();
       if (!mounted) return;
       Navigator.pop(context);

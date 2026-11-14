@@ -6,27 +6,29 @@ import '../movements/movements_screen.dart';
 import '../old/old_data.dart';
 import '../old/old_item_form.dart';
 
-/// The room a row sits in: its own room flag first, then the room of
-/// the machine it is linked to — a probe sent with its machine shares
-/// its room without needing a flag of its own.
-String _workshopRoom(
+/// The rooms a row sits in — every room flag it carries, so a machine
+/// the audit listed twice (Room 3 and Apron) shows in both sections.
+/// A kit member with no flag of its own shares its machine's rooms.
+Set<String> _workshopRooms(
   Map<String, dynamic> row,
   List<Map<String, dynamic>> flags,
-  Map<int, String> machineRooms,
+  Map<int, Set<String>> machineRooms,
 ) {
+  final rooms = <String>{};
   for (final flag in flags) {
     if (flag['item_kind'] == row['kind'] &&
         flag['item_id'] == row['id'] &&
         kWorkshopRooms.contains(flag['note'])) {
-      return '${flag['note']}';
+      rooms.add('${flag['note']}');
     }
   }
+  if (rooms.isNotEmpty) return rooms;
   final machineId = row['assigned_machine_id'];
   if (machineId is int) {
-    final room = machineRooms[machineId];
-    if (room != null) return room;
+    final linked = machineRooms[machineId];
+    if (linked != null && linked.isNotEmpty) return linked;
   }
-  return 'Unassigned';
+  return {'Unassigned'};
 }
 
 Future<void> _assignWorkshopRoom(
@@ -154,13 +156,14 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
               row['serial_number'],
             ].any((value) => '${value ?? ''}'.toLowerCase().contains(term));
           }).toList();
-    // A kit member without its own room flag follows its machine.
-    final machineRooms = <int, String>{};
+    // A kit member without its own room flag follows its machine; a
+    // machine in two rooms (the audit listed M-08114 twice) sits in both.
+    final machineRooms = <int, Set<String>>{};
     for (final flag in flags) {
       if (flag['item_kind'] == 'machine' && flag['item_id'] is int) {
         final note = '${flag['note'] ?? ''}'.trim();
         if (kWorkshopRooms.contains(note)) {
-          machineRooms[flag['item_id'] as int] = note;
+          (machineRooms[flag['item_id'] as int] ??= {}).add(note);
         }
       }
     }
@@ -197,7 +200,9 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
                   room: room,
                   rows: _orderKit([
                     for (final row in filtered)
-                      if (_workshopRoom(row, flags, machineRooms) == room) row,
+                      if (_workshopRooms(row, flags, machineRooms)
+                          .contains(room))
+                        row,
                   ]),
                   flags: flags,
                   onRoomChanged: _changeRoom,

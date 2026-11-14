@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/layout.dart';
 import '../auth/auth_controller.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
@@ -98,10 +99,9 @@ class _MissingScreenState extends ConsumerState<MissingScreen> {
       final profile = await ref.read(profileProvider.future);
       final arrivedIds = {
         for (final flag in flags)
-          if (flag['item_kind'] == 'machine' &&
-              '${flag['note'] ?? ''}'.trim() == 'Arrived 2026' &&
+          if ('${flag['note'] ?? ''}'.trim() == 'Arrived 2026' &&
               flag['item_id'] is int)
-            flag['item_id'] as int,
+            '${flag['item_kind']}:${flag['item_id']}',
       };
       final by =
           '${profile?['display_name'] ?? profile?['username'] ?? 'Admin'}';
@@ -109,12 +109,13 @@ class _MissingScreenState extends ConsumerState<MissingScreen> {
       final data = <List<String>>[];
       for (var i = 0; i < rows.length; i++) {
         final row = rows[i];
-        final didArrive = arrivedIds.contains(row['id']);
+        final didArrive =
+            arrivedIds.contains('${row['kind']}:${row['id']}');
         if (didArrive) arrived++;
         data.add([
           '${i + 1}',
-          '${row['machine_id'] ?? ''}',
-          '${row['model'] ?? ''}',
+          '${row['code'] ?? row['machine_id'] ?? ''}',
+          '${row['name'] ?? row['model'] ?? ''}',
           '${row['serial_number'] ?? ''}',
           '${row['status'] ?? ''}',
           '${row['current_location'] ?? ''}',
@@ -197,24 +198,31 @@ class _MissingList extends ConsumerWidget {
   }
 }
 
-/// One missing machine: code, model, serial, the Missing tag, where the
-/// app thinks it is and the date it came in. Tapping opens the edit form.
-class _MissingTile extends StatelessWidget {
+/// One missing item: code, name, the Missing tag, where the app thinks
+/// it is and the date it came in. Tapping opens the edit form; the
+/// check button records that the item was found and moves it to its
+/// dedicated place (workshop, dealer, customer or branch).
+class _MissingTile extends ConsumerWidget {
   const _MissingTile({required this.row});
 
   final Map<String, dynamic> row;
 
   @override
-  Widget build(BuildContext context) {
-    final code = (row['machine_id'] ?? '').toString();
-    final name = (row['model'] ?? '').toString();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final code =
+        '${row['code'] ?? row['machine_id'] ?? ''}';
+    final name = '${row['name'] ?? row['model'] ?? ''}';
     final serial = (row['serial_number'] ?? '').toString();
     final location = (row['current_location'] ?? '').toString();
     final cameIn = (row['acquisition_date'] ?? '').toString();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
-        onTap: () => showOldItemForm(context, kind: 'machine', row: row),
+        onTap: () => showOldItemForm(
+          context,
+          kind: '${row['kind'] ?? 'machine'}',
+          row: row,
+        ),
         child: ListTile(
           leading: CircleAvatar(
             backgroundColor: Theme.of(context).colorScheme.errorContainer,
@@ -255,8 +263,191 @@ class _MissingTile extends StatelessWidget {
               ),
             ],
           ),
-          trailing: const Icon(Icons.chevron_right, size: 20),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'I found this item',
+                icon: Icon(
+                  Icons.task_alt,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                onPressed: () => _openFoundSheet(context, ref),
+              ),
+              const Icon(Icons.chevron_right, size: 20),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _openFoundSheet(BuildContext context, WidgetRef ref) async {
+    final moved = await showAppSheet<bool>(
+      context: context,
+      title: 'I found this item',
+      heightFraction: 0.7,
+      builder: (_) => _FoundSheet(row: row),
+    );
+    if (moved != true) return;
+    ref
+      ..invalidate(flagsProvider)
+      ..invalidate(inventoryProvider)
+      ..invalidate(allMovementsProvider)
+      ..invalidate(workshopItemsProvider)
+      ..invalidate(missingItemsProvider);
+    if (context.mounted) {
+      showSnack(
+        context,
+        '${row['code'] ?? row['machine_id'] ?? 'Item'} moved — it is off '
+        'the Missing list.',
+      );
+    }
+  }
+}
+
+/// The sheet behind the check button: pick where the found item goes —
+/// Workshop, Branch, Dealer or Customer — name the party when needed,
+/// and one button records the send and clears the Missing flag.
+class _FoundSheet extends ConsumerStatefulWidget {
+  const _FoundSheet({required this.row});
+
+  final Map<String, dynamic> row;
+
+  @override
+  ConsumerState<_FoundSheet> createState() => _FoundSheetState();
+}
+
+class _FoundSheetState extends ConsumerState<_FoundSheet> {
+  String _kind = 'Workshop';
+  final _target = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _target.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final kind = '${widget.row['kind'] ?? 'machine'}';
+    final id = widget.row['id'] as int;
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final destination = <String, dynamic>{};
+      final target = _target.text.trim();
+      if (_kind == 'Dealer' && target.isNotEmpty) {
+        final (partyId, _) = await findOrCreateParty('dealers', target);
+        destination['p_dealer_id'] = partyId;
+      } else if (_kind == 'Customer' && target.isNotEmpty) {
+        final (partyId, _) = await findOrCreateParty('customers', target);
+        destination['p_customer_id'] = partyId;
+      }
+      await db.rpc(
+        'create_movement',
+        params: {
+          'p_item_type': kind,
+          'p_item_id': id,
+          'p_kind': _kind,
+          ...destination,
+          'p_notes': 'Found — taken off the missing list',
+        },
+      );
+      // the status changed with the send, so the Missing flag goes too
+      await syncMissingFlag(kind, id, _kind);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            _kind == 'Workshop'
+                ? 'Sent to the workshop.'
+                : 'Sent to ${_kind.toLowerCase()}'
+                    '${target.isEmpty ? '' : ' · $target'}.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text(errorMessage(error))),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dealerNames = ref
+        .watch(dealersProvider)
+        .maybeWhen(
+          data: (rows) => rows.map((r) => '${r['name']}').toList(),
+          orElse: () => const <String>[],
+        );
+    final customerNames = ref
+        .watch(customersProvider)
+        .maybeWhen(
+          data: (rows) => rows.map((r) => '${r['name']}').toList(),
+          orElse: () => const <String>[],
+        );
+    final code = '${widget.row['code'] ?? widget.row['machine_id'] ?? ''}';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            code.isEmpty ? '${widget.row['name'] ?? ''}' : code,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Where does it actually sit?',
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SendKindGrid(
+            selected: _kind,
+            onSelected: (value) {
+              if (value == _kind) return;
+              setState(() {
+                _kind = value;
+                _target.clear();
+              });
+            },
+          ),
+          if (_kind == 'Dealer' || _kind == 'Customer') ...[
+            const SizedBox(height: 12),
+            PickyField(
+              controller: _target,
+              label: _kind == 'Dealer' ? 'Dealer' : 'Customer',
+              hint: 'Optional — type a new name to add it',
+              options: _kind == 'Dealer' ? dealerNames : customerNames,
+              pickTitle: _kind == 'Dealer' ? 'dealers' : 'customers',
+            ),
+          ],
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.task_alt),
+            label: Text(
+              _kind == 'Workshop'
+                  ? 'Put it in the workshop'
+                  : 'Send it to ${_kind.toLowerCase()}',
+            ),
+          ),
+        ],
       ),
     );
   }

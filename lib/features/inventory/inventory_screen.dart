@@ -254,6 +254,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   bool _isHiddenFromInventory(InventoryItem item) =>
       item.status == 'With Workshop' ||
+      item.status == 'Missing' ||
       (item.isSold && item.kind != 'part' && !_isPhysicalStockMachine(item));
 
   /// Counts for the review chips — everything the list would show if the
@@ -2748,7 +2749,11 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
             'notes': notes.isEmpty ? null : notes,
           })
           .eq('id', item.id);
-      ref.invalidate(inventoryProvider);
+      // the Missing status and the Missing flag move together
+      await syncMissingFlag(item.kind, item.id, _status);
+      ref
+        ..invalidate(inventoryProvider)
+        ..invalidate(flagsProvider);
       if (!mounted) return;
       Navigator.pop(context);
       final note = regenerated ? ' — new serial generated' : '';
