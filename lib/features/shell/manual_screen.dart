@@ -97,10 +97,11 @@ class ManualScreen extends StatelessWidget {
     ),
     (
       icon: Icons.history_outlined,
-      title: 'Old data',
+      title: 'Sold or missing data items',
       lines: [
-        'The imported system lives on its own side: old stock and old movements.',
+        'The imported system lives on its own side: sold items, the missing items and old movements.',
         'Switch to it from the menu, and back from the old menu.',
+        'The Missing page lists every machine the physical audit could not find; Print PDF writes the list with the dates the machines came in.',
         'Old sales show in the one Sales list on the current side.',
         'Admins can edit old stock, old movements and imported sales.',
         'An imported sale opens with its old invoice number, buyer and items.',
@@ -114,7 +115,7 @@ class ManualScreen extends StatelessWidget {
       lines: [
         'Shows your name, role and the date you joined.',
         'Admins find Records and Reports here.',
-        'The menu in the top-right holds the theme switch, the old data and log out.',
+        'The menu in the top-right holds the theme switch, the sold and missing data and log out.',
       ],
     ),
   ];

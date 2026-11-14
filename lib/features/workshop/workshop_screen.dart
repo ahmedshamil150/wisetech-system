@@ -6,9 +6,13 @@ import '../movements/movements_screen.dart';
 import '../old/old_data.dart';
 import '../old/old_item_form.dart';
 
+/// The room a row sits in: its own room flag first, then the room of
+/// the machine it is linked to — a probe sent with its machine shares
+/// its room without needing a flag of its own.
 String _workshopRoom(
   Map<String, dynamic> row,
   List<Map<String, dynamic>> flags,
+  Map<int, String> machineRooms,
 ) {
   for (final flag in flags) {
     if (flag['item_kind'] == row['kind'] &&
@@ -16,6 +20,11 @@ String _workshopRoom(
         kWorkshopRooms.contains(flag['note'])) {
       return '${flag['note']}';
     }
+  }
+  final machineId = row['assigned_machine_id'];
+  if (machineId is int) {
+    final room = machineRooms[machineId];
+    if (room != null) return room;
   }
   return 'Unassigned';
 }
@@ -28,6 +37,47 @@ Future<void> _assignWorkshopRoom(
   final kind = row['kind'] as String;
   final id = row['id'] as int;
   await setWorkshopRoom(kind: kind, id: id, room: room);
+}
+
+/// Puts every machine first with its kit members right behind it (the
+/// printer → probe → part order the inventory uses), then whatever is
+/// not linked to a machine on this page. Kit rows carry a `with` label
+/// naming the machine they travel with.
+List<Map<String, dynamic>> _orderKit(List<Map<String, dynamic>> rows) {
+  final machines = [
+    for (final row in rows)
+      if (row['kind'] == 'machine') row,
+  ];
+  if (machines.isEmpty) return rows;
+  final machineIds = {for (final m in machines) m['id'] as int};
+  final kit = <int, List<Map<String, dynamic>>>{};
+  final loose = <Map<String, dynamic>>[];
+  for (final row in rows) {
+    if (row['kind'] == 'machine') continue;
+    final machineId = row['assigned_machine_id'];
+    if (machineId is int && machineIds.contains(machineId)) {
+      (kit[machineId] ??= []).add(row);
+    } else {
+      loose.add(row);
+    }
+  }
+  int rank(Map<String, dynamic> row) => switch (row['kind']) {
+    'printer' => 0,
+    'probe' => 1,
+    _ => 2,
+  };
+  return [
+    for (final machine in machines) ...[
+      machine,
+      for (final member in ([...?kit[machine['id'] as int]]
+            ..sort((a, b) => rank(a).compareTo(rank(b)))))
+        {
+          ...member,
+          'with': '${machine['machine_id'] ?? ''}',
+        },
+    ],
+    ...loose,
+  ];
 }
 
 class WorkshopScreen extends ConsumerStatefulWidget {
@@ -104,6 +154,16 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
               row['serial_number'],
             ].any((value) => '${value ?? ''}'.toLowerCase().contains(term));
           }).toList();
+    // A kit member without its own room flag follows its machine.
+    final machineRooms = <int, String>{};
+    for (final flag in flags) {
+      if (flag['item_kind'] == 'machine' && flag['item_id'] is int) {
+        final note = '${flag['note'] ?? ''}'.trim();
+        if (kWorkshopRooms.contains(note)) {
+          machineRooms[flag['item_id'] as int] = note;
+        }
+      }
+    }
 
     return Column(
       children: [
@@ -135,10 +195,10 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
               for (final room in kWorkshopRooms)
                 _WorkshopRoom(
                   room: room,
-                  rows: [
+                  rows: _orderKit([
                     for (final row in filtered)
-                      if (_workshopRoom(row, flags) == room) row,
-                  ],
+                      if (_workshopRoom(row, flags, machineRooms) == room) row,
+                  ]),
                   flags: flags,
                   onRoomChanged: _changeRoom,
                   onMove: _moveItem,
@@ -235,6 +295,7 @@ class _WorkshopItem extends StatelessWidget {
           name,
           serial,
           '${row['current_location'] ?? ''}',
+          if ('${row['with'] ?? ''}'.isNotEmpty) 'with ${row['with']}',
         ].where((value) => value.isNotEmpty && value != code).join(' · '),
         overflow: TextOverflow.ellipsis,
       ),

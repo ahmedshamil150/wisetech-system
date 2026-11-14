@@ -10,7 +10,6 @@ import '../old/data_side.dart';
 import '../old/old_shell.dart';
 import '../repairs/repairs_screen.dart';
 import '../sales/sales_screen.dart';
-import '../workshop/workshop_screen.dart';
 import 'dashboard_screen.dart';
 import 'navigation_providers.dart';
 import 'profile_screen.dart';
@@ -20,7 +19,7 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // The old-data side has its own shell with three simple tabs.
+    // The old-data side has its own shell with four simple tabs.
     final side = ref.watch(dataSideProvider);
     if (side == 'old') return const OldShell();
     return const _CurrentShell();
@@ -41,7 +40,6 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     'Movements',
     'Sales',
     'Repairs',
-    'Workshop',
   ];
 
   static const _destinations = [
@@ -50,7 +48,6 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     (Icons.swap_horiz_outlined, Icons.swap_horiz, 'Movements'),
     (Icons.receipt_long_outlined, Icons.receipt_long, 'Sales'),
     (Icons.build_outlined, Icons.build, 'Repairs'),
-    (Icons.handyman_outlined, Icons.handyman, 'Workshop'),
   ];
 
   late final List<Widget> _pages = [
@@ -59,7 +56,6 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     const MovementsScreen(),
     const SalesScreen(),
     const RepairsScreen(),
-    const WorkshopScreen(),
   ];
 
   /// Pages build the first time their tab is opened and stay alive
@@ -176,7 +172,8 @@ class _ProfileMenuButton extends ConsumerWidget {
             ],
           ),
         ),
-        const PopupMenuItem(value: 'old', child: Text('Switch to old data')),
+        const PopupMenuItem(
+            value: 'old', child: Text('Sold or missing data items')),
         const PopupMenuItem(value: 'logout', child: Text('Log out')),
       ],
       child: Padding(

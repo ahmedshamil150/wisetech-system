@@ -1085,11 +1085,16 @@ Future<void> deleteFlag(int id) async {
   await _db.from('flags').delete().eq('id', id);
 }
 
+/// Every room the workshop page shows, in the order the shop walks
+/// them. 'Unassigned' is the catch-all for an item with no room flag.
 const kWorkshopRooms = <String>[
   'Room 1',
   'Room 2',
   'Room 3',
+  'Lounge',
   'Workarea',
+  'Capasse II',
+  'Apron',
   'Unassigned',
 ];
 

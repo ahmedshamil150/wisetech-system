@@ -1,0 +1,263 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../auth/auth_controller.dart';
+import '../common/widgets.dart';
+import '../data/data.dart';
+import '../reports/pdf_download.dart';
+import '../reports/report_pdf.dart';
+import 'old_data.dart';
+import 'old_item_form.dart';
+import 'old_table.dart';
+
+/// The Missing page: every machine the physical audit could not find —
+/// flagged Missing — with the date it came in, a chip for the ones that
+/// arrived in 2026, and a PDF printout of the whole list.
+class MissingScreen extends ConsumerStatefulWidget {
+  const MissingScreen({super.key});
+
+  @override
+  ConsumerState<MissingScreen> createState() => _MissingScreenState();
+}
+
+class _MissingScreenState extends ConsumerState<MissingScreen> {
+  String _query = '';
+  bool _arrivedOnly = false;
+  int _page = 0;
+  bool _printing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        oldSearchField(
+          context,
+          hint: 'Search missing items',
+          onChanged: (value) => setState(() {
+            _query = value.trim();
+            _page = 0;
+          }),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: [
+              ChoiceChip(
+                label: const Text('All'),
+                selected: !_arrivedOnly,
+                onSelected: (_) => setState(() {
+                  _arrivedOnly = false;
+                  _page = 0;
+                }),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('Arrived 2026'),
+                selected: _arrivedOnly,
+                onSelected: (_) => setState(() {
+                  _arrivedOnly = true;
+                  _page = 0;
+                }),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _MissingList(
+            search: _query,
+            arrivedOnly: _arrivedOnly,
+            page: _page,
+            onPage: (p) => setState(() => _page = p),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: FilledButton.icon(
+            onPressed: _printing ? null : _print,
+            icon: _printing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.print_outlined),
+            label: const Text('Print PDF'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Prints the whole missing list: code, model, serial, where the app
+  /// thinks it is, the date it came in and whether it arrived in 2026.
+  Future<void> _print() async {
+    setState(() => _printing = true);
+    try {
+      final rows = await ref.read(missingAllProvider.future);
+      final flags = await ref.read(flagsProvider.future);
+      final profile = await ref.read(profileProvider.future);
+      final arrivedIds = {
+        for (final flag in flags)
+          if (flag['item_kind'] == 'machine' &&
+              '${flag['note'] ?? ''}'.trim() == 'Arrived 2026' &&
+              flag['item_id'] is int)
+            flag['item_id'] as int,
+      };
+      final by =
+          '${profile?['display_name'] ?? profile?['username'] ?? 'Admin'}';
+      var arrived = 0;
+      final data = <List<String>>[];
+      for (var i = 0; i < rows.length; i++) {
+        final row = rows[i];
+        final didArrive = arrivedIds.contains(row['id']);
+        if (didArrive) arrived++;
+        data.add([
+          '${i + 1}',
+          '${row['machine_id'] ?? ''}',
+          '${row['model'] ?? ''}',
+          '${row['serial_number'] ?? ''}',
+          '${row['status'] ?? ''}',
+          '${row['current_location'] ?? ''}',
+          '${row['acquisition_date'] ?? '—'}',
+          didArrive ? 'Yes' : '',
+        ]);
+      }
+      final bytes = await buildReportPdf(
+        title: 'Missing items',
+        subtitle: 'Machines the app holds but the physical stock audit '
+            'could not find',
+        columns: const [
+          '#',
+          'Code',
+          'Model',
+          'Serial',
+          'Status',
+          'Location',
+          'Came in',
+          'Arrived 2026',
+        ],
+        data: data,
+        generatedBy: by,
+        summary: [
+          'Missing: ${rows.length}',
+          'Arrived in 2026: $arrived',
+        ],
+      );
+      final now = DateTime.now();
+      String two(int n) => n.toString().padLeft(2, '0');
+      await downloadPdf(
+        bytes,
+        'missing_items_${two(now.day)}${two(now.month)}${now.year}.pdf',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showSnack(context, errorMessage(error), error: true);
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+}
+
+class _MissingList extends ConsumerWidget {
+  const _MissingList({
+    required this.search,
+    required this.arrivedOnly,
+    required this.page,
+    required this.onPage,
+  });
+
+  final String search;
+  final bool arrivedOnly;
+  final int page;
+  final ValueChanged<int> onPage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = ref.watch(
+      missingMachinesProvider((
+        page: page,
+        search: search,
+        status: 'All',
+        flagFilters: arrivedOnly ? const {'note:Arrived 2026'} : const {},
+      )),
+    );
+    return data.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) =>
+          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      data: (result) => OldTable(
+        rows: result.rows,
+        total: result.total,
+        page: page,
+        onPageChanged: onPage,
+        emptyMessage: 'No missing items match this search.',
+        rowBuilder: (row) => _MissingTile(row: row),
+      ),
+    );
+  }
+}
+
+/// One missing machine: code, model, serial, the Missing tag, where the
+/// app thinks it is and the date it came in. Tapping opens the edit form.
+class _MissingTile extends StatelessWidget {
+  const _MissingTile({required this.row});
+
+  final Map<String, dynamic> row;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = (row['machine_id'] ?? '').toString();
+    final name = (row['model'] ?? '').toString();
+    final serial = (row['serial_number'] ?? '').toString();
+    final location = (row['current_location'] ?? '').toString();
+    final cameIn = (row['acquisition_date'] ?? '').toString();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppCard(
+        onTap: () => showOldItemForm(context, kind: 'machine', row: row),
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+            child: Icon(
+              Icons.help_outline,
+              color: Theme.of(context).colorScheme.onErrorContainer,
+              size: 20,
+            ),
+          ),
+          title: Text(
+            code.isEmpty ? (serial.isEmpty ? name : serial) : code,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (name.isNotEmpty && code.isNotEmpty) Text(name),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const StatusChip(status: 'Missing'),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      [
+                        if (serial.isNotEmpty) serial,
+                        location,
+                        if (cameIn.isNotEmpty) 'Came in $cameIn',
+                      ].join(' · '),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          trailing: const Icon(Icons.chevron_right, size: 20),
+        ),
+      ),
+    );
+  }
+}

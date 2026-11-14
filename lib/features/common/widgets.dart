@@ -249,6 +249,7 @@ Color statusColor(String status, [Brightness brightness = Brightness.light]) {
     'With Customer' => const Color(0xFF0E7C86),
     'With Machine' => const Color(0xFF1668A8),
     'Sold' => const Color(0xFFB3261E),
+    'Missing' => const Color(0xFFAD1457),
     'Archived' => const Color(0xFF666F7A),
     _ => const Color(0xFF5B6B7B),
   };

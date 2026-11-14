@@ -2,7 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/data.dart'
-    show allMovementsProvider, fetchAllPages, flagsProvider, kOldBatchId;
+    show
+        allMovementsProvider,
+        fetchAllPages,
+        flagsProvider,
+        kOldBatchId,
+        kWorkshopRooms;
 
 export '../data/data.dart' show kOldBatchId;
 
@@ -196,23 +201,20 @@ final oldPrintersProvider = FutureProvider.family<OldPage, OldArgs>((
   );
 });
 
-/// Workshop machines from the PDF audit in both imported and current data.
-/// Room flags identify the PDF rows; this keeps unrelated workshop items out.
-final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
-  ref,
-) async {
+/// Workshop machines from the PDF audit in both imported and current data,
+/// plus every send the app has recorded to the workshop. Room flags
+/// identify the PDF rows; this keeps unrelated workshop items out.
+/// Probes and printers ride along: a kit member whose machine is on this
+/// page shows with it even when it never got its own workshop send.
+final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final flags = await ref.watch(flagsProvider.future);
   final movements = await ref.watch(allMovementsProvider.future);
+  final roomNotes = {...kWorkshopRooms}..remove('Unassigned');
   final pdfWorkshopIds = {
     for (final flag in flags)
       if (flag['item_kind'] == 'machine' &&
           flag['item_id'] is int &&
-          const {
-            'Room 1',
-            'Room 2',
-            'Room 3',
-            'Workarea',
-          }.contains('${flag['note']}'.trim()))
+          roomNotes.contains('${flag['note']}'.trim()))
         flag['item_id'] as int,
   };
   final movedWorkshopKeys = <String>{};
@@ -233,49 +235,128 @@ final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
         .eq('status', 'With Workshop')
         .order('id', ascending: false),
   );
-  return [
+  final workshopMachines = <Map<String, dynamic>>[
     for (final row in rows)
       if ((pdfWorkshopIds.contains(row['id']) ||
               movedWorkshopKeys.contains('machine:${row['id']}')) &&
           '${row['model']}'.trim().toUpperCase() != '110M')
         {...row, 'kind': 'machine'},
-    for (final row in await fetchAllPages(
-      () => _db
-          .from('probes')
-          .select(
-            'id, internal_id, model, serial_number, status, current_location, '
-            'notes, acquisition_date, purchase_price, vendor_id, condition',
-          )
-          .eq('status', 'With Workshop')
-          .order('id', ascending: false),
-    ))
-      if (movedWorkshopKeys.contains('probe:${row['id']}'))
-        {...row, 'kind': 'probe'},
-    for (final row in await fetchAllPages(
-      () => _db
-          .from('printers')
-          .select(
-            'id, internal_id, name_model, serial_number, status, current_location, '
-            'notes, acquisition_date, purchase_price, vendor_id, condition',
-          )
-          .eq('status', 'With Workshop')
-          .order('id', ascending: false),
-    ))
-      if (movedWorkshopKeys.contains('printer:${row['id']}'))
-        {...row, 'kind': 'printer'},
-    for (final row in await fetchAllPages(
-      () => _db
-          .from('parts')
-          .select(
-            'id, internal_id, name_model, serial_number, status, current_location, '
-            'notes, acquisition_date, purchase_price, vendor_id, condition',
-          )
-          .eq('status', 'With Workshop')
-          .order('id', ascending: false),
-    ))
-      if (movedWorkshopKeys.contains('part:${row['id']}'))
-        {...row, 'kind': 'part'},
   ];
+  final workshopMachineIds = {
+    for (final machine in workshopMachines) machine['id'] as int,
+  };
+
+  /// A kit member belongs on the page when it was sent to the workshop
+  /// itself, carries the With Workshop status, or is linked to a machine
+  /// that is already up here.
+  bool ridesAlong(Map<String, dynamic> row, String kind) =>
+      movedWorkshopKeys.contains('$kind:${row['id']}') ||
+      row['status'] == 'With Workshop' ||
+      workshopMachineIds.contains(row['assigned_machine_id']);
+
+  final probeRows = await fetchAllPages(
+    () => _db
+        .from('probes')
+        .select(
+          'id, internal_id, model, serial_number, status, current_location, '
+          'notes, acquisition_date, purchase_price, vendor_id, condition, '
+          'assigned_machine_id',
+        )
+        .inFilter('status', const ['With Workshop', 'With Machine'])
+        .order('id', ascending: false),
+  );
+  final printerRows = await fetchAllPages(
+    () => _db
+        .from('printers')
+        .select(
+          'id, internal_id, name_model, serial_number, status, current_location, '
+          'notes, acquisition_date, purchase_price, vendor_id, condition, '
+          'assigned_machine_id',
+        )
+        .inFilter('status', const ['With Workshop', 'With Machine'])
+        .order('id', ascending: false),
+  );
+  final partRows = await fetchAllPages(
+    () => _db
+        .from('parts')
+        .select(
+          'id, internal_id, name_model, serial_number, status, current_location, '
+          'notes, acquisition_date, purchase_price, vendor_id, condition, '
+          'assigned_machine_id',
+        )
+        .inFilter('status', const ['With Workshop', 'With Machine'])
+        .order('id', ascending: false),
+  );
+
+  return [
+    ...workshopMachines,
+    for (final row in probeRows)
+      if (ridesAlong(row, 'probe')) {...row, 'kind': 'probe'},
+    for (final row in printerRows)
+      if (ridesAlong(row, 'printer')) {...row, 'kind': 'printer'},
+    for (final row in partRows)
+      if (ridesAlong(row, 'part')) {...row, 'kind': 'part'},
+  ];
+});
+
+/// Every machine flagged Missing, whichever batch it came from — the
+/// rows of the Missing page. The flag filters narrow it further (the
+/// "Arrived 2026" chip) and the search matches code, model and serial.
+final missingMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
+  ref,
+  args,
+) async {
+  final missingIds = await _oldMachineFlagIds(ref, {'note:Missing'});
+  var ids = missingIds;
+  if (args.flagFilters.isNotEmpty) {
+    final extra = await _oldMachineFlagIds(ref, args.flagFilters);
+    ids = [for (final id in ids) if (extra.contains(id)) id];
+  }
+  if (ids.isEmpty) {
+    return (rows: const <Map<String, dynamic>>[], total: 0);
+  }
+  PostgrestFilterBuilder<PostgrestList> query() {
+    PostgrestFilterBuilder<PostgrestList> q = _db
+        .from('machines')
+        .select(
+          'id, machine_id, model, serial_number, status, current_location, notes, '
+          'acquisition_date, purchase_price, vendor_id, condition',
+        )
+        .inFilter('id', ids);
+    if (args.search.isNotEmpty) {
+      final t = args.search;
+      q = q.or(
+        'machine_id.ilike.%$t%,model.ilike.%$t%,serial_number.ilike.%$t%',
+      );
+    }
+    return q;
+  }
+  return _paged(
+    () => query(),
+    page: args.page,
+    countSource: () async {
+      final res = await query().count(CountOption.exact);
+      return res.count;
+    },
+  );
+});
+
+/// The whole missing list, unpaged — what the PDF printout reads.
+final missingAllProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  final missingIds = await _oldMachineFlagIds(ref, {'note:Missing'});
+  if (missingIds.isEmpty) return const [];
+  return fetchAllPages(
+    () => _db
+        .from('machines')
+        .select(
+          'id, machine_id, model, serial_number, status, current_location, notes, '
+          'acquisition_date, purchase_price, vendor_id, condition',
+        )
+        .inFilter('id', missingIds)
+        .order('machine_id', ascending: true),
+  );
 });
 
 // ---------------------------------------------------------------------------

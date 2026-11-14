@@ -3,14 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/layout.dart';
 import '../auth/auth_controller.dart';
+import '../workshop/workshop_screen.dart';
 import 'data_side.dart';
+import 'missing_screen.dart';
 import 'old_movements_screen.dart';
 import 'old_stock_screen.dart';
 
-/// The shell shown when the app is on the old-data side: two simple tabs
-/// (Stock, Movements) over the imported legacy data. The profile menu
-/// switches back to the current side. Sales live in the one Sales screen
-/// on the current side — old sales show there too.
+/// The shell shown when the app is on the sold-and-missing side: the
+/// sold items, the missing items and the imported legacy movements.
+/// The profile menu switches back to the current side. Sales live in
+/// the one Sales screen on the current side — old sales show there too.
 class OldShell extends ConsumerStatefulWidget {
   const OldShell({super.key});
 
@@ -19,14 +21,23 @@ class OldShell extends ConsumerStatefulWidget {
 }
 
 class _OldShellState extends ConsumerState<OldShell> {
-  static const _titles = ['Old stock', 'Old movements'];
+  static const _titles = [
+    'Sold items',
+    'Missing items',
+    'Workshop',
+    'Old movements',
+  ];
   static const _destinations = [
-    (Icons.inventory_2_outlined, Icons.inventory_2, 'Stock'),
+    (Icons.sell_outlined, Icons.sell, 'Sold'),
+    (Icons.help_outline, Icons.help, 'Missing'),
+    (Icons.handyman_outlined, Icons.handyman, 'Workshop'),
     (Icons.history_outlined, Icons.history, 'Movements'),
   ];
 
   late final List<Widget> _pages = const [
     OldStockScreen(),
+    MissingScreen(),
+    WorkshopScreen(),
     OldMovementsScreen(),
   ];
 

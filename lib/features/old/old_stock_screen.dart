@@ -9,9 +9,9 @@ import 'old_data.dart';
 import 'old_item_form.dart';
 import 'old_table.dart';
 
-/// The old stock: BATCH-OLD machines, probes and printers plus the shared
-/// parts list. Every row is the imported data exactly as it came in, with
-/// full read and write for admins.
+/// The sold items: BATCH-OLD machines, probes and printers plus the
+/// shared parts list, exactly as they came in, with full read and write
+/// for admins. The missing ones live on the Missing tab.
 class OldStockScreen extends ConsumerStatefulWidget {
   const OldStockScreen({super.key});
 
@@ -64,7 +64,7 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
         ),
         oldSearchField(
           context,
-          hint: 'Search old stock',
+          hint: 'Search sold items',
           onChanged: (value) => setState(() {
             _query = value.trim();
             _page = 0;
@@ -308,7 +308,7 @@ class _MachinesPane extends ConsumerWidget {
       oldMachinesProvider((
         page: page,
         search: search,
-        status: 'All',
+        status: 'Sold',
         flagFilters: flagFilters,
       )),
     );
