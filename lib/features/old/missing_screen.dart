@@ -117,7 +117,7 @@ class _MissingScreenState extends ConsumerState<MissingScreen> {
           '${row['code'] ?? row['machine_id'] ?? ''}',
           '${row['name'] ?? row['model'] ?? ''}',
           '${row['serial_number'] ?? ''}',
-          '${row['status'] ?? ''}',
+          'Missing',
           '${row['current_location'] ?? ''}',
           '${row['acquisition_date'] ?? '—'}',
           didArrive ? 'Yes' : '',

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/layout.dart';
 import '../auth/auth_controller.dart';
 import '../workshop/workshop_screen.dart';
+import 'branch_screen.dart';
 import 'data_side.dart';
 import 'missing_screen.dart';
 import 'old_movements_screen.dart';
@@ -25,12 +26,14 @@ class _OldShellState extends ConsumerState<OldShell> {
     'Sold items',
     'Missing items',
     'Workshop',
+    'Branch',
     'Old movements',
   ];
   static const _destinations = [
     (Icons.sell_outlined, Icons.sell, 'Sold'),
     (Icons.help_outline, Icons.help, 'Missing'),
     (Icons.handyman_outlined, Icons.handyman, 'Workshop'),
+    (Icons.storefront_outlined, Icons.storefront, 'Branch'),
     (Icons.history_outlined, Icons.history, 'Movements'),
   ];
 
@@ -38,6 +41,7 @@ class _OldShellState extends ConsumerState<OldShell> {
     OldStockScreen(),
     MissingScreen(),
     WorkshopScreen(),
+    BranchScreen(),
     OldMovementsScreen(),
   ];
 

@@ -283,6 +283,84 @@ final workshopItemsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) a
   ];
 });
 
+/// Everything the shop has sent to the Lahore branch: every machine with
+/// the With Branch status, plus the probes, printers and parts that
+/// travelled with it. Same row shape as [workshopItemsProvider] — each
+/// row carries its `kind` and the kit keeps `assigned_machine_id`, so the
+/// Branch page can tuck a machine's kit right under it.
+final branchItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  final movements = await ref.watch(allMovementsProvider.future);
+  final movedBranchKeys = <String>{};
+  for (final movement in movements) {
+    if ('${movement['movement_type'] ?? ''}' != 'Branch') continue;
+    for (final kind in const ['machine', 'probe', 'printer', 'part']) {
+      final id = movement['${kind}_id'];
+      if (id is int) movedBranchKeys.add('$kind:$id');
+    }
+  }
+
+  final machineRows = await fetchAllPages(
+    () => _db
+        .from('machines')
+        .select(
+          'id, machine_id, model, serial_number, status, current_location, '
+          'notes, acquisition_date, purchase_price, vendor_id, condition',
+        )
+        .eq('status', 'With Branch')
+        .order('id', ascending: false),
+  );
+  final branchMachines = <Map<String, dynamic>>[
+    for (final row in machineRows) {...row, 'kind': 'machine'},
+  ];
+  final branchMachineIds = {
+    for (final machine in branchMachines) machine['id'] as int,
+  };
+
+  /// A kit member is branch stock when it was sent there itself, carries
+  /// the With Branch status, or is physically at the branch with a
+  /// machine that lives there now. A probe the machine left behind at a
+  /// dealer stays off this page.
+  bool atBranch(Map<String, dynamic> row, String kind) {
+    if (movedBranchKeys.contains('$kind:${row['id']}')) return true;
+    if (row['status'] == 'With Branch') return true;
+    final machineId = row['assigned_machine_id'];
+    return machineId is int &&
+        branchMachineIds.contains(machineId) &&
+        '${row['current_location'] ?? ''}'.toLowerCase().contains('lahore');
+  }
+
+  Future<List<Map<String, dynamic>>> kit(
+    String table,
+    String kind,
+    String nameColumn,
+  ) async {
+    final rows = await fetchAllPages(
+      () => _db
+          .from(table)
+          .select(
+            'id, internal_id, $nameColumn, serial_number, status, '
+            'current_location, notes, acquisition_date, purchase_price, '
+            'vendor_id, condition, assigned_machine_id',
+          )
+          .inFilter('status', const ['With Branch', 'With Machine'])
+          .order('id', ascending: false),
+    );
+    return [
+      for (final row in rows)
+        if (atBranch(row, kind)) {...row, 'kind': kind},
+    ];
+  }
+
+  return [
+    ...branchMachines,
+    ...await kit('probes', 'probe', 'model'),
+    ...await kit('printers', 'printer', 'name_model'),
+    ...await kit('parts', 'part', 'name_model'),
+  ];
+});
+
 /// Every item the app holds that is Missing — flagged Missing or
 /// carrying the Missing status — across machines, probes, printers and
 /// parts. One list so the Missing tab and its printout read the same
@@ -311,8 +389,8 @@ final missingItemsProvider =
     // machines carry no assigned_machine_id — asking for it would fail
     // the whole request, so each kind asks only for what it has
     final shared = 'id, status, current_location, notes, acquisition_date, '
-        'purchase_price, vendor_id, condition, serial_number, $codeCol, '
-        '$nameCol';
+        'created_at, purchase_price, vendor_id, condition, serial_number, '
+        '$codeCol, $nameCol';
     final select = kind == 'machine'
         ? shared
         : '$shared, assigned_machine_id';
@@ -341,6 +419,15 @@ final missingItemsProvider =
       });
     }
   }
+  // newest row first across all four kinds, so a freshly flagged item
+  // is at the top of the Missing tab (and of its PDF) where it is seen
+  out.sort((a, b) {
+    final byDate = '${b['created_at'] ?? ''}'.compareTo(
+      '${a['created_at'] ?? ''}',
+    );
+    if (byDate != 0) return byDate;
+    return (b['id'] as int).compareTo(a['id'] as int);
+  });
   return out;
 });
 
@@ -388,13 +475,12 @@ final missingMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
   );
 });
 
-/// The whole missing list, unpaged — what the PDF printout reads.
+/// The whole missing list, unpaged — what the PDF printout reads. It keeps
+/// the shared list's newest-first order.
 final missingAllProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
-  final rows = await ref.watch(missingItemsProvider.future);
-  return [...rows]
-    ..sort((a, b) => '${a['code']}'.compareTo('${b['code']}'));
+  return ref.watch(missingItemsProvider.future);
 });
 
 // ---------------------------------------------------------------------------
