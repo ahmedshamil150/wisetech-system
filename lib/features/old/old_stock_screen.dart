@@ -351,7 +351,7 @@ class _ProbesPane extends ConsumerWidget {
         page: page,
         search: search,
         status: 'All',
-        flagFilters: {},
+        flagFilters: const <String>{},
       )),
     );
     return data.when(
@@ -393,7 +393,7 @@ class _PrintersPane extends ConsumerWidget {
         page: page,
         search: search,
         status: 'All',
-        flagFilters: {},
+        flagFilters: const <String>{},
       )),
     );
     return data.when(
