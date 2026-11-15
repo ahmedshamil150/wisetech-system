@@ -4,10 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/layout.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
-import '../inventory/inventory_screen.dart' show showItemDetails;
 import '../movements/movements_screen.dart';
 import '../old/old_data.dart';
 import '../old/old_item_form.dart';
+import '../old/old_item_tile.dart';
 
 /// The quick chips over the list: a display label and the `kind` it keeps.
 /// `null` means every kind — the shop's own starting view.
@@ -138,17 +138,6 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
   Future<void> _moveItem(Map<String, dynamic> row) async {
     await showWorkshopMovement(context, itemFromRow(row));
     if (mounted) ref.invalidate(workshopItemsProvider);
-  }
-
-  /// Opens the same read-only details sheet the Inventory page uses, then
-  /// refreshes the rooms in case the item was returned to inventory from
-  /// inside it.
-  Future<void> _openDetails(Map<String, dynamic> row) async {
-    await showItemDetails(context, ref, itemFromRow(row));
-    if (!mounted) return;
-    ref
-      ..invalidate(workshopItemsProvider)
-      ..invalidate(flagsProvider);
   }
 
   /// Opens the Filters sheet: which rooms to show and which statuses.
@@ -366,22 +355,86 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   children: [
                     for (final room in roomsToShow)
-                      _WorkshopRoom(
-                        room: room,
-                        rows: _orderKit([
+                      ..._roomSection(
+                        context,
+                        room,
+                        _orderKit([
                           for (final entry in visible)
                             if (entry.rooms.contains(room)) entry.row,
                         ]),
-                        flags: flags,
-                        onRoomChanged: _changeRoom,
-                        onMove: _moveItem,
-                        onOpen: _openDetails,
+                        flags,
                       ),
                   ],
                 ),
         ),
       ],
     );
+  }
+
+  /// One room's heading and its cards — the heading reads like the Branch
+  /// page's section titles, and a room with nothing left after the filters
+  /// leaves nothing behind.
+  List<Widget> _roomSection(
+    BuildContext context,
+    String room,
+    List<Map<String, dynamic>> rows,
+    List<Map<String, dynamic>> flags,
+  ) {
+    if (rows.isEmpty) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                room,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+            ),
+            Text(
+              '${rows.length}',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12.5,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+          ],
+        ),
+      ),
+      for (final row in rows)
+        OldItemTile(
+          row: row,
+          indented: '${row['with'] ?? ''}'.isNotEmpty,
+          withCode: '${row['with'] ?? ''}'.isEmpty ? null : '${row['with']}',
+          trailing: PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, size: 20),
+            tooltip: 'Item actions',
+            onSelected: (value) {
+              if (value == 'move') {
+                _moveItem(row);
+              } else if (value != room) {
+                _changeRoom(row, value, flags);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'move',
+                child: Text('Move from workshop'),
+              ),
+              const PopupMenuDivider(),
+              for (final option in kWorkshopRooms)
+                if (option != room)
+                  PopupMenuItem(value: option, child: Text('Move to $option')),
+            ],
+          ),
+        ),
+    ];
   }
 }
 
@@ -524,128 +577,6 @@ class _WorkshopFilterSheetState extends State<_WorkshopFilterSheet> {
           ),
           const SizedBox(height: 12),
           FilledButton(onPressed: _apply, child: const Text('Apply')),
-        ],
-      ),
-    );
-  }
-}
-
-class _WorkshopRoom extends StatelessWidget {
-  const _WorkshopRoom({
-    required this.room,
-    required this.rows,
-    required this.flags,
-    required this.onRoomChanged,
-    required this.onMove,
-    required this.onOpen,
-  });
-
-  final String room;
-  final List<Map<String, dynamic>> rows;
-  final List<Map<String, dynamic>> flags;
-  final Future<void> Function(
-    Map<String, dynamic> row,
-    String room,
-    List<Map<String, dynamic>> flags,
-  )
-  onRoomChanged;
-  final Future<void> Function(Map<String, dynamic> row) onMove;
-  final Future<void> Function(Map<String, dynamic> row) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ExpansionTile(
-        initiallyExpanded: rows.isNotEmpty,
-        title: Text(room, style: const TextStyle(fontWeight: FontWeight.w800)),
-        trailing: Chip(label: Text('${rows.length}')),
-        children: [
-          if (rows.isEmpty)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('No workshop items in this room.'),
-              ),
-            ),
-          for (final row in rows)
-            _WorkshopItem(
-              row: row,
-              room: room,
-              flags: flags,
-              onRoomChanged: onRoomChanged,
-              onMove: onMove,
-              onOpen: onOpen,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WorkshopItem extends StatelessWidget {
-  const _WorkshopItem({
-    required this.row,
-    required this.room,
-    required this.flags,
-    required this.onRoomChanged,
-    required this.onMove,
-    required this.onOpen,
-  });
-
-  final Map<String, dynamic> row;
-  final String room;
-  final List<Map<String, dynamic>> flags;
-  final Future<void> Function(
-    Map<String, dynamic> row,
-    String room,
-    List<Map<String, dynamic>> flags,
-  )
-  onRoomChanged;
-  final Future<void> Function(Map<String, dynamic> row) onMove;
-  final Future<void> Function(Map<String, dynamic> row) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final kind = row['kind'] as String;
-    final code = '${row[codeColumnFor(kind)] ?? ''}';
-    final name = '${row[nameColumnFor(kind)] ?? ''}';
-    final serial = '${row['serial_number'] ?? ''}';
-    return ListTile(
-      title: Text(code.isEmpty ? name : code),
-      subtitle: Text(
-        [
-          name,
-          serial,
-          '${row['current_location'] ?? ''}',
-          if ('${row['with'] ?? ''}'.isNotEmpty) 'with ${row['with']}',
-        ].where((value) => value.isNotEmpty && value != code).join(' · '),
-        overflow: TextOverflow.ellipsis,
-      ),
-      leading: CircleAvatar(child: Text(kindLabel(kind)[0])),
-      onTap: () => onOpen(row),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DropdownButton<String>(
-            value: room,
-            underline: const SizedBox.shrink(),
-            onChanged: (value) {
-              if (value != null && value != room) {
-                onRoomChanged(row, value, flags);
-              }
-            },
-            items: [
-              for (final option in kWorkshopRooms)
-                DropdownMenuItem(value: option, child: Text(option)),
-            ],
-          ),
-          IconButton(
-            tooltip: 'Move from workshop',
-            icon: const Icon(Icons.local_shipping_outlined),
-            onPressed: () => onMove(row),
-          ),
         ],
       ),
     );

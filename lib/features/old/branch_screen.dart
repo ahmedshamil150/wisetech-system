@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/layout.dart';
-import '../common/flag_sheet.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
-import '../inventory/inventory_screen.dart' show showItemDetails;
 import 'old_data.dart';
 import 'old_item_form.dart';
+import 'old_item_tile.dart';
 
 /// The Branch page: everything the shop has sent to the Lahore branch,
 /// on one screen and laid out the way the Inventory page lays its items
@@ -100,10 +98,10 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
           const _SectionHeader('At Lahore — recorded location'),
         );
       }
-      listChildren.add(_BranchTile(row: machine));
+      listChildren.add(OldItemTile(row: machine));
       for (final member in _sortedKit(kit[machine['id']] ?? const [])) {
         listChildren.add(
-          _BranchTile(
+          OldItemTile(
             row: member,
             indented: true,
             withCode: '${machine['machine_id'] ?? ''}',
@@ -116,7 +114,7 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
         const _SectionHeader('Other branch items'),
       );
       for (final row in _latestFirst(loose)) {
-        listChildren.add(_BranchTile(row: row));
+        listChildren.add(OldItemTile(row: row));
       }
     }
 
@@ -243,86 +241,4 @@ int _naturalCompare(String a, String b) {
   if (ra != null) return -1;
   if (rb != null) return 1;
   return a.compareTo(b);
-}
-
-IconData _kindIcon(String kind) => switch (kind) {
-  'machine' => Icons.monitor_outlined,
-  'probe' => Icons.cable_outlined,
-  'printer' => Icons.print_outlined,
-  _ => Icons.settings_outlined,
-};
-
-/// One branch row, drawn exactly like the Inventory list: code on top,
-/// name · serial and the status chip below, the location on the right.
-class _BranchTile extends ConsumerWidget {
-  const _BranchTile({required this.row, this.indented = false, this.withCode});
-
-  final Map<String, dynamic> row;
-  final bool indented;
-  final String? withCode;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final kind = row['kind'] as String;
-    final code = '${row[codeColumnFor(kind)] ?? ''}';
-    final name = '${row[nameColumnFor(kind)] ?? ''}';
-    final serial = '${row['serial_number'] ?? ''}';
-    final phone = isPhoneLayout(context);
-    final detail = [
-      '${row['current_location'] ?? ''}',
-      if ((withCode ?? '').isNotEmpty) 'with $withCode',
-    ].where((value) => value.isNotEmpty).join(' · ');
-    return Padding(
-      padding: EdgeInsets.only(bottom: 8, left: indented ? 32 : 0),
-      child: AppCard(
-        child: ListTile(
-          onTap: () => showItemDetails(context, ref, itemFromRow(row)),
-          leading: CircleAvatar(
-            backgroundColor: context.colors.tintBlue,
-            child: Icon(
-              _kindIcon(kind),
-              size: indented ? 18 : 22,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          title: Text(
-            code.isEmpty ? name : code,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: phone ? 13.5 : 14,
-            ),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                serial.isEmpty ? name : '$name · $serial',
-                style: TextStyle(fontSize: phone ? 12 : 13),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  StatusChip(status: '${row['status'] ?? ''}'),
-                  const SizedBox(width: 6),
-                  FlagDot(targetKey: flagItemKey(kind, row['id'] as int)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      detail,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: phone ? 11.5 : 12,
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          trailing: const Icon(Icons.chevron_right, size: 20),
-        ),
-      ),
-    );
-  }
 }
