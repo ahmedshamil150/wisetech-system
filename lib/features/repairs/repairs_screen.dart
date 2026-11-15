@@ -1350,7 +1350,15 @@ class _NewRepairFormState extends ConsumerState<_NewRepairForm> {
     // both sides of the split: a machine sent to a customer from our
     // stock (current or old-data) can come back for repair
     final stock = ref.watch(allItemsProvider).maybeWhen(
-          data: (rows) => rows,
+          data: (rows) => withoutMissing(
+            rows,
+            ref
+                .watch(missingItemKeysProvider)
+                .maybeWhen(
+                  data: (keys) => keys,
+                  orElse: () => const <String>{},
+                ),
+          ),
           orElse: () => const <InventoryItem>[],
         );
 
@@ -1720,7 +1728,15 @@ class _EditRepairFormState extends ConsumerState<_EditRepairForm> {
         );
     // both sides of the split — see _NewRepairForm
     final stock = ref.watch(allItemsProvider).maybeWhen(
-          data: (rows) => rows,
+          data: (rows) => withoutMissing(
+            rows,
+            ref
+                .watch(missingItemKeysProvider)
+                .maybeWhen(
+                  data: (keys) => keys,
+                  orElse: () => const <String>{},
+                ),
+          ),
           orElse: () => const <InventoryItem>[],
         );
     final scheme = Theme.of(context).colorScheme;

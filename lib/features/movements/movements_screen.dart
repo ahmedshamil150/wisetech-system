@@ -1152,13 +1152,14 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final List<InventoryItem> available;
     try {
       final items = await ref.read(allItemsProvider.future);
-      available = [
+      final missing = await ref.read(missingItemKeysProvider.future);
+      available = withoutMissing([
         for (final item in items)
           if (item.status != 'Sold' &&
               item.status != 'Archived' &&
               !inSend.contains(item.key))
             item,
-      ];
+      ], missing);
     } catch (error) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
@@ -1179,6 +1180,18 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final additions = picked.kind == 'machine'
         ? kitFor(available, picked)
         : [picked];
+    for (final item in additions) {
+      if (await isItemMissing(item.kind, item.id)) {
+        if (!mounted) return;
+        showSnack(
+          context,
+          '${item.code} is marked Missing — it cannot be moved until it '
+          'is found.',
+          error: true,
+        );
+        return;
+      }
+    }
     try {
       for (final item in additions) {
         await db.rpc(
@@ -3026,6 +3039,20 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
 
       // every group is one send: its own group_ref, so its items travel
       // together and keep their own sold, amount and paid marks
+      final blocked = <String>[];
+      for (final group in groups) {
+        for (final item in group.items) {
+          if (await isItemMissing(item.kind, item.id)) {
+            blocked.add(item.code);
+          }
+        }
+      }
+      if (blocked.isNotEmpty) {
+        throw StateError(
+          '${blocked.toSet().join(', ')} marked Missing — mark found before '
+          'sending.',
+        );
+      }
       var soldGroups = 0;
       var paidGroups = 0;
       for (final group in groups) {
@@ -3129,14 +3156,22 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     final items = ref
         .watch(allItemsProvider)
         .maybeWhen(
-          data: (rows) => rows
-              .where(
-                (i) =>
-                    i.status != 'Sold' &&
-                    i.status != 'Archived' &&
-                    i.status != 'With Workshop',
-              )
-              .toList(),
+          data: (rows) => withoutMissing(
+            rows
+                .where(
+                  (i) =>
+                      i.status != 'Sold' &&
+                      i.status != 'Archived' &&
+                      i.status != 'With Workshop',
+                )
+                .toList(),
+            ref
+                .watch(missingItemKeysProvider)
+                .maybeWhen(
+                  data: (keys) => keys,
+                  orElse: () => const <String>{},
+                ),
+          ),
           orElse: () => const <InventoryItem>[],
         );
     final dealerNames = ref

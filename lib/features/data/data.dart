@@ -48,6 +48,18 @@ String errorMessage(Object error) {
   return error.toString();
 }
 
+/// Raised when a movement, box move, repair or sale is attempted for an
+/// item the audit marked Missing — lost stock cannot be moved until it is
+/// found. Its text is shown as-is in a snack bar.
+class ItemMissingException implements Exception {
+  const ItemMissingException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 // ---------------------------------------------------------------------------
 // reference data (Records page + suggestions while entering an item)
 // ---------------------------------------------------------------------------
@@ -814,6 +826,11 @@ Future<int> returnToInventory(
   String? date,
   String? notes,
 }) async {
+  if (await isItemMissing(item.kind, item.id)) {
+    throw ItemMissingException(
+      '${item.code} is marked Missing — mark it found before returning it.',
+    );
+  }
   return await _db.rpc(
         'return_to_inventory',
         params: {
@@ -1109,6 +1126,43 @@ Future<void> syncMissingFlag(String kind, int id, String status) async {
   for (final flag in existing) {
     await deleteFlag(flag['id'] as int);
   }
+}
+
+/// `machine:12` keys of every item marked Missing right now. Pickers read
+/// it so lost stock cannot be chosen for a movement, box move, repair or
+/// sale while the audit says it is not on the shelf.
+final missingItemKeysProvider = FutureProvider<Set<String>>((ref) async {
+  final flags = await ref.watch(flagsProvider.future);
+  return {
+    for (final flag in flags)
+      if ('${flag['note'] ?? ''}'.trim() == 'Missing' && flag['item_id'] is int)
+        '${flag['item_kind']}:${flag['item_id']}',
+  };
+});
+
+/// [items] minus everything currently marked Missing, by flag or status.
+List<InventoryItem> withoutMissing(
+  List<InventoryItem> items,
+  Set<String> missingKeys,
+) {
+  return [
+    for (final item in items)
+      if (item.status != 'Missing' && !missingKeys.contains(item.key)) item,
+  ];
+}
+
+/// Whether one item is marked Missing right now, read fresh from the
+/// flags table. Every movement writer asks before it records a row, so a
+/// picker opened before the audit still cannot move lost stock.
+Future<bool> isItemMissing(String kind, int id) async {
+  final rows = await _db
+      .from('flags')
+      .select('id')
+      .eq('item_kind', kind)
+      .eq('item_id', id)
+      .eq('note', 'Missing')
+      .limit(1);
+  return rows.isNotEmpty;
 }
 
 /// Every room the workshop page shows, in the order the shop walks
@@ -1504,6 +1558,11 @@ Future<void> putProbeInBox(
   InventoryItem probe,
   Map<String, dynamic> box,
 ) async {
+  if (await isItemMissing('probe', probe.id)) {
+    throw ItemMissingException(
+      '${probe.code} is marked Missing — mark it found before boxing it.',
+    );
+  }
   final boxName = (box['name'] ?? '').toString();
   final from = probe.location;
   await _db
@@ -1528,6 +1587,11 @@ Future<void> putProbeInBox(
 /// Takes the probe back out of the box; it stays in stock at the company
 /// and an 'Unbox' movement records the removal.
 Future<void> takeProbeOutOfBox(InventoryItem probe) async {
+  if (await isItemMissing('probe', probe.id)) {
+    throw ItemMissingException(
+      '${probe.code} is marked Missing — mark it found before moving it.',
+    );
+  }
   final from = probe.location;
   final to = defaultLocationFor('Available');
   await _db
@@ -1551,6 +1615,11 @@ Future<void> attachProbeToMachine(
   InventoryItem probe,
   InventoryItem machine,
 ) async {
+  if (await isItemMissing('probe', probe.id)) {
+    throw ItemMissingException(
+      '${probe.code} is marked Missing — mark it found before attaching it.',
+    );
+  }
   final from = probe.location;
   final to = machine.location;
   await _db
@@ -1586,6 +1655,7 @@ List<InventoryItem> boxAddCandidates(
     if (item.kind != 'probe') return false;
     if (item.status == 'Sold' ||
         item.status == 'Archived' ||
+        item.status == 'Missing' ||
         item.status == 'With Customer') {
       return false;
     }

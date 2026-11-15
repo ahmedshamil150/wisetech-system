@@ -1897,20 +1897,27 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
   }
 
   Future<void> _attachToMachine(InventoryItem probe) async {
-    final machines = ref
-        .read(inventoryProvider)
-        .maybeWhen(
-          data: (rows) => rows
-              .where(
-                (item) =>
-                    item.kind == 'machine' &&
-                    !item.isSold &&
-                    item.status != 'Archived' &&
-                    item.status != 'With Customer',
-              )
-              .toList(),
-          orElse: () => const <InventoryItem>[],
-        );
+    final machines = [
+      ...ref
+          .read(inventoryProvider)
+          .maybeWhen(
+            data: (rows) => rows
+                .where(
+                  (item) =>
+                      item.kind == 'machine' &&
+                      !item.isSold &&
+                      item.status != 'Archived' &&
+                      item.status != 'Missing' &&
+                      item.status != 'With Customer',
+                )
+                .toList(),
+            orElse: () => const <InventoryItem>[],
+          ),
+    ];
+    // a machine marked Missing is not on the shelf to carry a probe
+    final missing = await ref.read(missingItemKeysProvider.future);
+    machines.removeWhere((item) => missing.contains(item.key));
+    if (!mounted) return;
     if (machines.isEmpty) {
       showSnack(context, 'No machine to attach this probe to.', error: true);
       return;
@@ -1948,7 +1955,18 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
     final inBox = items
         .where((item) => item.kind == 'probe' && item.boxId == box['id'])
         .toList();
-    final candidates = boxAddCandidates(items, box);
+    final candidates = boxAddCandidates(
+      withoutMissing(
+        items,
+        ref
+            .watch(missingItemKeysProvider)
+            .maybeWhen(
+              data: (keys) => keys,
+              orElse: () => const <String>{},
+            ),
+      ),
+      box,
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),

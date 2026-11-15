@@ -159,7 +159,11 @@ class _OldMovementFormState extends ConsumerState<_OldMovementForm> {
 
   Future<void> _pickItem() async {
     try {
-      final items = await ref.read(allItemsProvider.future);
+      final missing = await ref.read(missingItemKeysProvider.future);
+      final items = withoutMissing(
+        await ref.read(allItemsProvider.future),
+        missing,
+      );
       if (!mounted) return;
       final item = await showPickItem(
         context,
@@ -653,7 +657,11 @@ class _OldSaleFormState extends ConsumerState<_OldSaleForm> {
 
   Future<void> _addFromStock() async {
     try {
-      final items = await ref.read(allItemsProvider.future);
+      final missing = await ref.read(missingItemKeysProvider.future);
+      final items = withoutMissing(
+        await ref.read(allItemsProvider.future),
+        missing,
+      );
       if (!mounted) return;
       final item = await showPickItem(context, items: items);
       if (item == null || !mounted) return;
