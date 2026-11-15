@@ -36,6 +36,34 @@ String codeColumnFor(String kind) =>
 String nameColumnFor(String kind) =>
     kind == 'machine' || kind == 'probe' ? 'model' : 'name_model';
 
+/// One row from any of the item tables as an [InventoryItem], so the
+/// Workshop and Branch pages open the same read-only details sheet the
+/// Inventory page uses — same header, key/value card, actions and history.
+InventoryItem itemFromRow(Map<String, dynamic> row) {
+  final kind = '${row['kind'] ?? 'machine'}';
+  final date = '${row['acquisition_date'] ?? ''}';
+  final price = row['purchase_price'];
+  final batch = '${row['batch'] ?? ''}';
+  return InventoryItem(
+    kind: kind,
+    id: row['id'] as int,
+    code: '${row[codeColumnFor(kind)] ?? ''}',
+    name: '${row[nameColumnFor(kind)] ?? ''}',
+    serial: '${row['serial_number'] ?? ''}',
+    status: '${row['status'] ?? ''}',
+    location: '${row['current_location'] ?? ''}',
+    date: date.isEmpty ? null : date,
+    batch: batch.isEmpty ? null : batch,
+    vendorId: row['vendor_id'] is int ? row['vendor_id'] as int : null,
+    assignedMachineId: row['assigned_machine_id'] is int
+        ? row['assigned_machine_id'] as int
+        : null,
+    purchasePrice: price is num
+        ? price.toDouble()
+        : (price is String ? double.tryParse(price) : null),
+  );
+}
+
 String tableFor(String kind) => switch (kind) {
   'machine' => 'machines',
   'probe' => 'probes',

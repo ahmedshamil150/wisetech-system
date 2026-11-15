@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/layout.dart';
+import '../common/widgets.dart';
 import '../data/data.dart';
+import '../inventory/inventory_screen.dart' show showItemDetails;
 import '../movements/movements_screen.dart';
 import '../old/old_data.dart';
 import '../old/old_item_form.dart';
+
+/// The quick chips over the list: a display label and the `kind` it keeps.
+/// `null` means every kind — the shop's own starting view.
+const _kindFilters = <String, String?>{
+  'All': null,
+  'Machines': 'machine',
+  'Probes': 'probe',
+  'Printers': 'printer',
+  'Parts': 'part',
+};
 
 /// The rooms a row sits in — every room flag it carries, so a machine
 /// the audit listed twice (Room 3 and Apron) shows in both sections.
@@ -91,6 +104,14 @@ class WorkshopScreen extends ConsumerStatefulWidget {
 
 class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
   final _search = TextEditingController();
+  String _kind = 'All';
+  Set<String> _rooms = const <String>{};
+  String _status = 'All';
+
+  /// How many choices in the Filters sheet are doing something, so the
+  /// button can wear a badge the way Inventory's does.
+  int get _activeFilters =>
+      (_rooms.isEmpty ? 0 : 1) + (_status == 'All' ? 0 : 1);
 
   @override
   void dispose() {
@@ -115,47 +136,91 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
   }
 
   Future<void> _moveItem(Map<String, dynamic> row) async {
-    final kind = row['kind'] as String;
-    await showWorkshopMovement(
-      context,
-      InventoryItem(
-        kind: kind,
-        id: row['id'] as int,
-        code: '${row[codeColumnFor(kind)] ?? ''}',
-        name: '${row[nameColumnFor(kind)] ?? ''}',
-        serial: '${row['serial_number'] ?? ''}',
-        status: '${row['status'] ?? ''}',
-        location: '${row['current_location'] ?? ''}',
+    await showWorkshopMovement(context, itemFromRow(row));
+    if (mounted) ref.invalidate(workshopItemsProvider);
+  }
+
+  /// Opens the same read-only details sheet the Inventory page uses, then
+  /// refreshes the rooms in case the item was returned to inventory from
+  /// inside it.
+  Future<void> _openDetails(Map<String, dynamic> row) async {
+    await showItemDetails(context, ref, itemFromRow(row));
+    if (!mounted) return;
+    ref
+      ..invalidate(workshopItemsProvider)
+      ..invalidate(flagsProvider);
+  }
+
+  /// Opens the Filters sheet: which rooms to show and which statuses.
+  /// The sheet only narrows the list already in memory.
+  Future<void> _openFilters(
+    List<({Map<String, dynamic> row, Set<String> rooms})> rows,
+  ) async {
+    final roomCounts = <String, int>{};
+    for (final entry in rows) {
+      for (final room in entry.rooms) {
+        roomCounts[room] = (roomCounts[room] ?? 0) + 1;
+      }
+    }
+    final statusCounts = <String, int>{};
+    for (final entry in rows) {
+      final status = '${entry.row['status'] ?? ''}'.trim();
+      if (status.isEmpty) continue;
+      statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+    }
+    final result = await showAppSheet<_WorkshopFilterValues>(
+      context: context,
+      title: 'Filters',
+      heightFraction: 0.8,
+      builder: (sheetContext) => _WorkshopFilterSheet(
+        rooms: _rooms,
+        roomCounts: roomCounts,
+        status: _status,
+        statusCounts: statusCounts,
       ),
     );
-    if (mounted) ref.invalidate(workshopItemsProvider);
+    if (result == null || !mounted) return;
+    setState(() {
+      _rooms = result.rooms;
+      _status = result.status;
+    });
+  }
+
+  Widget _filterChip(BuildContext context, String label, int count) {
+    final selected = _kind == label;
+    return ChoiceChip(
+      label: Text('$label ($count)'),
+      selected: selected,
+      onSelected: (_) => setState(() => _kind = label),
+      visualDensity: isPhoneLayout(context) ? VisualDensity.compact : null,
+      selectedColor: Theme.of(context).colorScheme.primary,
+      labelStyle: TextStyle(
+        color: selected
+            ? Colors.white
+            : Theme.of(context).colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        fontSize: isPhoneLayout(context) ? 12 : 13,
+      ),
+      backgroundColor: context.colors.isDark
+          ? context.colors.quietFill
+          : Theme.of(context).colorScheme.surface,
+      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = ref
-        .watch(workshopItemsProvider)
-        .maybeWhen(
-          data: (rows) => rows,
-          orElse: () => const <Map<String, dynamic>>[],
-        );
+    final async = ref.watch(workshopItemsProvider);
+    final items = async.maybeWhen(
+      data: (rows) => rows,
+      orElse: () => const <Map<String, dynamic>>[],
+    );
     final flags = ref
         .watch(flagsProvider)
         .maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
-    final term = _search.text.trim().toLowerCase();
-    final filtered = term.isEmpty
-        ? items
-        : items.where((row) {
-            final kind = row['kind'] as String;
-            return [
-              row[codeColumnFor(kind)],
-              row[nameColumnFor(kind)],
-              row['serial_number'],
-            ].any((value) => '${value ?? ''}'.toLowerCase().contains(term));
-          }).toList();
     // A kit member without its own room flag follows its machine; a
     // machine in two rooms (the audit listed M-08114 twice) sits in both.
     final machineRooms = <int, Set<String>>{};
@@ -168,50 +233,299 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
       }
     }
 
+    final term = _search.text.trim().toLowerCase();
+    // Search and status first: every kind chip and room header then
+    // counts what the user would see after tapping it.
+    final searched = <({Map<String, dynamic> row, Set<String> rooms})>[];
+    for (final row in items) {
+      if (_status != 'All' && '${row['status'] ?? ''}'.trim() != _status) {
+        continue;
+      }
+      if (term.isNotEmpty) {
+        final kind = row['kind'] as String;
+        final hit = [
+          row[codeColumnFor(kind)],
+          row[nameColumnFor(kind)],
+          row['serial_number'],
+        ].any((value) => '${value ?? ''}'.toLowerCase().contains(term));
+        if (!hit) continue;
+      }
+      searched.add((row: row, rooms: _workshopRooms(row, flags, machineRooms)));
+    }
+    final kindCounts = <String, int>{};
+    for (final entry in searched) {
+      final kind = '${entry.row['kind']}';
+      kindCounts[kind] = (kindCounts[kind] ?? 0) + 1;
+    }
+    final kind = _kindFilters[_kind];
+    final visible = [
+      for (final entry in searched)
+        if (kind == null || entry.row['kind'] == kind) entry,
+    ];
+    final roomsToShow = [
+      for (final room in kWorkshopRooms)
+        if (_rooms.isEmpty || _rooms.contains(room)) room,
+    ];
+
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: TextField(
-            controller: _search,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              hintText: 'Search workshop items',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        _search.clear();
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.clear),
-                    ),
-              border: const OutlineInputBorder(),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Row(
             children: [
-              for (final room in kWorkshopRooms)
-                _WorkshopRoom(
-                  room: room,
-                  rows: _orderKit([
-                    for (final row in filtered)
-                      if (_workshopRooms(row, flags, machineRooms)
-                          .contains(room))
-                        row,
-                  ]),
-                  flags: flags,
-                  onRoomChanged: _changeRoom,
-                  onMove: _moveItem,
+              Expanded(
+                child: TextField(
+                  controller: _search,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Search workshop items',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _search.clear();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.clear),
+                          ),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              if (isPhoneLayout(context))
+                IconButton(
+                  tooltip: 'Filters',
+                  onPressed: () => _openFilters(searched),
+                  icon: Badge(
+                    isLabelVisible: _activeFilters > 0,
+                    label: Text('$_activeFilters'),
+                    child: const Icon(Icons.filter_list, size: 22),
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => _openFilters(searched),
+                  icon: Badge(
+                    isLabelVisible: _activeFilters > 0,
+                    label: Text('$_activeFilters'),
+                    child: const Icon(Icons.filter_list, size: 20),
+                  ),
+                  label: const Text('Filters'),
                 ),
             ],
           ),
         ),
+        SizedBox(
+          height: isPhoneLayout(context) ? 36 : 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _kindFilters.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final label = _kindFilters.keys.elementAt(index);
+              final key = _kindFilters[label];
+              return _filterChip(
+                context,
+                label,
+                key == null ? searched.length : (kindCounts[key] ?? 0),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '${visible.length} item${visible.length == 1 ? '' : 's'} · '
+              '${roomsToShow.length} room${roomsToShow.length == 1 ? '' : 's'}',
+              style: TextStyle(
+                fontSize: isPhoneLayout(context) ? 11.5 : 12.5,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: async.isLoading && items.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : async.hasError && items.isEmpty
+              ? EmptyState(
+                  icon: Icons.error_outline,
+                  message: errorMessage(async.error!),
+                )
+              : visible.isEmpty
+              ? const EmptyState(
+                  icon: Icons.build_outlined,
+                  message: 'No workshop items match these filters.',
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  children: [
+                    for (final room in roomsToShow)
+                      _WorkshopRoom(
+                        room: room,
+                        rows: _orderKit([
+                          for (final entry in visible)
+                            if (entry.rooms.contains(room)) entry.row,
+                        ]),
+                        flags: flags,
+                        onRoomChanged: _changeRoom,
+                        onMove: _moveItem,
+                        onOpen: _openDetails,
+                      ),
+                  ],
+                ),
+        ),
       ],
+    );
+  }
+}
+
+/// What the Filters sheet hands back — an empty room set and 'All' mean
+/// "no filter" for that section.
+typedef _WorkshopFilterValues = ({Set<String> rooms, String status});
+
+class _WorkshopFilterSheet extends StatefulWidget {
+  const _WorkshopFilterSheet({
+    required this.rooms,
+    required this.roomCounts,
+    required this.status,
+    required this.statusCounts,
+  });
+
+  final Set<String> rooms;
+  final Map<String, int> roomCounts;
+  final String status;
+  final Map<String, int> statusCounts;
+
+  @override
+  State<_WorkshopFilterSheet> createState() => _WorkshopFilterSheetState();
+}
+
+class _WorkshopFilterSheetState extends State<_WorkshopFilterSheet> {
+  late Set<String> _rooms = {...widget.rooms};
+  late String _status = widget.status;
+
+  Widget _label(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+
+  Widget _chip(String label, bool selected, VoidCallback onTap) {
+    final scheme = Theme.of(context).colorScheme;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      selectedColor: scheme.primary,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : scheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+      backgroundColor: context.colors.isDark
+          ? context.colors.quietFill
+          : scheme.surface,
+      side: BorderSide(color: scheme.outlineVariant),
+    );
+  }
+
+  void _apply() {
+    Navigator.pop(context, (rooms: _rooms, status: _status));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final statuses = <String>{
+      'All',
+      ...widget.statusCounts.keys,
+    }.toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Filters',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() {
+                  _rooms = {};
+                  _status = 'All';
+                }),
+                child: const Text('Reset'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _label('Status'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final status in statuses)
+                        _chip(
+                          status == 'All'
+                              ? 'All (${widget.statusCounts.values.fold(0, (a, b) => a + b)})'
+                              : '$status (${widget.statusCounts[status] ?? 0})',
+                          _status == status,
+                          () => setState(() => _status = status),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Room'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _chip('All rooms', _rooms.isEmpty, () {
+                        setState(() => _rooms = {});
+                      }),
+                      for (final room in kWorkshopRooms)
+                        _chip(
+                          '$room (${widget.roomCounts[room] ?? 0})',
+                          _rooms.contains(room),
+                          () => setState(() {
+                            final next = {..._rooms};
+                            if (!next.add(room)) next.remove(room);
+                            _rooms = next;
+                          }),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: _apply, child: const Text('Apply')),
+        ],
+      ),
     );
   }
 }
@@ -223,6 +537,7 @@ class _WorkshopRoom extends StatelessWidget {
     required this.flags,
     required this.onRoomChanged,
     required this.onMove,
+    required this.onOpen,
   });
 
   final String room;
@@ -235,6 +550,7 @@ class _WorkshopRoom extends StatelessWidget {
   )
   onRoomChanged;
   final Future<void> Function(Map<String, dynamic> row) onMove;
+  final Future<void> Function(Map<String, dynamic> row) onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -260,6 +576,7 @@ class _WorkshopRoom extends StatelessWidget {
               flags: flags,
               onRoomChanged: onRoomChanged,
               onMove: onMove,
+              onOpen: onOpen,
             ),
         ],
       ),
@@ -274,6 +591,7 @@ class _WorkshopItem extends StatelessWidget {
     required this.flags,
     required this.onRoomChanged,
     required this.onMove,
+    required this.onOpen,
   });
 
   final Map<String, dynamic> row;
@@ -286,6 +604,7 @@ class _WorkshopItem extends StatelessWidget {
   )
   onRoomChanged;
   final Future<void> Function(Map<String, dynamic> row) onMove;
+  final Future<void> Function(Map<String, dynamic> row) onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -305,7 +624,7 @@ class _WorkshopItem extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       leading: CircleAvatar(child: Text(kindLabel(kind)[0])),
-      onTap: () => showOldItemForm(context, kind: kind, row: row),
+      onTap: () => onOpen(row),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

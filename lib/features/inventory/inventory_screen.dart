@@ -2234,9 +2234,10 @@ class _ItemDetails extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // always use the freshest copy so status and location refresh
-    // right after a return
+    // right after a return — both sides of the split, so an item opened
+    // from the Workshop or Branch page refreshes too
     final all = ref
-        .watch(inventoryProvider)
+        .watch(allItemsProvider)
         .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
     final item = all.firstWhere(
       (i) => i.key == this.item.key,
@@ -2255,7 +2256,7 @@ class _ItemDetails extends ConsumerWidget {
     final isAdmin = ref.watch(isAdminProvider);
     final myId = ref.read(authControllerProvider).currentUser?.id;
     final linked = ref
-        .watch(inventoryProvider)
+        .watch(allItemsProvider)
         .maybeWhen(
           data: (rows) => linkedItems(rows, item),
           orElse: () => const <InventoryItem>[],
@@ -2593,7 +2594,9 @@ class _ItemDetails extends ConsumerWidget {
       await returnToInventory(item);
       ref
         ..invalidate(allMovementsProvider)
-        ..invalidate(inventoryProvider);
+        ..invalidate(inventoryProvider)
+        ..invalidate(oldStockItemsProvider)
+        ..invalidate(flagsProvider);
       if (context.mounted) {
         showSnack(context, '${item.code} is back in inventory.');
       }
@@ -2771,6 +2774,7 @@ class _EditItemFormState extends ConsumerState<_EditItemForm> {
       await syncMissingFlag(item.kind, item.id, _status);
       ref
         ..invalidate(inventoryProvider)
+        ..invalidate(oldStockItemsProvider)
         ..invalidate(flagsProvider);
       if (!mounted) return;
       Navigator.pop(context);

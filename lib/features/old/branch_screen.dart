@@ -252,24 +252,6 @@ IconData _kindIcon(String kind) => switch (kind) {
   _ => Icons.settings_outlined,
 };
 
-InventoryItem _toItem(Map<String, dynamic> row) {
-  final kind = row['kind'] as String;
-  final date = '${row['acquisition_date'] ?? ''}';
-  return InventoryItem(
-    kind: kind,
-    id: row['id'] as int,
-    code: '${row[codeColumnFor(kind)] ?? ''}',
-    name: '${row[nameColumnFor(kind)] ?? ''}',
-    serial: '${row['serial_number'] ?? ''}',
-    status: '${row['status'] ?? ''}',
-    location: '${row['current_location'] ?? ''}',
-    date: date.isEmpty ? null : date,
-    assignedMachineId: row['assigned_machine_id'] is int
-        ? row['assigned_machine_id'] as int
-        : null,
-  );
-}
-
 /// One branch row, drawn exactly like the Inventory list: code on top,
 /// name · serial and the status chip below, the location on the right.
 class _BranchTile extends ConsumerWidget {
@@ -294,7 +276,7 @@ class _BranchTile extends ConsumerWidget {
       padding: EdgeInsets.only(bottom: 8, left: indented ? 32 : 0),
       child: AppCard(
         child: ListTile(
-          onTap: () => showItemDetails(context, ref, _toItem(row)),
+          onTap: () => showItemDetails(context, ref, itemFromRow(row)),
           leading: CircleAvatar(
             backgroundColor: context.colors.tintBlue,
             child: Icon(
