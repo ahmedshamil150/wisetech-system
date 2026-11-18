@@ -131,11 +131,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           data: (rows) => rows,
           orElse: () => const <InventoryItem>[],
         );
-    final allItems = ref.watch(allItemsProvider).maybeWhen(
-          data: (rows) => rows,
-          orElse: () => inventoryItems,
-        );
-    final batchByItem = _batchByItemFor(allItems);
+    // Only a batch-filtered view needs the imported stock. Watching it on
+    // every visit made the dashboard wait on 8,000 extra rows for numbers
+    // that never read them.
+    final allItems = _batch.isEmpty
+        ? inventoryItems
+        : ref.watch(allItemsProvider).maybeWhen(
+              data: (rows) => rows,
+              orElse: () => inventoryItems,
+            );
+    final batchByItem = _batch.isEmpty
+        ? const <String, String>{}
+        : _batchByItemFor(allItems);
     final batchRows = ref.watch(batchesProvider).maybeWhen(
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],

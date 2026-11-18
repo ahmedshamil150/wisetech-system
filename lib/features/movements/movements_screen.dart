@@ -230,6 +230,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             error: (error, _) => EmptyState(
               icon: Icons.error_outline,
               message: errorMessage(error),
+              onRetry: () => ref.invalidate(allMovementsProvider),
             ),
             data: (allRows) {
               // each item's own movement history decides whether a send

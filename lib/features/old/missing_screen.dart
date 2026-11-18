@@ -184,8 +184,11 @@ class _MissingList extends ConsumerWidget {
     );
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () => ref.invalidate(missingMachinesProvider),
+      ),
       data: (result) => OldTable(
         rows: result.rows,
         total: result.total,

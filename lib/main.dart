@@ -28,7 +28,16 @@ Future<void> main() async {
     url: Config.supabaseUrl,
     publishableKey: Config.supabaseAnonKey,
   );
-  runApp(const ProviderScope(child: UltrasoundInventoryApp()));
+  // No automatic provider retries: Riverpod's default keeps a failed load
+  // on its spinner while it retries in the background, so a dropped
+  // connection looked like a frozen app. Screens now time out after 45s
+  // and show a "Try again" button instead.
+  runApp(
+    ProviderScope(
+      retry: (_, _) => null,
+      child: const UltrasoundInventoryApp(),
+    ),
+  );
 }
 
 class UltrasoundInventoryApp extends ConsumerWidget {

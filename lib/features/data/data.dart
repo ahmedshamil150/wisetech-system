@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,17 +16,24 @@ SupabaseClient get _db => db;
 // the new side.
 // ---------------------------------------------------------------------------
 
-Future<Set<int>> _currentBatchIds() async {
-  final rows = await _db.from('batches').select('id, code');
+/// The batch codes the new side shows.
+const _kCurrentBatchCodes = <String>{
+  'BATCH-3',
+  'BATCH-PARTS',
+  'BATCH-LOCAL',
+  'BATCH-PHYSICAL-2026-11-12',
+};
+
+/// The ids of those batches. Derived from [batchesProvider] so the small
+/// batches table is read once per session instead of once more for every
+/// provider that needs the filter.
+final currentBatchIdsProvider = FutureProvider<Set<int>>((ref) async {
+  final rows = await ref.watch(batchesProvider.future);
   return {
     for (final row in rows)
-      if (row['code'] == 'BATCH-3' ||
-          row['code'] == 'BATCH-PARTS' ||
-          row['code'] == 'BATCH-LOCAL' ||
-          row['code'] == 'BATCH-PHYSICAL-2026-11-12')
-        row['id'] as int,
+      if (_kCurrentBatchCodes.contains(row['code'])) row['id'] as int,
   };
-}
+});
 
 /// Builds the `.or()` filter that keeps only rows in the current batches,
 /// or with no batch at all.
@@ -45,7 +54,31 @@ String errorMessage(Object error) {
     if (message.isNotEmpty) return message;
     return error.details?.toString() ?? 'The request failed.';
   }
+  if (error is SlowNetworkException) return error.toString();
   return error.toString();
+}
+
+/// A request that never came back. Without a deadline a dropped
+/// connection leaves a screen on its spinner for ever; this turns that
+/// into a message the member can act on.
+class SlowNetworkException implements Exception {
+  const SlowNetworkException();
+
+  @override
+  String toString() =>
+      'The server is taking too long to answer. Check the connection and try again.';
+}
+
+/// How long one screen's load may take before it is called failed.
+const _kLoadTimeout = Duration(seconds: 45);
+
+/// [future] with the deadline above, so a silent network stall surfaces.
+Future<T> withLoadTimeout<T>(Future<T> future) async {
+  try {
+    return await future.timeout(_kLoadTimeout);
+  } on TimeoutException {
+    throw const SlowNetworkException();
+  }
 }
 
 /// Raised when a movement, box move, repair or sale is attempted for an
@@ -573,12 +606,16 @@ List<InventoryItem> linkedItems(List<InventoryItem> items, InventoryItem item) {
 }
 
 final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
+  return withLoadTimeout(_loadInventory(ref));
+});
+
+Future<List<InventoryItem>> _loadInventory(Ref ref) async {
   const fields =
       'id, serial_number, status, current_location, acquisition_date, created_at, '
       'catalog_product_id, vendor_id, purchase_price, batches(code)';
   const linked = 'assigned_machine_id, ';
 
-  final batchIds = await _currentBatchIds();
+  final batchIds = await ref.watch(currentBatchIdsProvider.future);
   final batchFilter = _currentBatchOrFilter(batchIds);
 
   final pages = await Future.wait([
@@ -627,7 +664,7 @@ final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
     return byDate != 0 ? byDate : b.id.compareTo(a.id);
   });
   return items;
-});
+}
 
 /// Reads every row a select matches. PostgREST answers at most 1000
 /// rows per request, and the imported old stock is several times that —
@@ -676,7 +713,7 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
   const fields =
       'id, serial_number, status, current_location, acquisition_date, '
       'purchase_price, vendor_id';
-  final pages = await Future.wait([
+  final pages = await withLoadTimeout(Future.wait([
     fetchAllPages(
       () => _db
           .from('machines')
@@ -698,7 +735,7 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
           .eq('batch_id', kOldBatchId)
           .order('id', ascending: false),
     ),
-  ]);
+  ]));
   final machines = pages[0];
   final probes = pages[1];
   final printers = pages[2];
@@ -752,13 +789,44 @@ final allItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
   return [...results[0], ...results[1]];
 });
 
-/// `machine:12` -> label used by the movement list
+/// `machine:12` -> label used by the movement list.
+///
+/// Built from the current stock plus the items embedded in the movement
+/// rows themselves — the same text [labelsForItems] produces. Naming a
+/// movement no longer has to pull the whole imported stock (8,000 rows)
+/// into memory first.
 final itemLabelsProvider = Provider<Map<String, String>>((ref) {
   final items = ref
-      .watch(allItemsProvider)
+      .watch(inventoryProvider)
       .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
-  return labelsForItems(items);
+  final movements = ref.watch(allMovementsProvider).maybeWhen(
+        data: (rows) => rows,
+        orElse: () => const <Map<String, dynamic>>[],
+      );
+  return {...labelsForItems(items), ...labelsFromMovementRows(movements)};
 });
+
+/// Labels for the items the movement rows carry, read from the item embeds
+/// the movements query asks for. Skips a row whose item failed to embed.
+Map<String, String> labelsFromMovementRows(
+  List<Map<String, dynamic>> rows,
+) {
+  final labels = <String, String>{};
+  for (final row in rows) {
+    for (final kind in const ['machine', 'probe', 'printer', 'part']) {
+      final id = row['${kind}_id'];
+      if (id is! int) continue;
+      final item = row['${kind}s'];
+      if (item is! Map) continue;
+      final code = '${item[kind == 'machine' ? 'machine_id' : 'internal_id'] ?? ''}';
+      final name = '${item[kind == 'printer' || kind == 'part' ? 'name_model' : 'model'] ?? ''}';
+      final serial = '${item['serial_number'] ?? ''}';
+      labels['$kind:$id'] =
+          serial.isEmpty ? '$code  $name' : '$code  $name · $serial';
+    }
+  }
+  return labels;
+}
 
 /// The `kind:id` -> "CODE  name" map the movement list and the sales
 /// screen read item names from.
@@ -778,7 +846,7 @@ final allMovementsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   // past 1,000 rows PostgREST would truncate the list silently
-  final rows = await fetchAllPages(
+  final rows = await withLoadTimeout(fetchAllPages(
     () => _db
         .from('movements')
         .select(
@@ -786,11 +854,17 @@ final allMovementsProvider = FutureProvider<List<Map<String, dynamic>>>((
           'reason, notes, reference, is_demo, paid, sale_amount, sold_by, created_at, actor_id, machine_id, '
           'probe_id, printer_id, part_id, dealer_id, customer_id, workshop_id, old_source_id, '
           'dealers(name), customers(name), '
-          'workshops(name), profiles(display_name, username)',
+          'workshops(name), profiles(display_name, username), '
+          // the item itself, so a label can be read without loading the
+          // whole old stock (8,000 rows) just to name a movement
+          'machines(machine_id, model, serial_number), '
+          'probes(internal_id, model, serial_number), '
+          'printers(internal_id, name_model, serial_number), '
+          'parts(internal_id, name_model, serial_number)',
         )
         .neq('movement_type', 'Legacy')
         .order('id', ascending: false),
-  );
+  ));
   rows.sort((a, b) {
     final byDate = (_parseDate(b['movement_date']) ?? DateTime(0)).compareTo(
       _parseDate(a['movement_date']) ?? DateTime(0),
@@ -973,14 +1047,29 @@ Future<void> _updateSend(
 // ---------------------------------------------------------------------------
 
 final flagsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final rows = await _db
-      .from('flags')
-      .select(
-        'id, item_kind, item_id, movement_id, repair_id, group_ref, '
-        'color, note, created_by, created_at',
-      )
-      .order('id', ascending: false);
+  // flags pass 2,500 rows: a plain select silently stops at 1,000, which
+  // would hide every older Missing / room flag as new ones arrive
+  final rows = await withLoadTimeout(fetchAllPages(
+    () => _db
+        .from('flags')
+        .select(
+          'id, item_kind, item_id, movement_id, repair_id, group_ref, '
+          'color, note, created_by, created_at',
+        )
+        .order('id', ascending: false),
+  ));
   return rows;
+});
+
+/// Every flag of every target, built once per flags change. Tiles and dots
+/// read this instead of rebuilding the whole index for each row.
+final flagIndexProvider =
+    Provider<Map<String, List<Map<String, dynamic>>>>((ref) {
+  final flags = ref.watch(flagsProvider).maybeWhen(
+        data: (value) => value,
+        orElse: () => const <Map<String, dynamic>>[],
+      );
+  return flagIndex(flags);
 });
 
 /// The reusable flag library: a description + color, defined once in
@@ -1348,6 +1437,9 @@ Future<void> refreshAll(WidgetRef ref) async {
     for (final future in <Future<Object?>>[
       ref.refresh(inventoryProvider.future),
       ref.refresh(allMovementsProvider.future),
+      // flags carry Missing / room state — a pull-to-refresh that leaves
+      // them stale shows a machine in the wrong room or back from the dead
+      ref.refresh(flagsProvider.future),
       ref.refresh(productsProvider.future),
       ref.refresh(brandsProvider.future),
       ref.refresh(customersProvider.future),
@@ -1366,7 +1458,7 @@ Future<void> refreshAll(WidgetRef ref) async {
 
 /// Repairs: every member can view and update them (see 0005_repairs.sql).
 final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final rows = await _db
+  final rows = await withLoadTimeout(_db
       .from('repair_jobs')
       .select(
         'id, job_number, received_at, problem_description, repair_notes, '
@@ -1377,7 +1469,7 @@ final repairsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
         'repair_items(id, equipment_type, name_model, serial_number, quantity), '
         'profiles:actor_id(display_name, username)',
       )
-      .order('id', ascending: false);
+      .order('id', ascending: false));
   return rows;
 });
 

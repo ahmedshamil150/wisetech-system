@@ -258,7 +258,16 @@ class _OldMovementFormState extends ConsumerState<_OldMovementForm> {
   Widget build(BuildContext context) {
     final labels = ref.watch(itemLabelsProvider);
     final key = _itemKey;
-    final itemLabel = key == null ? null : labels[key];
+    var itemLabel = key == null ? null : labels[key];
+    if (itemLabel == null && key != null) {
+      // imported movements point at the old stock, which the movement list
+      // no longer pulls in on every visit — load it only for this sheet
+      final oldItems = ref.watch(oldStockItemsProvider).maybeWhen(
+            data: (rows) => rows,
+            orElse: () => const <InventoryItem>[],
+          );
+      itemLabel = labelsForItems(oldItems)[key];
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(

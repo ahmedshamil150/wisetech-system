@@ -15,7 +15,7 @@ final allSalesProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   // past 1,000 rows PostgREST would truncate the sales list silently
-  final rows = await fetchAllPages(
+  final rows = await withLoadTimeout(fetchAllPages(
     () => db
         .from('sales')
         .select(
@@ -25,7 +25,7 @@ final allSalesProvider = FutureProvider<List<Map<String, dynamic>>>((
           'is_main_item, machine_id, probe_id, printer_id, part_id)',
         )
         .order('id', ascending: false),
-  );
+  ));
   return rows;
 });
 
@@ -477,6 +477,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             error: (error, _) => EmptyState(
               icon: Icons.error_outline,
               message: errorMessage(error),
+              onRetry: () => ref.invalidate(allSalesProvider),
             ),
             data: (saleRows) {
               final entries = _entriesFor(saleRows, movements, labels);

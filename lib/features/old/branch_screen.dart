@@ -164,6 +164,7 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
               ? EmptyState(
                   icon: Icons.error_outline,
                   message: errorMessage(async.error!),
+                  onRetry: () => ref.invalidate(branchItemsProvider),
                 )
               : rows.isEmpty
               ? const EmptyState(

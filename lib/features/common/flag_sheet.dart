@@ -41,9 +41,8 @@ class FlagDot extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final flags = ref.watch(flagsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final onTarget = flagIndex(flags)[targetKey] ?? const [];
+    final onTarget =
+        ref.watch(flagIndexProvider)[targetKey] ?? const [];
     if (onTarget.isEmpty) return const SizedBox.shrink();
     return Tooltip(
       message: flagLabel(onTarget),
@@ -129,9 +128,7 @@ class BoxFlagDot extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(inventoryProvider).maybeWhen(
         data: (rows) => rows, orElse: () => const <InventoryItem>[]);
-    final flags = ref.watch(flagsProvider).maybeWhen(
-        data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final index = flagIndex(flags);
+    final index = ref.watch(flagIndexProvider);
     for (final item in items) {
       if (item.kind != 'probe' || item.boxId != boxId) continue;
       final onItem = index[flagItemKey(item.kind, item.id)] ?? const [];
@@ -263,9 +260,8 @@ class _FlagSheetState extends ConsumerState<_FlagSheet> {
     final scheme = Theme.of(context).colorScheme;
     final defs = ref.watch(flagDefsProvider).maybeWhen(
         data: (value) => value, orElse: () => const <Map<String, dynamic>>[]);
-    final existing = ref.watch(flagsProvider).maybeWhen(
-            data: (value) => flagIndex(value)[flagKeyOf(widget.target)] ?? const [],
-            orElse: () => const <Map<String, dynamic>>[]);
+    final existing =
+        ref.watch(flagIndexProvider)[flagKeyOf(widget.target)] ?? const [];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(

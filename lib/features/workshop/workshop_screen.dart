@@ -345,6 +345,7 @@ class _WorkshopScreenState extends ConsumerState<WorkshopScreen> {
               ? EmptyState(
                   icon: Icons.error_outline,
                   message: errorMessage(async.error!),
+                  onRetry: () => ref.invalidate(workshopItemsProvider),
                 )
               : visible.isEmpty
               ? const EmptyState(

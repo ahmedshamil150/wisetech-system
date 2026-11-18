@@ -168,7 +168,8 @@ class _RepairsScreenState extends ConsumerState<RepairsScreen> {
                       const Center(child: CircularProgressIndicator()),
                   error: (error, _) => EmptyState(
                       icon: Icons.error_outline,
-                      message: errorMessage(error)),
+                      message: errorMessage(error),
+                      onRetry: () => ref.invalidate(repairsProvider)),
                   data: (rows) {
                     final filtered = filterRepairJobs(
                       rows,

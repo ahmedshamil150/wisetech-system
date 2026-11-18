@@ -160,8 +160,11 @@ class _ProductsPane extends ConsumerWidget {
     final isAdmin = ref.watch(isAdminProvider);
     return products.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () => ref.invalidate(productsProvider),
+      ),
       data: (rows) {
         final filtered = rows.where((row) {
           if (query.isEmpty) return true;
@@ -279,8 +282,11 @@ class _BrandsPane extends ConsumerWidget {
     final isAdmin = ref.watch(isAdminProvider);
     return brands.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () => ref.invalidate(brandsProvider),
+      ),
       data: (rows) {
         final filtered = rows
             .where((row) =>
@@ -386,8 +392,11 @@ class _PeoplePane extends ConsumerWidget {
     final kind = table == 'customers' ? 'customer' : 'dealer';
     return rows.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () => ref.invalidate(provider),
+      ),
       data: (records) {
         final filtered = records.where((row) {
           if (query.isEmpty) return true;
@@ -558,8 +567,15 @@ class _SalesSheet extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: sales.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+        error: (error, _) => EmptyState(
+          icon: Icons.error_outline,
+          message: errorMessage(error),
+          onRetry: () => ref.invalidate(
+            kind == 'dealer'
+                ? dealerSalesProvider(name)
+                : customerSalesProvider(name),
+          ),
+        ),
         data: (rows) {
           if (rows.isEmpty) {
             return EmptyState(
@@ -644,8 +660,14 @@ class _BatchesPane extends ConsumerWidget {
 
     return batches.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () {
+          ref.invalidate(batchesProvider);
+          ref.invalidate(currentBatchProvider);
+        },
+      ),
       data: (rows) {
         final currentId = current.maybeWhen(
           data: (row) => row?['id'],
@@ -795,8 +817,11 @@ class _BoxesPane extends ConsumerWidget {
 
     return boxes.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () => ref.invalidate(probeBoxesProvider),
+      ),
       data: (rows) {
         final filtered = rows.where((row) {
           if (query.isEmpty) return true;
@@ -919,8 +944,11 @@ class _FlagsPane extends ConsumerWidget {
 
     return defs.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () => ref.invalidate(flagDefsProvider),
+      ),
       data: (rows) {
         final filtered = rows.where((row) {
           if (query.isEmpty) return true;

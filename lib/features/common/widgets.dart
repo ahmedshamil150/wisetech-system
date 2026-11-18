@@ -165,10 +165,19 @@ class SendKindGrid extends StatelessWidget {
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.message});
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.message,
+    this.onRetry,
+  });
 
   final IconData icon;
   final String message;
+
+  /// When set, a "Try again" button appears under the message — a load
+  /// that failed or timed out can be retried without leaving the page.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -184,6 +193,14 @@ class EmptyState extends StatelessWidget {
             Text(message,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14)),
+            if (onRetry != null) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ],
           ],
         ),
       ),

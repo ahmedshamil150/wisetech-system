@@ -280,22 +280,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return tallied;
   }
 
-  List<Map<String, dynamic>>? _flagSource;
-  Map<String, List<Map<String, dynamic>>> _flagCache = const {};
-
-  Map<String, List<Map<String, dynamic>>> _flagIndex() {
-    final flags = ref
-        .read(flagsProvider)
-        .maybeWhen(
-          data: (value) => value,
-          orElse: () => const <Map<String, dynamic>>[],
-        );
-    if (!identical(flags, _flagSource)) {
-      _flagSource = flags;
-      _flagCache = flagIndex(flags);
-    }
-    return _flagCache;
-  }
+  /// The flag index, built once per flags change by [flagIndexProvider] —
+  /// a per-row rebuild of 2,500 flags on every tile was the old cost.
+  Map<String, List<Map<String, dynamic>>> _flagIndex() =>
+      ref.read(flagIndexProvider);
 
   /// The admin-flag filter: any flag, one saved description, or one
   /// exact color for flags that carry no description. One item may
@@ -774,6 +762,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         error: (error, _) => EmptyState(
                           icon: Icons.error_outline,
                           message: errorMessage(error),
+                          onRetry: () => ref.invalidate(inventoryProvider),
                         ),
                         data: (rows) {
                           final entries = arrangeAsKits(
@@ -853,8 +842,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
     return boxes.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          EmptyState(icon: Icons.error_outline, message: errorMessage(error)),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline,
+        message: errorMessage(error),
+        onRetry: () {
+          ref.invalidate(probeBoxesProvider);
+          ref.invalidate(inventoryProvider);
+        },
+      ),
       data: (rows) {
         // Searching a serial or model shows the probe itself right here —
         // no need to open each box to find it.
