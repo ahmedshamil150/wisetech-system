@@ -83,7 +83,17 @@ class OldItemTile extends ConsumerWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  StatusChip(status: '${row['status'] ?? ''}'),
+                  StatusChip(
+                    status: displayStatusFor(
+                      kind: kind,
+                      status: '${row['status'] ?? ''}',
+                      location: '${row['current_location'] ?? ''}',
+                      assignedMachineId: row['assigned_machine_id'] is int
+                          ? row['assigned_machine_id'] as int
+                          : null,
+                      boxId: row['box_id'] is int ? row['box_id'] as int : null,
+                    ),
+                  ),
                   const SizedBox(width: 6),
                   FlagDot(targetKey: flagItemKey(kind, id)),
                   const SizedBox(width: 8),

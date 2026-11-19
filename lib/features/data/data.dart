@@ -262,6 +262,51 @@ class InventoryItem {
   };
 
   bool get isSold => status == 'Sold';
+
+  /// The status a person should read for this item. A probe/printer/part
+  /// takes its status from where it physically is: on a machine it reads
+  /// With Machine, in a box or free in the company it reads In Stock.
+  /// Genuine outbound sends keep their status, and Sold / Archived always
+  /// win. This stops a free probe from showing a stale With Machine or
+  /// With Customer while it sits on the shelf.
+  String get displayStatus => displayStatusFor(
+    kind: kind,
+    status: status,
+    location: location,
+    assignedMachineId: assignedMachineId,
+    boxId: boxId,
+  );
+}
+
+/// Shared version of [InventoryItem.displayStatus] for the old-data rows,
+/// which are plain maps rather than [InventoryItem]s.
+String displayStatusFor({
+  required String kind,
+  required String status,
+  required String location,
+  int? assignedMachineId,
+  int? boxId,
+}) {
+  if (status == 'Sold' || status == 'Archived') return status;
+  if (kind == 'probe' || kind == 'printer' || kind == 'part') {
+    if (boxId != null) return 'In Stock';
+    const outbound = {
+      'With Customer',
+      'With Dealer',
+      'With Branch',
+      'With Workshop',
+    };
+    if (outbound.contains(status)) {
+      final place = location.trim().toUpperCase();
+      // a probe sent out on its own keeps its outbound status even when a
+      // stale machine link is left behind; a send with no real destination
+      // recorded is not out — it is stock
+      if (place.isNotEmpty && place != 'COMPANY') return status;
+    }
+    if (assignedMachineId != null) return 'With Machine';
+    return 'In Stock';
+  }
+  return status;
 }
 
 /// Whether a location means the basement. Basement stock is kept off the
@@ -313,6 +358,14 @@ bool isBoxMovement(Map<String, dynamic> row) {
   return type == 'Box' || type == 'Unbox';
 }
 
+/// Placement events written when a probe is attached to, detached from or
+/// freed from a machine. They belong to the item's history only, not to
+/// the Movements send list.
+bool isPlacementMovement(Map<String, dynamic> row) {
+  final type = (row['movement_type'] ?? '').toString();
+  return type == 'Attach' || type == 'Detach' || type == 'Placement';
+}
+
 /// "Placed in box X" / "Took out of box X" / "Sent to X" — the title a
 /// movement row gets in an item's history list.
 String movementTitle(Map<String, dynamic> row) {
@@ -322,6 +375,9 @@ String movementTitle(Map<String, dynamic> row) {
   if (type == 'Return') return 'Returned to $to';
   if (type == 'Box') return 'Placed in box $to';
   if (type == 'Unbox') return 'Took out of box ${from.isEmpty ? '' : from}';
+  if (type == 'Attach') return 'Attached to machine at $to';
+  if (type == 'Detach') return 'Detached from its machine';
+  if (type == 'Placement') return 'Placed in stock';
   if ('${row['reason'] ?? ''}'.contains('Sold')) return 'Sold to $to';
   return 'Sent to $to';
 }
@@ -906,7 +962,8 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((
     for (final row in rows)
       if (!isOldSideImport(row) &&
           !isOldSideMovement(row) &&
-          !isBoxMovement(row))
+          !isBoxMovement(row) &&
+          !isPlacementMovement(row))
         row,
   ];
 });
@@ -1720,9 +1777,9 @@ Future<void> takeProbeOutOfBox(InventoryItem probe) async {
   });
 }
 
-/// Takes a boxed probe straight onto a machine: it leaves the box, becomes
-/// With Machine at the machine's location, and an 'Unbox' movement records
-/// the move from the box to the machine.
+/// Puts a probe onto a machine — from the box, a shelf, or another
+/// machine. The box link is cleared, the probe becomes With Machine at
+/// the machine's location, and an 'Attach' movement records the change.
 Future<void> attachProbeToMachine(
   InventoryItem probe,
   InventoryItem machine,
@@ -1744,12 +1801,72 @@ Future<void> attachProbeToMachine(
       })
       .eq('id', probe.id);
   await _db.from('movements').insert({
-    'movement_type': 'Unbox',
+    'movement_type': 'Attach',
     'movement_date': movementToday(),
     'probe_id': probe.id,
     'from_location': from,
     'to_location': to,
     'notes': 'Attached to ${machine.code}',
+    'actor_id': _db.auth.currentUser?.id,
+  });
+}
+
+/// Takes a probe off its machine and leaves it free in company stock.
+/// The machine link is cleared, the status becomes Available and a
+/// 'Detach' movement keeps the change in the probe's history.
+Future<void> detachProbeFromMachine(InventoryItem probe) async {
+  if (await isItemMissing('probe', probe.id)) {
+    throw ItemMissingException(
+      '${probe.code} is marked Missing — mark it found before moving it.',
+    );
+  }
+  final from = probe.location;
+  await _db
+      .from('probes')
+      .update({
+        'assigned_machine_id': null,
+        'box_id': null,
+        'status': 'Available',
+        'current_location': defaultLocationFor('Available'),
+      })
+      .eq('id', probe.id);
+  await _db.from('movements').insert({
+    'movement_type': 'Detach',
+    'movement_date': movementToday(),
+    'probe_id': probe.id,
+    'from_location': from,
+    'to_location': defaultLocationFor('Available'),
+    'notes': 'Taken off its machine',
+    'actor_id': _db.auth.currentUser?.id,
+  });
+}
+
+/// Leaves a probe free in company stock — not on a machine and not in a
+/// box. Used after a return when the probe is back on the shelf.
+Future<void> placeProbeInStock(InventoryItem probe) async {
+  if (await isItemMissing('probe', probe.id)) {
+    throw ItemMissingException(
+      '${probe.code} is marked Missing — mark it found before moving it.',
+    );
+  }
+  final from = probe.location;
+  final to = defaultLocationFor('Available');
+  await _db
+      .from('probes')
+      .update({
+        'assigned_machine_id': null,
+        'box_id': null,
+        'status': 'Available',
+        'current_location': to,
+      })
+      .eq('id', probe.id);
+  await _db.from('movements').insert({
+    'movement_type': 'Placement',
+    'movement_date': movementToday(),
+    'probe_id': probe.id,
+    'from_location': from,
+    'to_location': to,
+    'notes': 'Placed free in stock',
     'actor_id': _db.auth.currentUser?.id,
   });
 }

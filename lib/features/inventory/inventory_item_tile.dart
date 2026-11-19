@@ -59,7 +59,7 @@ class InventoryItemTile extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  StatusChip(status: item.status),
+                  StatusChip(status: item.displayStatus),
                   if (item.kind == 'probe') ...[
                     const SizedBox(width: 6),
                     _probeBadge(context, item),
@@ -104,11 +104,17 @@ IconData inventoryKindIcon(String kind) => switch (kind) {
 };
 
 Widget _probeBadge(BuildContext context, InventoryItem item) {
-  final (label, color) = item.boxId != null
-      ? ('In box', context.colors.tintBlue)
-      : item.assignedMachineId != null
+  // The badge says where the probe physically is, and only that. The
+  // status chip carries outbound statuses, so a free probe never shows
+  // "With Customer" next to "In stock".
+  final (label, color) = item.displayStatus == 'With Machine'
       ? ('With machine', Theme.of(context).colorScheme.primary)
-      : ('In stock', context.colors.success);
+      : item.boxId != null
+      ? ('In box', context.colors.tintBlue)
+      : (item.displayStatus == 'In Stock'
+            ? ('In stock', context.colors.success)
+            : ('', context.colors.success));
+  if (label.isEmpty) return const SizedBox.shrink();
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     decoration: BoxDecoration(

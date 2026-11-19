@@ -11,6 +11,7 @@ import '../old/move_item_sheet.dart' show showMoveItemSheet;
 import '../records/records_screen.dart';
 import 'inventory_item_tile.dart';
 import 'local_purchase_form.dart';
+import 'probe_placement_sheet.dart';
 import 'stock_group_screen.dart';
 import '../../core/layout.dart';
 
@@ -406,10 +407,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   bool _matchesStatus(InventoryItem item) => switch (_status) {
     'All' => true,
     'In Stock' =>
-      item.status == 'In Stock' ||
-          item.status == 'Available' ||
-          _isPhysicalStockMachine(item),
-    _ => item.status == _status,
+      item.displayStatus == 'In Stock' || _isPhysicalStockMachine(item),
+    _ => item.displayStatus == _status,
   };
 
   /// Numbers for the type chips — counted after the status filter and
@@ -2249,6 +2248,7 @@ class _ItemDetails extends ConsumerWidget {
     );
     final canReturn =
         !isMissing &&
+        item.displayStatus != 'In Stock' &&
         history.isNotEmpty &&
         history.first['movement_type'] != 'Return';
     // A moved part belongs to whichever side its latest movement sits on.
@@ -2271,7 +2271,7 @@ class _ItemDetails extends ConsumerWidget {
                 ),
               ),
             ),
-            StatusChip(status: item.status),
+            StatusChip(status: item.displayStatus),
           ],
         ),
         Text(
@@ -2421,6 +2421,53 @@ class _ItemDetails extends ConsumerWidget {
               icon: const Icon(Icons.cable_outlined, size: 18),
               label: const Text('Add probe to this purchase'),
             ),
+          ],
+          if (item.kind == 'probe') ...[
+            const SizedBox(height: 8),
+            if (item.displayStatus != 'With Machine')
+              OutlinedButton.icon(
+                onPressed: () => showProbeAttachSheet(context, ref, item),
+                icon: const Icon(Icons.link, size: 18),
+                label: const Text('Attach to machine'),
+              )
+            else ...[
+              OutlinedButton.icon(
+                onPressed: () => showProbeAttachSheet(context, ref, item),
+                icon: const Icon(Icons.swap_horiz, size: 18),
+                label: const Text('Change machine'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => detachProbe(context, ref, item),
+                icon: const Icon(Icons.link_off, size: 18),
+                label: const Text('Detach from machine'),
+              ),
+            ],
+            const SizedBox(height: 8),
+            if (item.boxId == null)
+              OutlinedButton.icon(
+                onPressed: () => showProbeBoxPicker(context, ref, item),
+                icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                label: const Text('Put in a box'),
+              )
+            else
+              OutlinedButton.icon(
+                onPressed: () async {
+                  try {
+                    await takeProbeOutOfBox(item);
+                    refreshProbePlacement(ref);
+                    if (context.mounted) {
+                      showSnack(context, '${item.code} taken out of its box.');
+                    }
+                  } catch (error) {
+                    if (context.mounted) {
+                      showSnack(context, errorMessage(error), error: true);
+                    }
+                  }
+                },
+                icon: const Icon(Icons.archive_outlined, size: 18),
+                label: const Text('Take out of the box'),
+              ),
           ],
         ],
         if (canReturn) ...[
@@ -2599,9 +2646,14 @@ class _ItemDetails extends ConsumerWidget {
         ..invalidate(allMovementsProvider)
         ..invalidate(inventoryProvider)
         ..invalidate(oldStockItemsProvider)
+        ..invalidate(allItemsProvider)
         ..invalidate(flagsProvider);
-      if (context.mounted) {
-        showSnack(context, '${item.code} is back in inventory.');
+      if (!context.mounted) return;
+      showSnack(context, '${item.code} is back in inventory.');
+      // A probe's status must match where it physically is now: ask for
+      // the box, machine or free shelf it landed on.
+      if (item.kind == 'probe') {
+        await showProbePlacementSheet(context, ref, item);
       }
     } catch (error) {
       if (context.mounted) showSnack(context, errorMessage(error), error: true);

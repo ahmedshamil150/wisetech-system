@@ -9,6 +9,7 @@ import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
 import '../inventory/inventory_screen.dart';
+import '../inventory/probe_placement_sheet.dart';
 import '../../core/layout.dart';
 
 /// Every recorded move, newest first.
@@ -1092,6 +1093,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     }
 
     var count = 0;
+    final returned = <InventoryItem>[];
     String? failure;
     try {
       for (final row in rows) {
@@ -1108,6 +1110,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         }
         if (item == null) continue;
         await returnToInventory(item);
+        returned.add(item);
         count++;
       }
     } catch (error) {
@@ -1116,6 +1119,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
       ref.invalidate(oldStockItemsProvider);
+      ref.invalidate(allItemsProvider);
     }
     if (!mounted) return;
     showSnack(
@@ -1126,6 +1130,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
               : '$count item${count == 1 ? '' : 's'} back in inventory.'),
       error: failure != null,
     );
+    // a returned probe still has to say where it is: box, machine or shelf
+    if (failure == null && returned.length == 1 && returned.single.kind == 'probe') {
+      await showProbePlacementSheet(context, ref, returned.single);
+    }
   }
 
   /// Adds an item to an open send: the new row joins the same group —
@@ -2490,6 +2498,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     var count = 0;
+    final returned = <InventoryItem>[];
     String? failure;
     try {
       for (final row in widget.rows) {
@@ -2503,6 +2512,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
           date: _date.text.trim(),
           notes: _notes.text.trim(),
         );
+        returned.add(item);
         count++;
       }
     } catch (error) {
@@ -2511,8 +2521,14 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
       ref.invalidate(allMovementsProvider);
       ref.invalidate(inventoryProvider);
       ref.invalidate(oldStockItemsProvider);
+      ref.invalidate(allItemsProvider);
     }
     if (!mounted) return;
+    // one probe came back: ask where it sits before closing the sheet
+    if (failure == null && returned.length == 1 && returned.single.kind == 'probe') {
+      await showProbePlacementSheet(context, ref, returned.single);
+      if (!mounted) return;
+    }
     Navigator.pop(context);
     messenger.showSnackBar(
       SnackBar(
