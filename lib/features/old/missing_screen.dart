@@ -286,12 +286,7 @@ class _MissingTile extends ConsumerWidget {
   }
 
   Future<void> _openFoundSheet(BuildContext context, WidgetRef ref) async {
-    final moved = await showAppSheet<bool>(
-      context: context,
-      title: 'I found this item',
-      heightFraction: 0.7,
-      builder: (_) => _FoundSheet(row: row),
-    );
+    final moved = await showFoundItemSheet(context, row);
     if (moved != true) return;
     ref
       ..invalidate(flagsProvider)
@@ -309,19 +304,33 @@ class _MissingTile extends ConsumerWidget {
   }
 }
 
+/// Opens the "I found this item" sheet for one missing row. Returns true
+/// when the item was sent somewhere and its Missing flag was cleared.
+Future<bool?> showFoundItemSheet(
+  BuildContext context,
+  Map<String, dynamic> row,
+) {
+  return showAppSheet<bool>(
+    context: context,
+    title: 'I found this item',
+    heightFraction: 0.7,
+    builder: (_) => FoundItemSheet(row: row),
+  );
+}
+
 /// The sheet behind the check button: pick where the found item goes —
 /// Workshop, Branch, Dealer or Customer — name the party when needed,
 /// and one button records the send and clears the Missing flag.
-class _FoundSheet extends ConsumerStatefulWidget {
-  const _FoundSheet({required this.row});
+class FoundItemSheet extends ConsumerStatefulWidget {
+  const FoundItemSheet({super.key, required this.row});
 
   final Map<String, dynamic> row;
 
   @override
-  ConsumerState<_FoundSheet> createState() => _FoundSheetState();
+  ConsumerState<FoundItemSheet> createState() => _FoundSheetState();
 }
 
-class _FoundSheetState extends ConsumerState<_FoundSheet> {
+class _FoundSheetState extends ConsumerState<FoundItemSheet> {
   String _kind = 'Workshop';
   final _target = TextEditingController();
   bool _saving = false;

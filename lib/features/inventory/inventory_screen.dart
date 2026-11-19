@@ -6,8 +6,12 @@ import '../common/flag_sheet.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import '../old/missing_screen.dart' show showFoundItemSheet;
+import '../old/move_item_sheet.dart' show showMoveItemSheet;
 import '../records/records_screen.dart';
+import 'inventory_item_tile.dart';
 import 'local_purchase_form.dart';
+import 'stock_group_screen.dart';
 import '../../core/layout.dart';
 
 /// Full list of machines, probes, printers and parts, newest first.
@@ -790,6 +794,18 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         },
                       ),
               ),
+              // Bottom-left: the same item list, narrowed to the workshop,
+              // the missing stock or the basement.
+              Positioned(
+                left: 16,
+                bottom: 16,
+                child: AppFab(
+                  tooltip: 'Workshop, missing and basement',
+                  icon: Icons.layers_outlined,
+                  secondary: true,
+                  onPressed: () => _showGroupMenu(context),
+                ),
+              ),
               // two new records live here: stock added to inventory, and
               // stock bought locally from a seller
               if (isAdmin && _type != 'Boxes')
@@ -830,6 +846,56 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Opens the chooser behind the bottom-left button: Workshop, Missing
+  /// or Basement. Each one opens the same list layout and the same details
+  /// actions as Inventory, just narrowed to that group.
+  Future<void> _showGroupMenu(BuildContext context) async {
+    final group = await showModalBottomSheet<StockGroup>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Other stock lists',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                'Same items and actions as Inventory — just another group.',
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.handyman_outlined),
+              title: const Text('Workshop items'),
+              subtitle: const Text('Everything sent to the workshop'),
+              onTap: () => Navigator.pop(sheetContext, StockGroup.workshop),
+            ),
+            ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: const Text('Missing items'),
+              subtitle: const Text('Everything flagged Missing'),
+              onTap: () => Navigator.pop(sheetContext, StockGroup.missing),
+            ),
+            ListTile(
+              leading: const Icon(Icons.stairs_outlined),
+              title: const Text('Basement items'),
+              subtitle: const Text('Machines and kits kept downstairs'),
+              onTap: () => Navigator.pop(sheetContext, StockGroup.basement),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (group == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => StockGroupScreen(group: group)),
     );
   }
 
@@ -925,112 +991,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     InventoryItem item, {
     bool indented = false,
   }) {
-    final icon = _kindIcon(item.kind);
-    final phone = isPhoneLayout(context);
-    return Padding(
-      padding: EdgeInsets.only(bottom: 8, left: indented ? 32 : 0),
-      child: AppCard(
-        child: ListTile(
-          onTap: () => showItemDetails(context, ref, item),
-          leading: CircleAvatar(
-            backgroundColor: context.colors.tintBlue,
-            child: Icon(icon, color: Theme.of(context).colorScheme.primary),
-          ),
-          title: Text(
-            item.code.isNotEmpty ? item.code : (item.serial ?? item.title),
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: phone ? 13.5 : 14,
-            ),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(item.title, style: TextStyle(fontSize: phone ? 12 : 13)),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  StatusChip(status: item.status),
-                  if (item.kind == 'probe') ...[
-                    const SizedBox(width: 6),
-                    _probeBadge(context, item),
-                  ],
-                  if (item.kind == 'part' && _partIsMoved(item)) ...[
-                    const SizedBox(width: 6),
-                    _movedBadge(context),
-                  ],
-                  if (item.needsReview) ...[
-                    const SizedBox(width: 6),
-                    _reviewDot(context, item),
-                  ],
-                  const SizedBox(width: 6),
-                  FlagDot(targetKey: flagItemKey(item.kind, item.id)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '${item.location}${item.date == null ? '' : ' · ${item.date}'}',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: phone ? 11.5 : 12,
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          trailing: const Icon(Icons.chevron_right, size: 20),
-        ),
-      ),
-    );
-  }
-
-  Widget _probeBadge(BuildContext context, InventoryItem item) {
-    final (label, color) = item.boxId != null
-        ? ('In box', context.colors.tintBlue)
-        : item.assignedMachineId != null
-        ? ('With machine', Theme.of(context).colorScheme.primary)
-        : ('In stock', context.colors.success);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  /// A part is moved once it left the company — sold or sitting with a
-  /// dealer/customer. Those stay in the list so history stays reachable.
-  bool _partIsMoved(InventoryItem item) =>
-      item.status != 'Available' && item.status != 'In Stock';
-
-  /// Small red pill marking a part that has left the company.
-  Widget _movedBadge(BuildContext context) {
-    final color = Theme.of(context).colorScheme.error;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        'Moved',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
+    return InventoryItemTile(
+      item: item,
+      indented: indented,
+      onTap: () => showItemDetails(context, ref, item),
     );
   }
 }
@@ -2246,8 +2210,6 @@ class _ItemDetails extends ConsumerWidget {
         )
         .where((row) => row['${item.kind}_id'] == item.id)
         .toList();
-    final canReturn =
-        history.isNotEmpty && history.first['movement_type'] != 'Return';
     final isAdmin = ref.watch(isAdminProvider);
     final myId = ref.read(authControllerProvider).currentUser?.id;
     final linked = ref
@@ -2282,6 +2244,13 @@ class _ItemDetails extends ConsumerWidget {
         );
     final itemFlags =
         flagIndex(flags)[flagItemKey(item.kind, item.id)] ?? const [];
+    final isMissing = itemFlags.any(
+      (flag) => '${flag['note'] ?? ''}'.trim() == 'Missing',
+    );
+    final canReturn =
+        !isMissing &&
+        history.isNotEmpty &&
+        history.first['movement_type'] != 'Return';
     // A moved part belongs to whichever side its latest movement sits on.
     String? partSide;
     if (item.kind == 'part' && history.isNotEmpty) {
@@ -2410,6 +2379,23 @@ class _ItemDetails extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          if (isMissing)
+            FilledButton.tonalIcon(
+              onPressed: () => _foundItem(context, ref),
+              icon: const Icon(Icons.task_alt, size: 18),
+              label: const Text('I found this item'),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: () => showMoveItemSheet(context, ref, item),
+              icon: const Icon(Icons.swap_horiz, size: 18),
+              label: Text(
+                isBasementLocation(item.location)
+                    ? 'Move out of basement'
+                    : 'Move to basement / workshop',
+              ),
+            ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () => showFlagSheet(
@@ -2563,6 +2549,28 @@ class _ItemDetails extends ConsumerWidget {
           ),
       ],
     );
+  }
+
+  /// Opens the same "I found this item" sheet the Missing page uses. The
+  /// Missing flag is cleared by that flow, so the item leaves the list.
+  Future<void> _foundItem(BuildContext context, WidgetRef ref) async {
+    final moved = await showFoundItemSheet(context, {
+      'kind': item.kind,
+      'id': item.id,
+      'code': item.code,
+      'name': item.title,
+      'serial_number': item.serial,
+      'current_location': item.location,
+    });
+    if (moved != true) return;
+    ref
+      ..invalidate(flagsProvider)
+      ..invalidate(inventoryProvider)
+      ..invalidate(allItemsProvider)
+      ..invalidate(allMovementsProvider);
+    if (context.mounted) {
+      showSnack(context, '${item.code} is off the Missing list.');
+    }
   }
 
   /// Confirm dialog, then the RPC does status, location and history in one

@@ -264,6 +264,11 @@ class InventoryItem {
   bool get isSold => status == 'Sold';
 }
 
+/// Whether a location means the basement. Basement stock is kept off the
+/// Inventory page and listed on its own old-data page.
+bool isBasementLocation(Object? raw) =>
+    '${raw ?? ''}'.trim().toUpperCase().contains('BASEMENT');
+
 DateTime? _parseDate(Object? raw) {
   if (raw is! String || raw.isEmpty) return null;
   final parsed = DateTime.tryParse(raw);
@@ -647,15 +652,30 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
   final printers = pages[2];
   final parts = pages[3];
 
+  // Basement stock has its own old-data page. Keep the machines and every
+  // kit member that travels with them off the Inventory list; the rows
+  // still load into allItemsProvider so details, flags and movements work.
+  final basementMachineIds = <int>{
+    for (final row in machines)
+      if (isBasementLocation(row['current_location'])) row['id'] as int,
+  };
+
   final items = <InventoryItem>[
     for (final row in machines)
-      _item('machine', row, codeField: 'machine_id', nameField: 'model'),
+      if (!isBasementLocation(row['current_location']))
+        _item('machine', row, codeField: 'machine_id', nameField: 'model'),
     for (final row in probes)
-      _item('probe', row, codeField: 'internal_id', nameField: 'model'),
+      if (!isBasementLocation(row['current_location']) &&
+          !basementMachineIds.contains(row['assigned_machine_id']))
+        _item('probe', row, codeField: 'internal_id', nameField: 'model'),
     for (final row in printers)
-      _item('printer', row, codeField: 'internal_id', nameField: 'name_model'),
+      if (!isBasementLocation(row['current_location']) &&
+          !basementMachineIds.contains(row['assigned_machine_id']))
+        _item('printer', row, codeField: 'internal_id', nameField: 'name_model'),
     for (final row in parts)
-      _item('part', row, codeField: 'internal_id', nameField: 'name_model'),
+      if (!isBasementLocation(row['current_location']) &&
+          !basementMachineIds.contains(row['assigned_machine_id']))
+        _item('part', row, codeField: 'internal_id', nameField: 'name_model'),
   ];
   items.sort((a, b) {
     final byDate = (b.createdAt ?? DateTime(0)).compareTo(
