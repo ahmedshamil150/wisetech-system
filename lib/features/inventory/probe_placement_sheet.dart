@@ -220,7 +220,6 @@ Future<void> showProbeAttachSheet(
         if (!{
           'Sold',
           'Archived',
-          'With Customer',
         }.contains('${row['status'] ?? ''}'))
           InventoryItem(
             kind: 'machine',

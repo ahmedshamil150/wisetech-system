@@ -34645,7 +34645,7 @@ case 7:n=b2
 m=A.b([],t.o)
 for(h=J.i0(n,t.P),g=h.$ti,h=new A.bc(h,h.gD(0),g.i("bc<b_.E>")),f=t.N,g=g.i("b_.E");h.p();){e=h.d
 l=e==null?g.a(e):e
-e=A.cZ(["Sold","Archived","With Customer"],f)
+e=A.cZ(["Sold","Archived"],f)
 d=J.at(l,"status")
 if(!e.n(0,A.c(d==null?"":d))){e=A.ab(J.at(l,"id"))
 d=J.at(l,"machine_id")
