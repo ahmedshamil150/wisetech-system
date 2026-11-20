@@ -1,7 +1,38 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ultrasound_inventory/features/data/data.dart';
+import 'package:ultrasound_inventory/features/inventory/inventory_screen.dart';
 
 void main() {
+  test('dealer probe remains under its linked machine in kit grouping', () {
+    final machine = InventoryItem(
+      kind: 'machine',
+      id: 92,
+      code: '94T',
+      name: 'PROSOUND ALPHA 7',
+      status: 'With Dealer',
+      location: 'jimmy sb',
+    );
+    final probe = InventoryItem(
+      kind: 'probe',
+      id: 178,
+      code: '94T',
+      name: 'UST-52105',
+      serial: 'X0059580',
+      status: 'With Dealer',
+      location: 'jimmy sb',
+      assignedMachineId: 92,
+    );
+
+    final entries = arrangeAsKits([machine, probe]);
+
+    expect(entries.map((entry) => entry.$1.kind).toList(), [
+      'machine',
+      'probe',
+    ]);
+    expect(entries[1].$2, isTrue);
+    expect(probe.displayStatus, 'With Dealer');
+  });
+
   group('displayStatusFor', () {
     String status({
       String kind = 'probe',
