@@ -268,7 +268,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Map<String, int> _reviewCounts(List<InventoryItem> rows) {
     final tallied = {'Green': 0, 'Red': 0};
     for (final item in rows) {
-      if (_isHiddenFromInventory(item) ||
+      if ((_isHiddenFromInventory(item) && _query.isEmpty) ||
           !_matchesFilter(item) ||
           !_matchesStatus(item) ||
           !_matchesAux(item, skipReview: true) ||
@@ -320,10 +320,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     var any = 0;
     final index = _flagIndex();
     for (final item in rows) {
-      if (_isHiddenFromInventory(item) ||
+      if ((_isHiddenFromInventory(item) && _query.isEmpty) ||
           !_matchesFilter(item) ||
-          !_matchesStatus(item) ||
-          !_matchesAux(item, skipReview: true, skipFlag: true) ||
+          !_matchesAux(item) ||
           !_matchesQuery(item)) {
         continue;
       }
@@ -426,7 +425,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     };
     for (final item in rows) {
       // Moved parts stay listed, so they are counted too.
-      if (_isHiddenFromInventory(item) ||
+      if ((_isHiddenFromInventory(item) && _query.isEmpty) ||
           !_matchesStatus(item) ||
           !_matchesAux(item) ||
           !_matchesQuery(item)) {
@@ -451,8 +450,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final counts = <String, int>{for (final f in _statusFilters) f: 0};
     for (final item in rows) {
       // Moved parts stay listed, so they are counted too.
-      if (_isHiddenFromInventory(item) ||
+      if ((_isHiddenFromInventory(item) && _query.isEmpty) ||
           !_matchesFilter(item) ||
+          !_matchesStatus(item) ||
           !_matchesAux(item) ||
           !_matchesQuery(item)) {
         continue;
@@ -620,7 +620,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       // A sold machine already belongs to the dealer or customer,
       // so it must not show up in the inventory any more. Moved
       // parts stay visible so their stock history is reachable.
-      if (_isHiddenFromInventory(item)) return false;
+      if (_isHiddenFromInventory(item) && _query.isEmpty) return false;
       if (!_matchesFilter(item)) return false;
       if (!_matchesStatus(item)) return false;
       if (!_matchesAux(item)) return false;

@@ -290,6 +290,7 @@ String displayStatusFor({
   if (status == 'Sold' || status == 'Archived') return status;
   if (kind == 'probe' || kind == 'printer' || kind == 'part') {
     if (boxId != null) return 'In Stock';
+    if (assignedMachineId != null) return 'With Machine';
     const outbound = {
       'With Customer',
       'With Dealer',
@@ -298,12 +299,8 @@ String displayStatusFor({
     };
     if (outbound.contains(status)) {
       final place = location.trim().toUpperCase();
-      // a probe sent out on its own keeps its outbound status even when a
-      // stale machine link is left behind; a send with no real destination
-      // recorded is not out — it is stock
       if (place.isNotEmpty && place != 'COMPANY') return status;
     }
-    if (assignedMachineId != null) return 'With Machine';
     return 'In Stock';
   }
   return status;
