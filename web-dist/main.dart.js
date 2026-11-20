@@ -32847,10 +32847,10 @@ WC(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r){return new A.bW(h,g,d,j,p,q,i,f,b,e,r,n,
 bla(a,b,c,d,e){var s,r="In Stock"
 if(e==="Sold"||e==="Archived")return e
 if(c==="probe"||c==="printer"||c==="part"){if(b!=null)return r
-if(a!=null){if(e==="With Workshop")return"With Workshop"
+if(B.aRQ.n(0,e)){s=B.m.M(d).toUpperCase()
+if(s.length!==0&&s!=="COMPANY")return e}if(a!=null)return"With Machine"
 if(A.bch(d))return"Basement"
-return"With Machine"}if(B.aRQ.n(0,e)){s=B.m.M(d).toUpperCase()
-if(s.length!==0&&s!=="COMPANY")return e}return r}return e},
+return r}return e},
 bch(a){return B.m.n(B.m.M(A.c(a==null?"":a)).toUpperCase(),"BASEMENT")},
 pz(a){var s,r
 if(typeof a!="string"||a.length===0)return null
