@@ -104,16 +104,14 @@ IconData inventoryKindIcon(String kind) => switch (kind) {
 };
 
 Widget _probeBadge(BuildContext context, InventoryItem item) {
-  // The badge says where the probe physically is, and only that. The
-  // status chip carries outbound statuses, so a free probe never shows
-  // "With Customer" next to "In stock".
-  final (label, color) = item.displayStatus == 'With Machine'
+  // The badge says how the probe is held: attached to a machine, in a box,
+  // or independent. The status chip carries the location (With Customer,
+  // With Workshop, Basement, In Stock, etc.).
+  final (label, color) = item.assignedMachineId != null
       ? ('With machine', Theme.of(context).colorScheme.primary)
       : item.boxId != null
       ? ('In box', context.colors.tintBlue)
-      : (item.displayStatus == 'In Stock'
-            ? ('In stock', context.colors.success)
-            : ('', context.colors.success));
+      : ('Independent', context.colors.success);
   if (label.isEmpty) return const SizedBox.shrink();
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
