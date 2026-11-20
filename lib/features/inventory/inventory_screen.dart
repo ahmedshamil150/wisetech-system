@@ -902,7 +902,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget _boxesList(BuildContext context) {
     final boxes = ref.watch(probeBoxesProvider);
     final items = ref
-        .watch(inventoryProvider)
+        .watch(allItemsProvider)
         .maybeWhen(data: (rows) => rows, orElse: () => const <InventoryItem>[]);
 
     return boxes.when(

@@ -680,28 +680,36 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
   final batchFilter = _currentBatchOrFilter(batchIds);
 
   final pages = await Future.wait([
-    _db
-        .from('machines')
-        .select('$fields, machine_id, model')
-        .or(batchFilter)
-        .order('id', ascending: false),
-    _db
-        .from('probes')
-        .select(
-          '$fields, $linked box_id, needs_review, review_kind, catalog_products(probe_type), internal_id, model',
-        )
-        .or(batchFilter)
-        .order('id', ascending: false),
-    _db
-        .from('printers')
-        .select('$fields, $linked internal_id, name_model')
-        .or(batchFilter)
-        .order('id', ascending: false),
+    fetchAllPages(
+      () => _db
+          .from('machines')
+          .select('$fields, machine_id, model')
+          .or(batchFilter)
+          .order('id', ascending: false),
+    ),
+    fetchAllPages(
+      () => _db
+          .from('probes')
+          .select(
+            '$fields, $linked box_id, needs_review, review_kind, catalog_products(probe_type), internal_id, model',
+          )
+          .or(batchFilter)
+          .order('id', ascending: false),
+    ),
+    fetchAllPages(
+      () => _db
+          .from('printers')
+          .select('$fields, $linked internal_id, name_model')
+          .or(batchFilter)
+          .order('id', ascending: false),
+    ),
     // Parts are not batch-filtered — they live in BATCH-PARTS.
-    _db
-        .from('parts')
-        .select('$fields, $linked internal_id, name_model')
-        .order('id', ascending: false),
+    fetchAllPages(
+      () => _db
+          .from('parts')
+          .select('$fields, $linked internal_id, name_model')
+          .order('id', ascending: false),
+    ),
   ]);
   final machines = pages[0];
   final probes = pages[1];
@@ -1510,6 +1518,13 @@ final recentPartiesProvider = FutureProvider<List<Map<String, dynamic>>>((
 /// Refetches everything the app shows — used by pull-to-refresh so one
 /// member sees what another just did without restarting the app.
 Future<void> refreshAll(WidgetRef ref) async {
+  // Invalidate derived lists first. Otherwise a provider that still holds
+  // an older inventory snapshot may remain on the UI while the underlying
+  // rows and box counts are being reloaded.
+  ref
+    ..invalidate(allItemsProvider)
+    ..invalidate(itemLabelsProvider)
+    ..invalidate(oldStockItemsProvider);
   await Future.wait<void>([
     for (final future in <Future<Object?>>[
       ref.refresh(inventoryProvider.future),
