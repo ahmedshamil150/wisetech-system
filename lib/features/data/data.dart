@@ -290,7 +290,11 @@ String displayStatusFor({
   if (status == 'Sold' || status == 'Archived') return status;
   if (kind == 'probe' || kind == 'printer' || kind == 'part') {
     if (boxId != null) return 'In Stock';
-    if (assignedMachineId != null) return 'With Machine';
+    if (assignedMachineId != null) {
+      if (status == 'With Workshop') return 'With Workshop';
+      if (isBasementLocation(location)) return 'Basement';
+      return 'With Machine';
+    }
     const outbound = {
       'With Customer',
       'With Dealer',
