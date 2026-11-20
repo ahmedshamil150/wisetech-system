@@ -78,9 +78,17 @@ Future<bool> moveItemTo(
             if (row['id'] is int) row['id'] as int,
         ];
         if (ids.isNotEmpty) kitIds[_kindForTable(table)] = ids;
+        final kitUpdates = <String, dynamic>{
+          'current_location': location,
+        };
+        if (target == 'workshop') {
+          kitUpdates['status'] = 'With Workshop';
+        } else if (target == 'inventory' && table != 'parts') {
+          kitUpdates['status'] = 'With Machine';
+        }
         await db
             .from(table)
-            .update({'current_location': location})
+            .update(kitUpdates)
             .eq('assigned_machine_id', item.id);
       }
     }

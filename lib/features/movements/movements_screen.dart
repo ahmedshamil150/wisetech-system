@@ -1533,6 +1533,10 @@ class _MovementDetails extends ConsumerWidget {
 
     final back = outRows.isEmpty && movedRows.isEmpty; // all of it is back
     final canManage = isAdmin || rows.any((r) => r['actor_id'] == myId);
+    // Returning an item is a normal stock operation for every member.
+    // It does not edit or delete the send, so it should not require
+    // sender/admin ownership.
+    const canReturnSend = true;
     final missing = rows.where(movementPartyMissing).toList();
     final canFixParty =
         missing.isNotEmpty &&
@@ -1610,7 +1614,7 @@ class _MovementDetails extends ConsumerWidget {
 
     Widget itemTile(Map<String, dynamic> row) {
       final rowState = stateOf(row);
-      final canReturn = canManage && rowState == SendRowState.out;
+      final canReturn = canReturnSend && rowState == SendRowState.out;
       final canDelete = isAdmin || row['actor_id'] == myId;
       final hasRowActions = isAdmin || canReturn || canDelete;
       final rowFlags = flagBy[flagRowKey(row['id'] as int)] ?? const [];
@@ -1747,7 +1751,7 @@ class _MovementDetails extends ConsumerWidget {
             value: 'add',
             child: _menuRow(Icons.add, 'Add item to this send'),
           ),
-        if (canManageSend && sendOut.isNotEmpty)
+        if (canReturnSend && sendOut.isNotEmpty)
           PopupMenuItem(
             value: 'return',
             child: _menuRow(
@@ -1963,7 +1967,7 @@ class _MovementDetails extends ConsumerWidget {
         if (hasActions) ...[
           Row(
             children: [
-              if (canManage && outRows.isNotEmpty) ...[
+              if (canReturnSend && outRows.isNotEmpty) ...[
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: outRows.length > 1
@@ -2821,6 +2825,32 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     final date = widget.seedDate?.trim() ?? '';
     _date.text = date.isNotEmpty ? date : DateField.format(DateTime.now());
     _groups.first.items.addAll(widget.initialItems);
+    if (widget.initialItems.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          final items = await ref.read(allItemsProvider.future);
+          if (!mounted) return;
+          final kit = <InventoryItem>[];
+          for (final item in widget.initialItems) {
+            final additions = item.kind == 'machine'
+                ? kitFor(items, item)
+                : <InventoryItem>[item];
+            for (final addition in additions) {
+              if (kit.every((existing) => existing.key != addition.key)) {
+                kit.add(addition);
+              }
+            }
+          }
+          setState(() {
+            _groups.first.items
+              ..clear()
+              ..addAll(kit);
+          });
+        } catch (_) {
+          // Keep the explicitly initial item if the kit cannot be loaded.
+        }
+      });
+    }
   }
 
   @override
