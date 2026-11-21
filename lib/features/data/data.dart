@@ -208,6 +208,7 @@ class InventoryItem {
     this.productId,
     this.vendorId,
     this.assignedMachineId,
+    this.machineStatus,
     this.boxId,
     this.probeType,
     this.purchasePrice,
@@ -234,6 +235,11 @@ class InventoryItem {
 
   /// For probes and printers: the machine they travel with.
   final int? assignedMachineId;
+
+  /// Status of the machine the item travels with (only for attached items).
+  /// Used so an attached probe shows the machine's location (e.g. With
+  //  Customer at IDC) rather than a stale With Machine.
+  final String? machineStatus;
 
   /// For probes: the box of leftover stock they sit in.
   final int? boxId;
@@ -274,6 +280,7 @@ class InventoryItem {
     status: status,
     location: location,
     assignedMachineId: assignedMachineId,
+    machineStatus: machineStatus,
     boxId: boxId,
   );
 }
@@ -285,12 +292,27 @@ String displayStatusFor({
   required String status,
   required String location,
   int? assignedMachineId,
+  String? machineStatus,
   int? boxId,
 }) {
   if (status == 'Sold' || status == 'Archived') return status;
   if (kind == 'probe' || kind == 'printer' || kind == 'part') {
     if (boxId != null) return 'In Stock';
     if (assignedMachineId != null) {
+      // An attached item shows where its machine physically is.
+      if (machineStatus != null && machineStatus != 'With Machine') {
+        if (machineStatus == 'With Workshop') return 'With Workshop';
+        if (isBasementLocation(location)) return 'Basement';
+        const outbound = {
+          'With Customer',
+          'With Dealer',
+          'With Branch',
+        };
+        if (outbound.contains(machineStatus)) {
+          final place = location.trim().toUpperCase();
+          if (place.isNotEmpty && place != 'COMPANY') return machineStatus;
+        }
+      }
       if (status == 'With Workshop') return 'With Workshop';
       if (isBasementLocation(location)) return 'Basement';
       const outbound = {
@@ -613,6 +635,7 @@ InventoryItem _item(
   Map<String, dynamic> row, {
   required String codeField,
   required String nameField,
+  String? machineStatus,
 }) {
   final batch = row['batches'];
   return InventoryItem(
@@ -629,6 +652,7 @@ InventoryItem _item(
     productId: row['catalog_product_id'] as int?,
     vendorId: row['vendor_id'] as int?,
     assignedMachineId: row['assigned_machine_id'] as int?,
+    machineStatus: machineStatus,
     boxId: row['box_id'] as int?,
     probeType: ((row['catalog_products'] as Map?)?['probe_type'])?.toString(),
     purchasePrice: (row['purchase_price'] as num?)?.toDouble(),
@@ -726,6 +750,13 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
   final printers = pages[2];
   final parts = pages[3];
 
+  // Map machine id -> status so attached probes/printers show where their
+  // machine physically is (e.g. With Customer at IDC).
+  final machineStatusById = <int, String>{};
+  for (final row in machines) {
+    machineStatusById[row['id'] as int] = (row['status'] ?? '') as String;
+  }
+
   // Basement stock has its own old-data page. Keep the machines and every
   // kit member that travels with them off the Inventory list; the rows
   // still load into allItemsProvider so details, flags and movements work.
@@ -741,15 +772,30 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
     for (final row in probes)
       if (!isBasementLocation(row['current_location']) &&
           !basementMachineIds.contains(row['assigned_machine_id']))
-        _item('probe', row, codeField: 'internal_id', nameField: 'model'),
+        _item('probe', row,
+            codeField: 'internal_id',
+            nameField: 'model',
+            machineStatus: row['assigned_machine_id'] == null
+                ? null
+                : machineStatusById[row['assigned_machine_id'] as int]),
     for (final row in printers)
       if (!isBasementLocation(row['current_location']) &&
           !basementMachineIds.contains(row['assigned_machine_id']))
-        _item('printer', row, codeField: 'internal_id', nameField: 'name_model'),
+        _item('printer', row,
+            codeField: 'internal_id',
+            nameField: 'name_model',
+            machineStatus: row['assigned_machine_id'] == null
+                ? null
+                : machineStatusById[row['assigned_machine_id'] as int]),
     for (final row in parts)
       if (!isBasementLocation(row['current_location']) &&
           !basementMachineIds.contains(row['assigned_machine_id']))
-        _item('part', row, codeField: 'internal_id', nameField: 'name_model'),
+        _item('part', row,
+            codeField: 'internal_id',
+            nameField: 'name_model',
+            machineStatus: row['assigned_machine_id'] == null
+                ? null
+                : machineStatusById[row['assigned_machine_id'] as int]),
   ];
   items.sort((a, b) {
     final byDate = (b.createdAt ?? DateTime(0)).compareTo(
@@ -852,6 +898,7 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
       boxId: kind == 'probe' ? row['box_id'] as int? : null,
       vendorId: row['vendor_id'] as int?,
       purchasePrice: (row['purchase_price'] as num?)?.toDouble(),
+      machineStatus: null,
     );
   }
 
@@ -2053,6 +2100,7 @@ Future<InventoryItem?> findItemBySerial(String serial) async {
       serial: row['serial_number'] as String?,
       status: (row['status'] ?? '').toString(),
       location: (row['current_location'] ?? '').toString(),
+      machineStatus: null,
     );
   }
   return null;
