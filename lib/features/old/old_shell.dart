@@ -3,13 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/layout.dart';
 import '../auth/auth_controller.dart';
-import '../gallery/gallery_upload_screen.dart';
 import 'branch_screen.dart';
 import 'data_side.dart';
 import 'old_stock_screen.dart';
 
-/// The shell shown when the app is on the sold-and-missing side: sold items,
-/// branch items, and the image gallery.
+/// The shell shown when the app is on the sold-and-missing side: sold items
+/// and branch items.
 class OldShell extends ConsumerStatefulWidget {
   const OldShell({super.key});
 
@@ -21,18 +20,15 @@ class _OldShellState extends ConsumerState<OldShell> {
   static const _titles = [
     'Sold items',
     'Branch',
-    'Gallery',
   ];
   static const _destinations = [
     (Icons.sell_outlined, Icons.sell, 'Sold'),
     (Icons.storefront_outlined, Icons.storefront, 'Branch'),
-    (Icons.photo_library_outlined, Icons.photo_library, 'Gallery'),
   ];
 
   late final List<Widget> _pages = const [
     OldStockScreen(),
     BranchScreen(),
-    GalleryUploadScreen(),
   ];
 
   int _index = 0;
