@@ -21,9 +21,11 @@ class GalleryUploadScreen extends ConsumerStatefulWidget {
 class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   final _picker = ImagePicker();
   String _batchName = '';
+  String _newBatchName = '';
   String _groupCode = '';
   bool _generating = false;
   bool _uploading = false;
+  bool _showNewBatchField = false;
 
   // Selected images: kind -> (file, bytes)
   final Map<String, XFile?> _images = {
@@ -91,21 +93,86 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'Batch name',
-                  hintText: 'e.g. BATCH-3',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                onChanged: (v) => setState(() => _batchName = v.trim()),
+              Consumer(
+                builder: (_, ref, __) {
+                  final batches = ref.watch(galleryBatchesProvider);
+                  return batches.when(
+                    data: (list) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DropdownButtonFormField<String>(
+                          value: _batchName.isEmpty ? null : _batchName,
+                          items: [
+                            const DropdownMenuItem(
+                              value: '__new__',
+                              child: Text('+ New batch'),
+                            ),
+                            for (final b in list)
+                              DropdownMenuItem(
+                                value: b,
+                                child: Text(b),
+                              ),
+                          ],
+                          onChanged: (v) {
+                            if (v == '__new__') {
+                              setState(() {
+                                _batchName = '';
+                                _showNewBatchField = true;
+                              });
+                            } else {
+                              setState(() {
+                                _batchName = v!;
+                                _showNewBatchField = false;
+                                _newBatchName = '';
+                                _groupCode = '';
+                              });
+                            }
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Batch',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                        if (_showNewBatchField) ...[
+                          const SizedBox(height: 8),
+                          TextField(
+                            decoration: const InputDecoration(
+                              labelText: 'New batch name',
+                              hintText: 'e.g. BATCH-4',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            onChanged: (v) =>
+                                setState(() => _newBatchName = v.trim()),
+                          ),
+                        ],
+                      ],
+                    ),
+                    loading: () => const SizedBox(
+                      height: 56,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    error: (e, _) => TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'Batch name',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (v) => setState(() => _batchName = v.trim()),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _uploading || _batchName.isEmpty ? null : _generateGroupCode,
+                      onPressed: _uploading ||
+                              (_batchName.isEmpty && _newBatchName.isEmpty)
+                          ? null
+                          : _generateGroupCode,
                       icon: _generating
                           ? const SizedBox(
                               width: 16, height: 16,
@@ -163,6 +230,16 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   }
 
   Future<void> _generateGroupCode() async {
+    final batch = _batchName.isNotEmpty ? _batchName : _newBatchName;
+    if (batch.isEmpty) {
+      showSnack(context, 'Select or enter a batch name first.', error: true);
+      return;
+    }
+    ref.read(currentGalleryBatchProvider).value = batch;
+    setState(() {
+      _batchName = batch;
+      _showNewBatchField = false;
+    });
     setState(() => _generating = true);
     try {
       final code = await ref.read(createImageGroupProvider(null).future);

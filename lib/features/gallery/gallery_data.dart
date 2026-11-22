@@ -91,6 +91,20 @@ final nextGroupCodeProvider = FutureProvider<String>((ref) async {
   return '${num + 1}U';
 });
 
+/// All distinct batch names that already have image groups, newest first.
+final galleryBatchesProvider = FutureProvider<List<String>>((ref) async {
+  final rows = await _db
+      .from('image_groups')
+      .select('batch_name')
+      .order('created_at', ascending: false);
+  final names = <String>{};
+  for (final row in rows) {
+    final n = row['batch_name'] as String?;
+    if (n != null && n.isNotEmpty) names.add(n);
+  }
+  return names.toList()..sort((a, b) => b.compareTo(a));
+});
+
 /// Which batch the gallery is currently viewing/editing.
 class _BatchHolder {
   String value = '';
