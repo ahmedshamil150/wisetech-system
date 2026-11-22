@@ -64,7 +64,7 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
         ),
         oldSearchField(
           context,
-          hint: 'Search sold items',
+          hint: 'Search sold & branch items',
           onChanged: (value) => setState(() {
             _query = value.trim();
             _page = 0;
@@ -308,7 +308,7 @@ class _MachinesPane extends ConsumerWidget {
       oldMachinesProvider((
         page: page,
         search: search,
-        status: 'Sold',
+        status: 'SoldAndBranch',
         flagFilters: flagFilters,
       )),
     );
@@ -350,7 +350,7 @@ class _ProbesPane extends ConsumerWidget {
       oldProbesProvider((
         page: page,
         search: search,
-        status: 'All',
+        status: 'SoldAndBranch',
         flagFilters: const <String>{},
       )),
     );
@@ -392,7 +392,7 @@ class _PrintersPane extends ConsumerWidget {
       oldPrintersProvider((
         page: page,
         search: search,
-        status: 'All',
+        status: 'SoldAndBranch',
         flagFilters: const <String>{},
       )),
     );
@@ -435,7 +435,13 @@ class _PartsPane extends ConsumerWidget {
     final all = ref
         .watch(inventoryProvider)
         .maybeWhen(
-          data: (rows) => rows.where((i) => i.kind == 'part').toList(),
+          data: (rows) => rows
+              .where(
+                (i) =>
+                    i.kind == 'part' &&
+                    (i.status == 'Sold' || i.status == 'With Branch'),
+              )
+              .toList(),
           orElse: () => const <InventoryItem>[],
         );
     final term = search.toLowerCase();

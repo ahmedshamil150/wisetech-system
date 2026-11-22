@@ -59,7 +59,9 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
             'acquisition_date, purchase_price, vendor_id, condition',
           )
           .eq('batch_id', kOldBatchId);
-      if (args.status != 'All') {
+      if (args.status == 'SoldAndBranch') {
+        query = query.inFilter('status', const ['Sold', 'With Branch']);
+      } else if (args.status != 'All') {
         query = query.eq('status', args.status);
       } else if (missingIds.isEmpty) {
         query = query.eq('status', 'Sold');
@@ -83,7 +85,9 @@ final oldMachinesProvider = FutureProvider.family<OldPage, OldArgs>((
           .from('machines')
           .select('id')
           .eq('batch_id', kOldBatchId);
-      if (args.status != 'All') {
+      if (args.status == 'SoldAndBranch') {
+        query = query.inFilter('status', const ['Sold', 'With Branch']);
+      } else if (args.status != 'All') {
         query = query.eq('status', args.status);
       } else if (missingIds.isEmpty) {
         query = query.eq('status', 'Sold');
@@ -136,7 +140,9 @@ final oldProbesProvider = FutureProvider.family<OldPage, OldArgs>((ref, args) {
           // a probe sitting in a box belongs to the box sheet, not the
           // stock list — unboxing puts it back here
           .isFilter('box_id', null);
-      if (args.status != 'All') {
+      if (args.status == 'SoldAndBranch') {
+        query = query.inFilter('status', const ['Sold', 'With Branch']);
+      } else if (args.status != 'All') {
         query = query.eq('status', args.status);
       }
       if (args.search.isNotEmpty) {
@@ -173,7 +179,9 @@ final oldPrintersProvider = FutureProvider.family<OldPage, OldArgs>((
             'acquisition_date, purchase_price, vendor_id, condition',
           )
           .eq('batch_id', kOldBatchId);
-      if (args.status != 'All') {
+      if (args.status == 'SoldAndBranch') {
+        query = query.inFilter('status', const ['Sold', 'With Branch']);
+      } else if (args.status != 'All') {
         query = query.eq('status', args.status);
       }
       if (args.search.isNotEmpty) {

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/layout.dart';
 import '../../core/theme_controller.dart';
 import '../auth/auth_controller.dart';
+import '../gallery/gallery_upload_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
 import '../old/data_side.dart';
@@ -40,6 +41,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     'Movements',
     'Sales',
     'Repairs',
+    'Gallery',
   ];
 
   static const _destinations = [
@@ -48,6 +50,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     (Icons.swap_horiz_outlined, Icons.swap_horiz, 'Movements'),
     (Icons.receipt_long_outlined, Icons.receipt_long, 'Sales'),
     (Icons.build_outlined, Icons.build, 'Repairs'),
+    (Icons.photo_library_outlined, Icons.photo_library, 'Gallery'),
   ];
 
   late final List<Widget> _pages = [
@@ -56,6 +59,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     const MovementsScreen(),
     const SalesScreen(),
     const RepairsScreen(),
+    const GalleryUploadScreen(),
   ];
 
   /// Pages build the first time their tab is opened and stay alive

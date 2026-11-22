@@ -214,6 +214,7 @@ class InventoryItem {
     this.purchasePrice,
     this.needsReview = false,
     this.reviewKind,
+    this.isMissing = false,
   });
 
   final String kind; // machine | probe | printer | part
@@ -255,6 +256,10 @@ class InventoryItem {
   /// 'serial' (serial not found in the old stock, red dot).
   final String? reviewKind;
 
+  /// True when the audit flagged this item Missing — its tag should read
+  /// Missing regardless of what the database status column says.
+  final bool isMissing;
+
   String get key => '$kind:$id';
 
   String get title =>
@@ -282,6 +287,7 @@ class InventoryItem {
     assignedMachineId: assignedMachineId,
     machineStatus: machineStatus,
     boxId: boxId,
+    isMissing: isMissing,
   );
 }
 
@@ -294,7 +300,9 @@ String displayStatusFor({
   int? assignedMachineId,
   String? machineStatus,
   int? boxId,
+  bool isMissing = false,
 }) {
+  if (isMissing || status == 'Missing') return 'Missing';
   if (status == 'Sold' || status == 'Archived') return status;
   if (kind == 'probe' || kind == 'printer' || kind == 'part') {
     if (boxId != null) return 'In Stock';
@@ -636,6 +644,7 @@ InventoryItem _item(
   required String codeField,
   required String nameField,
   String? machineStatus,
+  bool isMissing = false,
 }) {
   final batch = row['batches'];
   return InventoryItem(
@@ -658,6 +667,7 @@ InventoryItem _item(
     purchasePrice: (row['purchase_price'] as num?)?.toDouble(),
     needsReview: row['needs_review'] == 1,
     reviewKind: row['review_kind'] as String?,
+    isMissing: isMissing,
   );
 }
 
@@ -712,6 +722,8 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
 
   final batchIds = await ref.watch(currentBatchIdsProvider.future);
   final batchFilter = _currentBatchOrFilter(batchIds);
+
+  final missingKeys = await ref.watch(missingItemKeysProvider.future);
 
   final pages = await Future.wait([
     fetchAllPages(
@@ -768,7 +780,9 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
   final items = <InventoryItem>[
     for (final row in machines)
       if (!isBasementLocation(row['current_location']))
-        _item('machine', row, codeField: 'machine_id', nameField: 'model'),
+        _item('machine', row,
+            codeField: 'machine_id', nameField: 'model',
+            isMissing: missingKeys.contains('machine:${row['id']}')),
     for (final row in probes)
       if (!isBasementLocation(row['current_location']) &&
           !basementMachineIds.contains(row['assigned_machine_id']))
@@ -777,7 +791,8 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
             nameField: 'model',
             machineStatus: row['assigned_machine_id'] == null
                 ? null
-                : machineStatusById[row['assigned_machine_id'] as int]),
+                : machineStatusById[row['assigned_machine_id'] as int],
+            isMissing: missingKeys.contains('probe:${row['id']}')),
     for (final row in printers)
       if (!isBasementLocation(row['current_location']) &&
           !basementMachineIds.contains(row['assigned_machine_id']))
@@ -786,7 +801,8 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
             nameField: 'name_model',
             machineStatus: row['assigned_machine_id'] == null
                 ? null
-                : machineStatusById[row['assigned_machine_id'] as int]),
+                : machineStatusById[row['assigned_machine_id'] as int],
+            isMissing: missingKeys.contains('printer:${row['id']}')),
     for (final row in parts)
       if (!isBasementLocation(row['current_location']) &&
           !basementMachineIds.contains(row['assigned_machine_id']))
@@ -795,7 +811,8 @@ Future<List<InventoryItem>> _loadInventory(Ref ref) async {
             nameField: 'name_model',
             machineStatus: row['assigned_machine_id'] == null
                 ? null
-                : machineStatusById[row['assigned_machine_id'] as int]),
+                : machineStatusById[row['assigned_machine_id'] as int],
+            isMissing: missingKeys.contains('part:${row['id']}')),
   ];
   items.sort((a, b) {
     final byDate = (b.createdAt ?? DateTime(0)).compareTo(
@@ -884,6 +901,7 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
     Map<String, dynamic> row, {
     required String codeField,
     required String nameField,
+    bool isMissing = false,
   }) {
     return InventoryItem(
       kind: kind,
@@ -899,6 +917,7 @@ final oldStockItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
       vendorId: row['vendor_id'] as int?,
       purchasePrice: (row['purchase_price'] as num?)?.toDouble(),
       machineStatus: null,
+      isMissing: isMissing,
     );
   }
 
