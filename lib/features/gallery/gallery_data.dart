@@ -75,20 +75,35 @@ class GalleryGroup {
 SupabaseClient get _db => Supabase.instance.client;
 
 /// Next sequential group code (1U, 2U, ...) for a given batch.
+/// The letter suffix comes from the batch's letter in the batches table
+/// (e.g. batch U → 1U, 2U; batch T → 1T, 2T).
 final nextGroupCodeProvider = FutureProvider<String>((ref) async {
   final batchName = ref.watch(currentGalleryBatchProvider).value;
+  if (batchName.isEmpty) {
+    throw Exception('Select a batch first.');
+  }
+
+  // Look up the batch's letter (e.g. 'U' or 'T') from the batches table.
+  final batchRow = await _db
+      .from('batches')
+      .select('letter')
+      .eq('code', batchName)
+      .limit(1)
+      .maybeSingle();
+  final letter = (batchRow?['letter'] as String?) ?? 'U';
+
   final existing = await _db
       .from('image_groups')
       .select('group_code')
       .eq('batch_name', batchName)
       .order('id', ascending: false)
       .limit(1);
-  String last = '0U';
+  String last = '0$letter';
   if (existing.isNotEmpty) {
-    last = existing.first['group_code'] as String? ?? '0U';
+    last = existing.first['group_code'] as String? ?? '0$letter';
   }
   final num = int.tryParse(last.replaceAll(RegExp(r'\D'), '')) ?? 0;
-  return '${num + 1}U';
+  return '${num + 1}$letter';
 });
 
 /// All batch codes from the Records page (batches table), newest first.
