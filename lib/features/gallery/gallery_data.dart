@@ -100,11 +100,33 @@ final currentGalleryBatchProvider = Provider<_BatchHolder>((ref) {
   return _BatchHolder();
 });
 
-/// All groups for the current batch, newest first.
+/// Group codes currently assigned to Sold/With Branch items.
+final soldAndBranchGroupCodesProvider =
+    FutureProvider<List<String>>((ref) async {
+  final codes = <String>{};
+  for (final table in const ['machines', 'probes', 'printers']) {
+    final rows = await _db
+        .from(table)
+        .select('image_group_code')
+        .not('image_group_code', 'is', null)
+        .inFilter('status', const ['Sold', 'With Branch']);
+    for (final row in rows) {
+      final code = row['image_group_code'] as String?;
+      if (code != null) codes.add(code);
+    }
+  }
+  return codes.toList();
+});
+
+/// All groups for the current batch, newest first — only groups linked to
+/// Sold/With Branch items.
 final galleryGroupsProvider =
     FutureProvider<List<GalleryGroup>>((ref) async {
   final batchName = ref.watch(currentGalleryBatchProvider).value;
   if (batchName.isEmpty) return const [];
+
+  final sbCodes = await ref.watch(soldAndBranchGroupCodesProvider.future);
+  if (sbCodes.isEmpty) return const [];
 
   final rows = await _db
       .from('image_groups')
@@ -115,6 +137,8 @@ final galleryGroupsProvider =
   final groups = <GalleryGroup>[];
   for (final row in rows) {
     final group = GalleryGroup.fromMap(row);
+    // Only show groups whose code is on a Sold/With Branch item
+    if (!sbCodes.contains(group.groupCode)) continue;
     final imgs = await _db
         .from('item_images')
         .select('*')
@@ -183,18 +207,19 @@ final linkImageGroupProvider =
       .eq('id', args.itemId);
 });
 
-/// Look up items that already carry a given group code.
+/// Look up Sold/With Branch items that already carry a given group code.
 final itemsByGroupCodeProvider =
     FutureProvider.family<List<Map<String, dynamic>>, ({
-      String kind,
-      String groupCode,
-    })>((ref, args) async {
+  String kind,
+  String groupCode,
+})>((ref, args) async {
   final table = args.kind == 'machine' ? 'machines' : args.kind == 'probe' ? 'probes' : 'printers';
   final codeCol = args.kind == 'machine' ? 'machine_id' : 'internal_id';
   final nameCol = args.kind == 'machine' || args.kind == 'probe' ? 'model' : 'name_model';
   final rows = await _db
       .from(table)
       .select('id, $codeCol as code, $nameCol as name, serial_number, status, current_location')
-      .eq('image_group_code', args.groupCode);
+      .eq('image_group_code', args.groupCode)
+      .inFilter('status', const ['Sold', 'With Branch']);
   return rows.cast<Map<String, dynamic>>();
 });
