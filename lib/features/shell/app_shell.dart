@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/layout.dart';
 import '../../core/theme_controller.dart';
 import '../auth/auth_controller.dart';
-import '../gallery/gallery_upload_screen.dart';
+import '../gallery/gallery_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
 import '../old/data_side.dart';
@@ -59,7 +59,7 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     const MovementsScreen(),
     const SalesScreen(),
     const RepairsScreen(),
-    const GalleryUploadScreen(),
+    const GalleryScreen(),
   ];
 
   /// Pages build the first time their tab is opened and stay alive

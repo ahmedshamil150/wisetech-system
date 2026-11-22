@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../common/widgets.dart';
 import 'gallery_data.dart';
+import 'gallery_upload_screen.dart';
 
 /// Gallery page: batch name at top, image groups arranged 2 per row.
 /// Each group card shows the machine + printer + probe photos with their
@@ -43,6 +44,16 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                     onPressed: () => _newBatch(context),
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('New batch'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const GalleryUploadScreen(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.cloud_upload, size: 18),
+                    label: const Text('Upload photos'),
                   ),
                 ],
               ),
