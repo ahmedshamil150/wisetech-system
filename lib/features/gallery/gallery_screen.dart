@@ -6,8 +6,7 @@ import 'gallery_data.dart';
 import 'gallery_upload_screen.dart';
 
 /// Gallery page: select a batch, view its image groups 2 per row.
-/// Each group card shows the machine + printer + probe photos with serials
-/// and models. Tap a group card to open the full-screen image viewer.
+/// Tap a group card to open the full-screen image viewer (pinch-to-zoom).
 class GalleryScreen extends ConsumerStatefulWidget {
   const GalleryScreen({super.key});
 
@@ -98,7 +97,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
               'Group code format: 1U, 2U, 3U…  Write the code on the '
               'physical machine with a marker, then enter it in '
               'Inventory → item → Image group code.',
-              style: TextStyle(fontSize: 12, color: colorScheme.outline),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline),
             ),
           ),
 
@@ -124,8 +123,6 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       ],
     );
   }
-
-  ColorScheme get colorScheme => Theme.of(context).colorScheme;
 
   Future<void> _linkGroupToItem(BuildContext context) async {
     final groups = await ref.read(galleryGroupsProvider.future);
@@ -253,7 +250,7 @@ class _BatchGroupsPane extends ConsumerWidget {
           padding: const EdgeInsets.all(14),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
-            childAspectRatio: 0.82,
+            childAspectRatio: 0.85,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -303,7 +300,7 @@ class _EmptyBatchHint extends StatelessWidget {
   }
 }
 
-// ── Group card (tap to open full-screen viewer) ────────────────────────────────
+// ── Group card ─────────────────────────────────────────────────────────────────
 
 class _GroupCard extends StatelessWidget {
   final GalleryGroup group;
@@ -322,19 +319,9 @@ class _GroupCard extends StatelessWidget {
           builder: (_) => _ImageGalleryViewer(group: group),
         ),
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colorScheme.outlineVariant),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -353,8 +340,7 @@ class _GroupCard extends StatelessWidget {
                       height: 150,
                       errorBuilder: (_, __, ___) => Container(
                         color: colorScheme.surfaceContainerHighest,
-                        child: Icon(Icons.image_outlined,
-                            size: 36, color: colorScheme.outline),
+                        child: const Icon(Icons.image_outlined, size: 36),
                       ),
                     ),
                   ),
