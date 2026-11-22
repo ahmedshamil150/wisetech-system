@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/layout.dart';
 import '../../core/theme_controller.dart';
 import '../auth/auth_controller.dart';
-import '../gallery/gallery_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../movements/movements_screen.dart';
 import '../old/data_side.dart';
@@ -143,12 +142,8 @@ class _ProfileMenuButton extends ConsumerWidget {
           ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
         } else if (value == 'theme') {
           ref.read(themeModeProvider.notifier).toggle();
-        } else         if (value == 'old') {
+        } else if (value == 'old') {
           ref.read(dataSideProvider.notifier).set('old');
-        } else if (value == 'gallery') {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const GalleryScreen()),
-          );
         } else if (value == 'logout') {
           auth.signOut();
         }
@@ -179,8 +174,6 @@ class _ProfileMenuButton extends ConsumerWidget {
         ),
         const PopupMenuItem(
             value: 'old', child: Text('Sold or missing data items')),
-        const PopupMenuItem(
-            value: 'gallery', child: Text('Image gallery')),
         const PopupMenuItem(value: 'logout', child: Text('Log out')),
       ],
       child: Padding(
