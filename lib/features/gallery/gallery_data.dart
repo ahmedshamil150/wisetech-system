@@ -162,15 +162,11 @@ final soldAndBranchGroupCodesProvider =
   return codes.toList();
 });
 
-/// All groups for the current batch, newest first — only groups linked to
-/// Sold/With Branch items.
+/// All groups for the current batch, newest first.
 final galleryGroupsProvider =
     FutureProvider<List<GalleryGroup>>((ref) async {
   final batchName = ref.watch(currentGalleryBatchProvider).value;
   if (batchName.isEmpty) return const [];
-
-  final sbCodes = await ref.watch(soldAndBranchGroupCodesProvider.future);
-  if (sbCodes.isEmpty) return const [];
 
   final rows = await _db
       .from('image_groups')
@@ -181,7 +177,6 @@ final galleryGroupsProvider =
   final groups = <GalleryGroup>[];
   for (final row in rows) {
     final group = GalleryGroup.fromMap(row);
-    if (!sbCodes.contains(group.groupCode)) continue;
     final imgs = await _db
         .from('item_images')
         .select('*')
