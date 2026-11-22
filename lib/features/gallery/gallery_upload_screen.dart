@@ -26,17 +26,14 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   bool _generating = false;
   bool _uploading = false;
 
-  // Single optional slots
   XFile? _machineFile;
   Uint8List? _machineBytes;
   XFile? _printerFile;
   Uint8List? _printerBytes;
 
-  // Dynamic probe slots
   final List<XFile?> _probeFiles = [];
   final List<Uint8List?> _probeBytes = [];
 
-  // Controllers keyed by slot id
   final Map<String, TextEditingController> _serialControllers = {};
   final Map<String, TextEditingController> _modelControllers = {};
 
@@ -47,9 +44,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   };
 
   SupabaseClient get _db => Supabase.instance.client;
-
   String _probeKey(int index) => 'probe$index';
-
   TextEditingController _serialCtrl(String key) =>
       _serialControllers.putIfAbsent(key, () => TextEditingController());
   TextEditingController _modelCtrl(String key) =>
@@ -64,135 +59,257 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Upload batch pictures',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Photos go to Cloudflare R2. Group code is written on the '
-                'physical machine with a marker, then entered in Inventory.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Consumer(
-                builder: (_, ref, __) {
-                  final batches = ref.watch(galleryBatchesProvider);
-                  return batches.when(
-                    data: (list) => Column(
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      backgroundColor: colorScheme.surfaceContainerLowest,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Top bar ──────────────────────────────────────────────────
+            Container(
+              color: colorScheme.surface,
+              padding: const EdgeInsets.fromLTRB(8, 4, 16, 4),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        DropdownButtonFormField<String>(
-                          value: _batchName.isEmpty ? null : _batchName,
-                          items: [
-                            for (final b in list)
-                              DropdownMenuItem(
-                                value: b,
-                                child: Text(b),
-                              ),
-                          ],
-                          onChanged: (v) {
-                            setState(() {
-                              _batchName = v!;
-                              _groupCode = '';
-                            });
-                          },
-                          decoration: const InputDecoration(
-                            labelText: 'Batch',
-                            border: OutlineInputBorder(),
-                            isDense: true,
+                        const Text(
+                          'Upload batch pictures',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'Photos go to Cloudflare R2',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.outline,
                           ),
                         ),
                       ],
                     ),
-                    loading: () => const SizedBox(
-                      height: 56,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (e, _) => TextField(
-                      decoration: const InputDecoration(
-                        labelText: 'Batch name',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      onChanged: (v) => setState(() => _batchName = v.trim()),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _uploading || _batchName.isEmpty
-                          ? null
-                          : _generateGroupCode,
-                      icon: _generating
+                  ),
+                  if (_groupCode.isNotEmpty)
+                    FilledButton.icon(
+                      onPressed: _uploading ? null : _uploadAll,
+                      icon: _uploading
                           ? const SizedBox(
-                              width: 16, height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
-                          : const Icon(Icons.auto_awesome, size: 18),
-                      label: Text(_groupCode.isEmpty
-                          ? 'Generate group code'
-                          : 'Group: $_groupCode'),
+                          : const Icon(Icons.cloud_upload, size: 18),
+                      label: Text(_uploading ? 'Uploading…' : 'Upload to R2'),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton.icon(
-                    onPressed: _uploading || _groupCode.isEmpty ? null : _uploadAll,
-                    icon: const Icon(Icons.cloud_upload, size: 18),
-                    label: const Text('Upload to R2'),
-                  ),
                 ],
               ),
-            ],
-          ),
-        ),
-
-        if (_groupCode.isNotEmpty)
-          Expanded(
-            child: _imagePickerPane(),
-          )
-        else
-          const Expanded(
-            child: Center(
-              child: Text('Enter a batch name and generate a group code first.'),
             ),
-          ),
+            const Divider(height: 1),
 
-        if (_groupCode.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton.icon(
-                onPressed: _uploading ? null : _uploadAll,
-                icon: _uploading
-                    ? const SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cloud_upload, size: 20),
-                label: Text(_uploading ? 'Uploading…' : 'Upload all photos to R2'),
+            // ── Scrollable body ──────────────────────────────────────────
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // ── Step 1: Batch + Group code card ──────────────────
+                  _StepCard(
+                    stepNumber: 1,
+                    title: 'Select batch & generate code',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Consumer(
+                          builder: (_, ref, __) {
+                            final batches = ref.watch(galleryBatchesProvider);
+                            return batches.when(
+                              data: (list) => DropdownButtonFormField<String>(
+                                value: _batchName.isEmpty ? null : _batchName,
+                                items: [
+                                  for (final b in list)
+                                    DropdownMenuItem(
+                                      value: b,
+                                      child: Text(b),
+                                    ),
+                                ],
+                                onChanged: (v) {
+                                  setState(() {
+                                    _batchName = v!;
+                                    _groupCode = '';
+                                  });
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Batch',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                              ),
+                              loading: () => const SizedBox(
+                                height: 48,
+                                child: Center(
+                                    child: CircularProgressIndicator()),
+                              ),
+                              error: (e, _) => TextField(
+                                decoration: const InputDecoration(
+                                  labelText: 'Batch name',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                onChanged: (v) =>
+                                    setState(() => _batchName = v.trim()),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed:
+                                    _uploading || _batchName.isEmpty
+                                        ? null
+                                        : _generateGroupCode,
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14),
+                                ),
+                                icon: _generating
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.auto_awesome, size: 18),
+                                label: Text(
+                                  _groupCode.isEmpty
+                                      ? 'Generate group code'
+                                      : 'Regenerate code',
+                                ),
+                              ),
+                            ),
+                            if (_groupCode.isNotEmpty) ...[
+                              const SizedBox(width: 12),
+                              _GroupCodeBadge(code: _groupCode),
+                            ],
+                          ],
+                        ),
+                        if (_groupCode.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primaryContainer
+                                  .withValues(alpha: 0.4),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.edit_outlined,
+                                  size: 16,
+                                  color: colorScheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Write "$_groupCode" on the physical '
+                                    'machine with a marker.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── Step 2: Photos (only shown after code is generated) ──
+                  if (_groupCode.isEmpty)
+                    _EmptyPhotosHint()
+                  else ...[
+                    _StepCard(
+                      stepNumber: 2,
+                      title: 'Add photos',
+                      child: Column(
+                        children: [
+                          _imageSlot('machine'),
+                          const SizedBox(height: 16),
+                          _imageSlot('printer'),
+                          for (final i in Iterable<int>.generate(
+                              _probeFiles.length)) ...[
+                            const SizedBox(height: 16),
+                            _imageSlot('probe', probeIndex: i),
+                          ],
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _uploading ? null : _addProbe,
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('Add probe'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── Upload button at bottom ──────────────────────────
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: _uploading ? null : _uploadAll,
+                        icon: _uploading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.cloud_upload, size: 20),
+                        label: Text(
+                          _uploading
+                              ? 'Uploading…'
+                              : 'Upload all photos to R2',
+                          style: const TextStyle(fontSize: 15),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ],
               ),
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
   Future<void> _generateGroupCode() async {
     if (_batchName.isEmpty) {
@@ -221,7 +338,6 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       imageQuality: 85,
     );
     if (picked == null) return;
-
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
     setState(() {
@@ -264,220 +380,235 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
         : (kind == 'machine' ? _machineBytes : _printerBytes);
     final hasImage = bytes != null;
     final label = isProbe ? 'Probe ${idx + 1}' : _kindLabels[kind]!;
+    final isOptional = kind != 'probe';
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-            ),
-            const Spacer(),
-            if (hasImage) const Icon(Icons.check_circle, color: Colors.green, size: 18),
-            if (kind == 'probe')
-              IconButton(
-                icon: const Icon(Icons.remove_circle, color: Colors.red, size: 20),
-                onPressed: () => _removeProbe(idx),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-          ],
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLowest,
+        border: Border.all(
+          color: hasImage
+              ? colorScheme.primary.withValues(alpha: 0.5)
+              : colorScheme.outlineVariant,
         ),
-        const SizedBox(height: 6),
-        GestureDetector(
-          onTap: () => _pickImage(kind, idx),
-          child: Container(
-            width: double.infinity,
-            height: 120,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              border: Border.all(
-                color: hasImage
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.outline,
-                width: hasImage ? 2 : 1,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Slot header
+          Row(
+            children: [
+              Icon(
+                kind == 'machine'
+                    ? Icons.monitor_heart_outlined
+                    : kind == 'printer'
+                        ? Icons.print_outlined
+                        : Icons.cable_outlined,
+                size: 16,
+                color: colorScheme.primary,
               ),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: hasImage
-                ? Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.memory(
-                          bytes,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: 120,
-                        ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+              const SizedBox(width: 6),
+              if (isOptional)
+                Text(
+                  'optional',
+                  style: TextStyle(
+                      fontSize: 11, color: colorScheme.outline),
+                ),
+              const Spacer(),
+              if (hasImage)
+                Icon(Icons.check_circle, color: Colors.green, size: 18),
+              if (isProbe)
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _removeProbe(idx),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.close,
+                        color: colorScheme.error, size: 18),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Photo picker
+          GestureDetector(
+            onTap: () => _pickImage(kind, idx),
+            child: Container(
+              width: double.infinity,
+              height: 110,
+              decoration: BoxDecoration(
+                color: hasImage
+                    ? Colors.transparent
+                    : colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+                border: hasImage
+                    ? null
+                    : Border.all(
+                        color: colorScheme.outline.withValues(alpha: 0.5),
+                        style: BorderStyle.solid,
                       ),
-                      Positioned(
-                        right: 4,
-                        top: 4,
-                        child: GestureDetector(
-                          onTap: () => setState(() {
-                            if (kind == 'machine') {
-                              _machineFile = null;
-                              _machineBytes = null;
-                            } else if (kind == 'printer') {
-                              _printerFile = null;
-                              _printerBytes = null;
-                            } else {
-                              _probeFiles[idx] = null;
-                              _probeBytes[idx] = null;
-                            }
-                          }),
-                          child: Container(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            child: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 18,
+              ),
+              child: hasImage
+                  ? Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            bytes,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: 110,
+                          ),
+                        ),
+                        Positioned(
+                          right: 6,
+                          top: 6,
+                          child: GestureDetector(
+                            onTap: () => setState(() {
+                              if (kind == 'machine') {
+                                _machineFile = null;
+                                _machineBytes = null;
+                              } else if (kind == 'printer') {
+                                _printerFile = null;
+                                _printerBytes = null;
+                              } else {
+                                _probeFiles[idx] = null;
+                                _probeBytes[idx] = null;
+                              }
+                            }),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.all(4),
+                              child: const Icon(Icons.close,
+                                  color: Colors.white, size: 16),
                             ),
                           ),
                         ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: GestureDetector(
+                            onTap: () => _pickImage(kind, idx),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                borderRadius: const BorderRadius.only(
+                                  bottomLeft: Radius.circular(8),
+                                  bottomRight: Radius.circular(8),
+                                ),
+                              ),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 6),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.refresh,
+                                      color: Colors.white, size: 14),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Replace photo',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_a_photo_outlined,
+                            color: colorScheme.outline, size: 28),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tap to add photo',
+                          style: TextStyle(
+                              fontSize: 12, color: colorScheme.outline),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Serial + Model fields
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _serialCtrl(key),
+                  decoration: InputDecoration(
+                    labelText: 'Serial no.',
+                    hintText: kind == 'machine' ? 'e.g. L4593871' : null,
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
+                child: Consumer(
+                  builder: (_, ref, __) {
+                    final models = ref.watch(galleryProductModelsProvider);
+                    return models.when(
+                      data: (list) => PickyField(
+                        controller: _modelCtrl(key),
+                        label: 'Model',
+                        hint:
+                            kind == 'machine' ? 'e.g. NEMIO 35' : '',
+                        options: list,
+                        pickTitle: 'products',
                       ),
-                    ],
-                  )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.add_a_photo,
-                        color: Theme.of(context).colorScheme.outline,
-                        size: 32,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tap to add $label photo',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.outline,
+                      loading: () => TextField(
+                        controller: _modelCtrl(key),
+                        decoration: const InputDecoration(
+                          labelText: 'Model',
+                          border: OutlineInputBorder(),
+                          isDense: true,
                         ),
                       ),
-                    ],
-                  ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: TextField(
-                controller: _serialCtrl(key),
-                decoration: InputDecoration(
-                  labelText: 'Serial number',
-                  hintText: kind == 'machine' ? 'e.g. L4593871' : null,
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      error: (e, _) => TextField(
+                        controller: _modelCtrl(key),
+                        decoration: const InputDecoration(
+                          labelText: 'Model',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              flex: 3,
-              child: Consumer(
-                builder: (_, ref, __) {
-                  final models = ref.watch(galleryProductModelsProvider);
-                  return models.when(
-                    data: (list) => PickyField(
-                      controller: _modelCtrl(key),
-                      label: 'Model',
-                      hint: kind == 'machine' ? 'e.g. NEMIO 35' : '',
-                      options: list,
-                      pickTitle: 'products',
-                    ),
-                    loading: () => TextField(
-                      controller: _modelCtrl(key),
-                      decoration: const InputDecoration(
-                        labelText: 'Model',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                    error: (e, _) => TextField(
-                      controller: _modelCtrl(key),
-                      decoration: const InputDecoration(
-                        labelText: 'Model',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _imagePickerPane() {
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        const Text(
-          'Photos',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            SizedBox(
-              width: (MediaQuery.of(context).size.width - 60) / 2 - 6,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _imageSlot('machine'),
-                  const SizedBox(height: 12),
-                  _imageSlot('printer'),
-                ],
-              ),
-            ),
-            for (final i in Iterable<int>.generate(_probeFiles.length))
-              SizedBox(
-                width: (MediaQuery.of(context).size.width - 60) / 2 - 6,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _imageSlot('probe', probeIndex: i),
-                  ],
-                ),
-              ),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _uploading ? null : _addProbe,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add probe'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Group code: $_groupCode  ·  Write this on the machine with a marker.',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Theme.of(context).colorScheme.primary,
+            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   static String _basename(String filePath) {
     final normalized = filePath.replaceAll('\\', '/');
-    final parts = normalized.split('/');
-    return parts.last;
+    return normalized.split('/').last;
   }
 
   Future<void> _uploadAll() async {
@@ -494,14 +625,12 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
 
     setState(() => _uploading = true);
     try {
-      // First ensure the group exists in Supabase
       await _db.from('image_groups').insert({
         'group_code': _groupCode,
         'batch_name': _batchName,
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      // Fetch the group id
       final groupRow = await _db
           .from('image_groups')
           .select('id')
@@ -509,10 +638,10 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
           .limit(1);
       final groupId = groupRow.first['id'] as int;
 
-      // Upload each image
       for (final key in toUpload) {
         final isProbe = key.startsWith('probe');
-        final probeIndex = isProbe ? int.parse(key.replaceAll('probe', '')) : -1;
+        final probeIndex =
+            isProbe ? int.parse(key.replaceAll('probe', '')) : -1;
 
         final bytes = isProbe
             ? _probeBytes[probeIndex]!
@@ -521,9 +650,15 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
             ? _probeFiles[probeIndex]
             : (key == 'machine' ? _machineFile : _printerFile);
         final originalName = _basename(file!.path);
-        final safeName = originalName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        final itemType = key == 'machine' ? 'machine' : key == 'printer' ? 'printer' : 'probe';
-        final r2Key = 'batches/$_batchName/$_groupCode/$itemType/$safeName';
+        final safeName =
+            originalName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final itemType = key == 'machine'
+            ? 'machine'
+            : key == 'printer'
+                ? 'printer'
+                : 'probe';
+        final r2Key =
+            'batches/$_batchName/$_groupCode/$itemType/$safeName';
 
         final r2Url = await R2Service.uploadBytes(
           key: r2Key,
@@ -537,7 +672,8 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
         await _db.from('item_images').insert({
           'group_id': groupId,
           'item_type': itemType,
-          'item_serial': (serial == null || serial.isEmpty) ? null : serial,
+          'item_serial':
+              (serial == null || serial.isEmpty) ? null : serial,
           'item_model': (model == null || model.isEmpty) ? null : model,
           'r2_key': r2Key,
           'r2_url': r2Url,
@@ -546,8 +682,8 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       }
 
       if (!mounted) return;
-      showSnack(context, '${toUpload.length} photo(s) uploaded to R2 and saved.');
-      // Clear selections
+      showSnack(
+          context, '${toUpload.length} photo(s) uploaded and saved.');
       setState(() {
         _machineFile = null;
         _machineBytes = null;
@@ -564,5 +700,155 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
+  }
+}
+
+// ── Supporting widgets ───────────────────────────────────────────────────────
+
+/// A numbered step card with a title and arbitrary child content.
+class _StepCard extends StatelessWidget {
+  final int stepNumber;
+  final String title;
+  final Widget child;
+
+  const _StepCard({
+    required this.stepNumber,
+    required this.title,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '$stepNumber',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+/// Pill-style badge showing the generated group code.
+class _GroupCodeBadge extends StatelessWidget {
+  final String code;
+  const _GroupCodeBadge({required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.label_outline,
+              size: 16, color: colorScheme.onPrimaryContainer),
+          const SizedBox(width: 6),
+          Text(
+            code,
+            style: TextStyle(
+              color: colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Placeholder shown before a group code is generated.
+class _EmptyPhotosHint extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+      child: Column(
+        children: [
+          Icon(
+            Icons.photo_camera_outlined,
+            size: 52,
+            color: colorScheme.outline.withValues(alpha: 0.6),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Select a batch and generate\na group code to add photos',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'The code (e.g. 1U) is written on the physical machine\nwith a marker, then entered in Inventory.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: colorScheme.outline,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
