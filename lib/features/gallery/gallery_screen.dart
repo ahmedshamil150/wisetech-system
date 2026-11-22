@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../common/widgets.dart';
 import 'gallery_data.dart';
 import 'gallery_upload_screen.dart';
 
@@ -118,14 +119,95 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             Container(
               color: colorScheme.surface,
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-              child: const SizedBox.shrink(),
+              child: Row(
+                children: [
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    onPressed: () => _linkGroupToItem(context),
+                    icon: const Icon(Icons.link, size: 18),
+                    label: const Text('Link group to inventory item'),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
     );
   }
 
-  // Gallery is independent — no linking to inventory items.
+  Future<void> _linkGroupToItem(BuildContext context) async {
+    final groups = await ref.read(galleryGroupsProvider.future);
+    if (!mounted) return;
+    if (groups.isEmpty) {
+      showSnack(context, 'No groups in this batch yet.', error: true);
+      return;
+    }
+
+    final group = await showDialog<GalleryGroup>(
+      context: context,
+      builder: (ctx) => _GroupPickerDialog(groups: groups),
+    );
+    if (!mounted) return;
+    if (group == null) return;
+
+    final kind = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Item kind'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'machine'),
+            child: const Text('Machine'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'probe'),
+            child: const Text('Probe'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'printer'),
+            child: const Text('Printer'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (kind == null) return;
+
+    final items = await ref.read(
+      itemsByGroupCodeProvider((kind: kind, groupCode: group.groupCode)).future,
+    );
+    if (!mounted) return;
+    if (items.isEmpty) {
+      showSnack(
+        context,
+        'No ${kind}s carry group code ${group.groupCode} yet. '
+        'Enter the code on the item in Inventory first.',
+        error: true,
+      );
+      return;
+    }
+
+    final item = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => _ItemPickerDialog(kind: kind, items: items),
+    );
+    if (!mounted) return;
+    if (item == null) return;
+
+    await ref.read(
+      linkImageGroupProvider((
+        kind: kind,
+        itemId: item['id'] as int,
+        groupCode: group.groupCode,
+      )).future,
+    );
+    if (!mounted) return;
+
+    showSnack(
+      context,
+      '${group.groupCode} linked to $kind ${item['code']}.',
+    );
+  }
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
@@ -420,6 +502,80 @@ class _ImageChip extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+// ── Group picker dialog ──────────────────────────────────────────────────────
+
+class _GroupPickerDialog extends StatelessWidget {
+  final List<GalleryGroup> groups;
+  const _GroupPickerDialog({required this.groups});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Choose image group'),
+      content: SizedBox(
+        width: 300,
+        height: 400,
+        child: ListView.builder(
+          itemCount: groups.length,
+          itemBuilder: (ctx, i) => ListTile(
+            title: Text(groups[i].groupCode),
+            subtitle: Text(
+                '${groups[i].batchName} · ${groups[i].images.length} images'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.pop(context, groups[i]),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Item picker dialog ───────────────────────────────────────────────────────
+
+class _ItemPickerDialog extends StatelessWidget {
+  final String kind;
+  final List<Map<String, dynamic>> items;
+  const _ItemPickerDialog({required this.kind, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = kind == 'machine'
+        ? 'Machine'
+        : kind == 'probe'
+            ? 'Probe'
+            : 'Printer';
+    return AlertDialog(
+      title: Text('Choose $label'),
+      content: SizedBox(
+        width: 300,
+        height: 400,
+        child: ListView.builder(
+          itemCount: items.length,
+          itemBuilder: (ctx, i) => ListTile(
+            title: Text('${items[i]['code'] ?? ''}'),
+            subtitle: Text(
+                '${items[i]['name'] ?? ''} · ${items[i]['serial_number'] ?? ''}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.pop(context, items[i]),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
     );
   }
 }
