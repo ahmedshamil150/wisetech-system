@@ -22,11 +22,9 @@ class GalleryUploadScreen extends ConsumerStatefulWidget {
 class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   final _picker = ImagePicker();
   String _batchName = '';
-  String _newBatchName = '';
   String _groupCode = '';
   bool _generating = false;
   bool _uploading = false;
-  bool _showNewBatchField = false;
 
   // Single optional slots
   XFile? _machineFile;
@@ -97,10 +95,6 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                         DropdownButtonFormField<String>(
                           value: _batchName.isEmpty ? null : _batchName,
                           items: [
-                            const DropdownMenuItem(
-                              value: '__new__',
-                              child: Text('+ New batch'),
-                            ),
                             for (final b in list)
                               DropdownMenuItem(
                                 value: b,
@@ -108,19 +102,10 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                               ),
                           ],
                           onChanged: (v) {
-                            if (v == '__new__') {
-                              setState(() {
-                                _batchName = '';
-                                _showNewBatchField = true;
-                              });
-                            } else {
-                              setState(() {
-                                _batchName = v!;
-                                _showNewBatchField = false;
-                                _newBatchName = '';
-                                _groupCode = '';
-                              });
-                            }
+                            setState(() {
+                              _batchName = v!;
+                              _groupCode = '';
+                            });
                           },
                           decoration: const InputDecoration(
                             labelText: 'Batch',
@@ -128,19 +113,6 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                             isDense: true,
                           ),
                         ),
-                        if (_showNewBatchField) ...[
-                          const SizedBox(height: 8),
-                          TextField(
-                            decoration: const InputDecoration(
-                              labelText: 'New batch name',
-                              hintText: 'e.g. BATCH-4',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            onChanged: (v) =>
-                                setState(() => _newBatchName = v.trim()),
-                          ),
-                        ],
                       ],
                     ),
                     loading: () => const SizedBox(
@@ -163,8 +135,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _uploading ||
-                              (_batchName.isEmpty && _newBatchName.isEmpty)
+                      onPressed: _uploading || _batchName.isEmpty
                           ? null
                           : _generateGroupCode,
                       icon: _generating
@@ -224,16 +195,11 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   }
 
   Future<void> _generateGroupCode() async {
-    final batch = _batchName.isNotEmpty ? _batchName : _newBatchName;
-    if (batch.isEmpty) {
-      showSnack(context, 'Select or enter a batch name first.', error: true);
+    if (_batchName.isEmpty) {
+      showSnack(context, 'Select a batch first.', error: true);
       return;
     }
-    ref.read(currentGalleryBatchProvider).value = batch;
-    setState(() {
-      _batchName = batch;
-      _showNewBatchField = false;
-    });
+    ref.read(currentGalleryBatchProvider).value = _batchName;
     setState(() => _generating = true);
     try {
       final code = await ref.read(createImageGroupProvider(null).future);
