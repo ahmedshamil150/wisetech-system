@@ -5,9 +5,9 @@ import '../common/widgets.dart';
 import 'gallery_data.dart';
 import 'gallery_upload_screen.dart';
 
-/// Gallery page: batch name at top, image groups arranged 2 per row.
-/// Each group card shows the machine + printer + probe photos with their
-/// serials and models.
+/// Gallery page: select a batch, view its image groups 2 per row.
+/// Each group card shows the machine + printer + probe photos with serials
+/// and models, plus the group code (e.g. 1U) to write on the machine.
 class GalleryScreen extends ConsumerStatefulWidget {
   const GalleryScreen({super.key});
 
@@ -22,93 +22,88 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Batch selector bar
+        // Header bar: title + upload
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Image Gallery',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const GalleryUploadScreen(),
-                      ),
-                    ),
-                    icon: const Icon(Icons.cloud_upload, size: 18),
-                    label: const Text('Upload photos'),
-                  ),
-                ],
+              const Expanded(
+                child: Text(
+                  'Image Gallery',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
               ),
-              const SizedBox(height: 8),
-              Consumer(
-                builder: (_, ref, __) {
-                  final batches = ref.watch(galleryBatchesProvider);
-                  return batches.when(
-                    data: (list) => DropdownButtonFormField<String>(
-                      value: _batchName.isEmpty ? null : _batchName,
-                      items: [
-                            for (final b in list)
-                              DropdownMenuItem(
-                                value: b,
-                                child: Text(b),
-                              ),
-                      ],
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setState(() {
-                          _batchName = v;
-                          ref.read(currentGalleryBatchProvider).value = v;
-                        });
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Batch',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                    loading: () => const SizedBox(
-                      height: 56,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (e, _) => TextField(
-                      decoration: const InputDecoration(
-                        labelText: 'Batch name',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      onChanged: (v) => setState(() => _batchName = v.trim()),
-                    ),
-                  );
-                },
-              ),
-              if (_batchName.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    'Group code format: 1U, 2U, 3U…  Write the code on the '
-                    'physical machine with a marker, then enter it in '
-                    'Inventory → item → Image group code.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const GalleryUploadScreen(),
                   ),
                 ),
+                icon: const Icon(Icons.cloud_upload, size: 18),
+                label: const Text('Upload photos'),
+              ),
             ],
           ),
         ),
+        // Batch selector (from Records only)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Consumer(
+            builder: (_, ref, __) {
+              final batches = ref.watch(galleryBatchesProvider);
+              return batches.when(
+                data: (list) => DropdownButtonFormField<String>(
+                  value: _batchName.isEmpty ? null : _batchName,
+                  items: [
+                    for (final b in list)
+                      DropdownMenuItem(
+                        value: b,
+                        child: Text(b),
+                      ),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _batchName = v;
+                      ref.read(currentGalleryBatchProvider).value = v;
+                    });
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Batch',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                loading: () => const SizedBox(
+                  height: 56,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => TextField(
+                  decoration: const InputDecoration(
+                    labelText: 'Batch name',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (v) => setState(() => _batchName = v.trim()),
+                ),
+              );
+            },
+          ),
+        ),
+        if (_batchName.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+            child: Text(
+              'Group code format: 1U, 2U, 3U…  Write the code on the '
+              'physical machine with a marker, then enter it in '
+              'Inventory → item → Image group code.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+          ),
 
         if (_batchName.isNotEmpty)
           Expanded(
@@ -217,7 +212,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   }
 }
 
-/// Shows all groups for one batch, 2 per row.
+/// Shows all groups for one batch, responsive 2 per row.
 class _BatchGroupsPane extends ConsumerWidget {
   final String batchName;
   const _BatchGroupsPane({required this.batchName});
@@ -231,14 +226,22 @@ class _BatchGroupsPane extends ConsumerWidget {
       data: (groups) {
         if (groups.isEmpty) {
           return const Center(
-            child: Text('No image groups yet. Add one from the upload page.'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.photo_library_outlined, size: 64, color: Colors.grey),
+                SizedBox(height: 12),
+                Text('No image groups yet.'),
+                Text('Add one from the Upload photos button.', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
           );
         }
         return GridView.builder(
           padding: const EdgeInsets.all(12),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
-            childAspectRatio: 0.85,
+            childAspectRatio: 0.88,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -250,7 +253,7 @@ class _BatchGroupsPane extends ConsumerWidget {
   }
 }
 
-/// One group card: group code badge + machine/printer/probe images.
+/// One group card: cover photo + group code badge + item chips.
 class _GroupCard extends ConsumerWidget {
   final GalleryGroup group;
   const _GroupCard({required this.group});
@@ -265,53 +268,43 @@ class _GroupCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: group code
+          // Cover photo + group code badge
           Stack(
             children: [
               Positioned.fill(
-                child: Image.network(
-                  group.images.isNotEmpty ? group.images.first.r2Url : '',
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: 150,
-                  errorBuilder: (_, _, _) => Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: const Icon(Icons.broken_image, size: 40),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    group.images.isNotEmpty ? group.images.first.r2Url : '',
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: 150,
+                    errorBuilder: (_, _, _) => Container(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.broken_image, size: 40),
+                    ),
                   ),
                 ),
               ),
-              Container(
-                color: Colors.black.withValues(alpha: 0.45),
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        group.groupCode,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                        ),
-                      ),
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    group.groupCode,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
                     ),
-                    const Spacer(),
-                    Text(
-                      '${group.images.length} photo${group.images.length == 1 ? '' : 's'}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -327,35 +320,53 @@ class _GroupCard extends ConsumerWidget {
                   'Batch: ${group.batchName}',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 4),
-                if (machine.isNotEmpty)
-                  _ImageChip(
-                    label: 'Machine',
-                    serial: machine.first.itemSerial,
-                    model: machine.first.itemModel,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                if (printer.isNotEmpty)
-                  _ImageChip(
-                    label: 'Printer',
-                    serial: printer.first.itemSerial,
-                    model: printer.first.itemModel,
-                    color: Theme.of(context).colorScheme.secondary,
-                  ),
-                if (probes.isNotEmpty)
-                  ...probes.map((p) => _ImageChip(
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (machine.isNotEmpty)
+                      _ImageChip(
+                        label: 'Machine',
+                        serial: machine.first.itemSerial,
+                        model: machine.first.itemModel,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    if (printer.isNotEmpty)
+                      _ImageChip(
+                        label: 'Printer',
+                        serial: printer.first.itemSerial,
+                        model: printer.first.itemModel,
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                    for (final p in probes)
+                      _ImageChip(
                         label: 'Probe',
                         serial: p.itemSerial,
                         model: p.itemModel,
                         color: Theme.of(context).colorScheme.tertiary,
-                      )),
-                const SizedBox(height: 4),
-                Text(
-                  '${group.createdAt.day}/${group.createdAt.month}/${group.createdAt.year}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Text(
+                      '${group.images.length} photo${group.images.length == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${group.createdAt.day}/${group.createdAt.month}/${group.createdAt.year}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -400,9 +411,12 @@ class _ImageChip extends StatelessWidget {
           ),
           if (serial != null && serial!.isNotEmpty) ...[
             const SizedBox(width: 6),
-            Text(
-              serial!,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            Flexible(
+              child: Text(
+                serial!,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
           if (model != null && model!.isNotEmpty) ...[
