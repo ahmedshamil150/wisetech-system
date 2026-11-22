@@ -3,18 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/layout.dart';
 import '../auth/auth_controller.dart';
-import '../workshop/workshop_screen.dart';
-import 'basement_screen.dart';
+import '../gallery/gallery_upload_screen.dart';
 import 'branch_screen.dart';
 import 'data_side.dart';
-import 'missing_screen.dart';
-import 'old_movements_screen.dart';
 import 'old_stock_screen.dart';
 
-/// The shell shown when the app is on the sold-and-missing side: the
-/// sold items, the missing items and the imported legacy movements.
-/// The profile menu switches back to the current side. Sales live in
-/// the one Sales screen on the current side — old sales show there too.
+/// The shell shown when the app is on the sold-and-missing side: sold items,
+/// branch items, and the image gallery.
 class OldShell extends ConsumerStatefulWidget {
   const OldShell({super.key});
 
@@ -25,28 +20,19 @@ class OldShell extends ConsumerStatefulWidget {
 class _OldShellState extends ConsumerState<OldShell> {
   static const _titles = [
     'Sold items',
-    'Missing items',
-    'Workshop',
     'Branch',
-    'Basement',
-    'Old movements',
+    'Gallery',
   ];
   static const _destinations = [
     (Icons.sell_outlined, Icons.sell, 'Sold'),
-    (Icons.help_outline, Icons.help, 'Missing'),
-    (Icons.handyman_outlined, Icons.handyman, 'Workshop'),
     (Icons.storefront_outlined, Icons.storefront, 'Branch'),
-    (Icons.stairs_outlined, Icons.stairs, 'Basement'),
-    (Icons.history_outlined, Icons.history, 'Movements'),
+    (Icons.photo_library_outlined, Icons.photo_library, 'Gallery'),
   ];
 
   late final List<Widget> _pages = const [
     OldStockScreen(),
-    MissingScreen(),
-    WorkshopScreen(),
     BranchScreen(),
-    BasementScreen(),
-    OldMovementsScreen(),
+    GalleryUploadScreen(),
   ];
 
   int _index = 0;
