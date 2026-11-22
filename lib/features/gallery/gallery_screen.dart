@@ -40,12 +40,6 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => _newBatch(context),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New batch'),
-                  ),
-                  const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
@@ -58,15 +52,46 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'Batch name',
-                  hintText: 'e.g. BATCH-3',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                onChanged: (v) => setState(() => _batchName = v.trim()),
-                onSubmitted: (_) => _setBatch(),
+              Consumer(
+                builder: (_, ref, __) {
+                  final batches = ref.watch(galleryBatchesProvider);
+                  return batches.when(
+                    data: (list) => DropdownButtonFormField<String>(
+                      value: _batchName.isEmpty ? null : _batchName,
+                      items: [
+                            for (final b in list)
+                              DropdownMenuItem(
+                                value: b,
+                                child: Text(b),
+                              ),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() {
+                          _batchName = v;
+                          ref.read(currentGalleryBatchProvider).value = v;
+                        });
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Batch',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                    loading: () => const SizedBox(
+                      height: 56,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    error: (e, _) => TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'Batch name',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (v) => setState(() => _batchName = v.trim()),
+                    ),
+                  );
+                },
               ),
               if (_batchName.isNotEmpty)
                 Padding(
@@ -92,7 +117,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
         else
           const Expanded(
             child: Center(
-              child: Text('Enter a batch name above to view its image groups.'),
+              child: Text('Select a batch above to view its image groups.'),
             ),
           ),
 
@@ -112,45 +137,6 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
           ),
       ],
     );
-  }
-
-  void _setBatch() {
-    if (_batchName.isNotEmpty) {
-      ref.read(currentGalleryBatchProvider).value = _batchName;
-      setState(() {});
-    }
-  }
-
-  Future<void> _newBatch(BuildContext context) async {
-    final controller = TextEditingController(text: _batchName);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New batch'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Batch name',
-            hintText: 'e.g. BATCH-4',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-    if (result != null && result.isNotEmpty) {
-      setState(() => _batchName = result);
-      ref.read(currentGalleryBatchProvider).value = result;
-    }
   }
 
   Future<void> _linkGroupToItem(BuildContext context) async {
