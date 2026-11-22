@@ -10,7 +10,8 @@ import 'gallery_data.dart';
 import 'r2_service.dart';
 
 /// Upload page: pick a batch, generate a group code (1U, 2U…), take photos
-/// of machine + printer + probes, upload to Cloudflare R2, save metadata.
+/// of machine + printer + any number of probes, upload to Cloudflare R2,
+/// save metadata.
 class GalleryUploadScreen extends ConsumerStatefulWidget {
   const GalleryUploadScreen({super.key});
 
@@ -27,41 +28,34 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   bool _uploading = false;
   bool _showNewBatchField = false;
 
-  // Selected images: kind -> (file, bytes)
-  final Map<String, XFile?> _images = {
-    'machine': null,
-    'printer': null,
-    'probe1': null,
-    'probe2': null,
-    'probe3': null,
-  };
-  final Map<String, Uint8List?> _imageBytes = {};
+  // Single optional slots
+  XFile? _machineFile;
+  Uint8List? _machineBytes;
+  XFile? _printerFile;
+  Uint8List? _printerBytes;
 
-  // Serial/model entry per kind
-  final Map<String, TextEditingController> _serialControllers = {
-    'machine': TextEditingController(),
-    'printer': TextEditingController(),
-    'probe1': TextEditingController(),
-    'probe2': TextEditingController(),
-    'probe3': TextEditingController(),
-  };
-  final Map<String, TextEditingController> _modelControllers = {
-    'machine': TextEditingController(),
-    'printer': TextEditingController(),
-    'probe1': TextEditingController(),
-    'probe2': TextEditingController(),
-    'probe3': TextEditingController(),
-  };
+  // Dynamic probe slots
+  final List<XFile?> _probeFiles = [];
+  final List<Uint8List?> _probeBytes = [];
+
+  // Controllers keyed by slot id
+  final Map<String, TextEditingController> _serialControllers = {};
+  final Map<String, TextEditingController> _modelControllers = {};
 
   final _kindLabels = {
     'machine': 'Machine',
     'printer': 'Printer',
-    'probe1': 'Probe 1',
-    'probe2': 'Probe 2',
-    'probe3': 'Probe 3',
+    'probe': 'Probe',
   };
 
   SupabaseClient get _db => Supabase.instance.client;
+
+  String _probeKey(int index) => 'probe$index';
+
+  TextEditingController _serialCtrl(String key) =>
+      _serialControllers.putIfAbsent(key, () => TextEditingController());
+  TextEditingController _modelCtrl(String key) =>
+      _modelControllers.putIfAbsent(key, () => TextEditingController());
 
   @override
   void dispose() {
@@ -253,7 +247,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
     }
   }
 
-  Future<void> _pickImage(String kind) async {
+  Future<void> _pickImage(String kind, int probeIndex) async {
     final picked = await _picker.pickImage(
       source: ImageSource.gallery,
       maxWidth: 1600,
@@ -265,31 +259,67 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
     setState(() {
-      _images[kind] = picked;
-      _imageBytes[kind] = bytes;
+      if (kind == 'machine') {
+        _machineFile = picked;
+        _machineBytes = bytes;
+      } else if (kind == 'printer') {
+        _printerFile = picked;
+        _printerBytes = bytes;
+      } else {
+        _probeFiles[probeIndex] = picked;
+        _probeBytes[probeIndex] = bytes;
+      }
     });
   }
 
-  Widget _imageSlot(BuildContext context, String kind) {
-    final bytes = _imageBytes[kind];
+  void _addProbe() {
+    setState(() {
+      _probeFiles.add(null);
+      _probeBytes.add(null);
+    });
+  }
+
+  void _removeProbe(int index) {
+    setState(() {
+      _probeFiles.removeAt(index);
+      _probeBytes.removeAt(index);
+      final key = _probeKey(index);
+      _serialControllers.remove(key)?.dispose();
+      _modelControllers.remove(key)?.dispose();
+    });
+  }
+
+  Widget _imageSlot(String kind, {int? probeIndex}) {
+    final isProbe = kind == 'probe';
+    final idx = probeIndex ?? 0;
+    final key = isProbe ? _probeKey(idx) : kind;
+    final bytes = isProbe ? _probeBytes[idx] : (kind == 'machine' ? _machineBytes : _printerBytes);
     final hasImage = bytes != null;
+    final label = isProbe ? 'Probe ${idx + 1}' : _kindLabels[kind]!;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Text(
-              _kindLabels[kind]!,
+              label,
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
             ),
             const Spacer(),
-            if (hasImage)
-              const Icon(Icons.check_circle, color: Colors.green, size: 18),
+            if (hasImage) const Icon(Icons.check_circle, color: Colors.green, size: 18),
+            if (kind == 'probe')
+              IconButton(
+                icon: const Icon(Icons.remove_circle, color: Colors.red, size: 20),
+                onPressed: () => _removeProbe(probeIndex!),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
           ],
         ),
         const SizedBox(height: 6),
         GestureDetector(
-          onTap: () => _pickImage(kind),
+          onTap: () => _pickImage(kind, idx),
           child: Container(
             width: double.infinity,
             height: 120,
@@ -320,8 +350,16 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                         top: 4,
                         child: GestureDetector(
                           onTap: () => setState(() {
-                            _images[kind] = null;
-                            _imageBytes[kind] = null;
+                            if (kind == 'machine') {
+                              _machineFile = null;
+                              _machineBytes = null;
+                            } else if (kind == 'printer') {
+                              _printerFile = null;
+                              _printerBytes = null;
+                            } else {
+                              _probeFiles[idx] = null;
+                              _probeBytes[idx] = null;
+                            }
                           }),
                           child: Container(
                             color: Colors.black.withValues(alpha: 0.5),
@@ -345,7 +383,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Tap to add ${_kindLabels[kind]} photo',
+                        'Tap to add $label photo',
                         style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.outline,
@@ -361,7 +399,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
             Expanded(
               flex: 2,
               child: TextField(
-                controller: _serialControllers[kind],
+                controller: _serialCtrl(key),
                 decoration: InputDecoration(
                   labelText: 'Serial number',
                   hintText: kind == 'machine' ? 'e.g. L4593871' : null,
@@ -379,14 +417,14 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                   final models = ref.watch(galleryProductModelsProvider);
                   return models.when(
                     data: (list) => PickyField(
-                      controller: _modelControllers[kind]!,
+                      controller: _modelCtrl(key),
                       label: 'Model',
                       hint: kind == 'machine' ? 'e.g. NEMIO 35' : '',
                       options: list,
                       pickTitle: 'products',
                     ),
                     loading: () => TextField(
-                      controller: _modelControllers[kind],
+                      controller: _modelCtrl(key),
                       decoration: const InputDecoration(
                         labelText: 'Model',
                         border: OutlineInputBorder(),
@@ -394,7 +432,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                       ),
                     ),
                     error: (e, _) => TextField(
-                      controller: _modelControllers[kind],
+                      controller: _modelCtrl(key),
                       decoration: const InputDecoration(
                         labelText: 'Model',
                         border: OutlineInputBorder(),
@@ -424,16 +462,35 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
           spacing: 12,
           runSpacing: 12,
           children: [
-            for (final kind in ['machine', 'printer', 'probe1', 'probe2', 'probe3'])
+            SizedBox(
+              width: (MediaQuery.of(context).size.width - 60) / 2 - 6,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _imageSlot('machine'),
+                  const SizedBox(height: 12),
+                  _imageSlot('printer'),
+                ],
+              ),
+            ),
+            for (final i in Iterable<int>.generate(_probeFiles.length))
               SizedBox(
                 width: (MediaQuery.of(context).size.width - 60) / 2 - 6,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _imageSlot(context, kind),
+                    _imageSlot('probe', probeIndex: i),
                   ],
                 ),
               ),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _uploading ? null : _addProbe,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add probe'),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -457,10 +514,10 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
 
   Future<void> _uploadAll() async {
     final toUpload = <String>[];
-    for (final kind in ['machine', 'printer', 'probe1', 'probe2', 'probe3']) {
-      if (_imageBytes[kind] != null) {
-        toUpload.add(kind);
-      }
+    if (_machineBytes != null) toUpload.add('machine');
+    if (_printerBytes != null) toUpload.add('printer');
+    for (final i in Iterable<int>.generate(_probeFiles.length)) {
+      if (_probeBytes[i] != null) toUpload.add('probe$i');
     }
     if (toUpload.isEmpty) {
       showSnack(context, 'Select at least one photo.', error: true);
@@ -485,11 +542,16 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       final groupId = groupRow.first['id'] as int;
 
       // Upload each image
-      for (final kind in toUpload) {
-        final bytes = _imageBytes[kind]!;
-        final originalName = _basename(_images[kind]!.path);
+      for (final key in toUpload) {
+        final isProbe = key.startsWith('probe');
+        final probeIndex = isProbe ? int.parse(key.replaceAll('probe', '')) : -1;
+
+        final bytes = isProbe ? _probeBytes[probeIndex]! : (key == 'machine' ? _machineBytes! : _printerBytes!);
+        final file = isProbe ? _probeFiles[probeIndex] : (key == 'machine' ? _machineFile : _printerFile);
+        final originalName = _basename(file!.path);
         final safeName = originalName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        final r2Key = 'batches/$_batchName/$_groupCode/$kind/$safeName';
+        final itemType = key == 'machine' ? 'machine' : key == 'printer' ? 'printer' : 'probe';
+        final r2Key = 'batches/$_batchName/$_groupCode/$itemType/$safeName';
 
         final r2Url = await R2Service.uploadBytes(
           key: r2Key,
@@ -497,18 +559,8 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
           contentType: 'image/jpeg',
         );
 
-        // Determine item_type
-        String itemType;
-        if (kind == 'machine') {
-          itemType = 'machine';
-        } else if (kind == 'printer') {
-          itemType = 'printer';
-        } else {
-          itemType = 'probe';
-        }
-
-        final serial = _serialControllers[kind]?.text.trim();
-        final model = _modelControllers[kind]?.text.trim();
+        final serial = _serialControllers[key]?.text.trim();
+        final model = _modelControllers[key]?.text.trim();
 
         await _db.from('item_images').insert({
           'group_id': groupId,
@@ -525,8 +577,12 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       showSnack(context, '${toUpload.length} photo(s) uploaded to R2 and saved.');
       // Clear selections
       setState(() {
-        _imageBytes.clear();
-        _images.updateAll((_, __) => null);
+        _machineFile = null;
+        _machineBytes = null;
+        _printerFile = null;
+        _printerBytes = null;
+        _probeFiles.clear();
+        _probeBytes.clear();
         for (final c in _serialControllers.values) c.clear();
         for (final c in _modelControllers.values) c.clear();
       });
