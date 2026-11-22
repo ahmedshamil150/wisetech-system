@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,34 +26,72 @@ Future<void> main() async {
     runApp(const MissingConfigApp());
     return;
   }
-  await Supabase.initialize(
-    url: Config.supabaseUrl,
-    publishableKey: Config.supabaseAnonKey,
-  );
-  // No automatic provider retries: Riverpod's default keeps a failed load
-  // on its spinner while it retries in the background, so a dropped
-  // connection looked like a frozen app. Screens now time out after 45s
-  // and show a "Try again" button instead.
+
+  // Initialize Supabase; if it cannot connect (e.g. no network on web),
+  // show the error instead of a blank white screen.
+  String? initError;
+  try {
+    await Supabase.initialize(
+      url: Config.supabaseUrl,
+      publishableKey: Config.supabaseAnonKey,
+    );
+  } on Object catch (e, st) {
+    initError = '$e';
+    print('Supabase init error: $e\n$st');
+  }
+
   runApp(
     ProviderScope(
       retry: (_, _) => null,
-      child: const UltrasoundInventoryApp(),
+      child: UltrasoundInventoryApp(initError: initError),
     ),
   );
 }
 
 class UltrasoundInventoryApp extends ConsumerWidget {
-  const UltrasoundInventoryApp({super.key});
+  final String? initError;
+  const UltrasoundInventoryApp({this.initError, super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
+    if (initError != null) {
+      return MaterialApp(
+        title: 'WTS',
+        debugShowCheckedModeBanner: false,
+        theme: buildAppTheme(),
+      home: Scaffold(
+        body: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  SizedBox(height: 16),
+                  Text(
+                    'Supabase could not initialize.',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Check your internet connection and redeploy.',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return MaterialApp(
       title: 'WTS',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       darkTheme: buildAppTheme(Brightness.dark),
-      themeMode: themeMode,
+      themeMode: ref.watch(themeModeProvider),
       home: const AuthGate(),
     );
   }
@@ -65,11 +105,50 @@ class AuthGate extends ConsumerWidget {
     final auth = ref.watch(authStateProvider);
     return auth.when(
       loading: () => const _SplashScreen(),
-      error: (error, stack) => const LoginScreen(),
+      error: (error, stack) => _ErrorScreen('Auth error: $error'),
       data: (state) {
         if (state.session == null) return const LoginScreen();
         return const AppShell();
       },
+    );
+  }
+}
+
+class _ErrorScreen extends StatelessWidget {
+  final String message;
+  const _ErrorScreen(this.message);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'WTS',
+      debugShowCheckedModeBanner: false,
+      theme: buildAppTheme(),
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 64, color: Colors.red),
+                SizedBox(height: 16),
+                Text(
+                  'App failed to start.',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8),
+                SelectableText(
+                  message,
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -86,8 +165,7 @@ class _SplashScreen extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              child:
-                  Image.asset('assets/wts-icon.png', width: 64, height: 64),
+              child: Image.asset('assets/wts-icon.png', width: 64, height: 64),
             ),
             const SizedBox(height: 16),
             const CircularProgressIndicator(),
