@@ -374,15 +374,35 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
             const SizedBox(width: 8),
             Expanded(
               flex: 3,
-              child: TextField(
-                controller: _modelControllers[kind],
-                decoration: InputDecoration(
-                  labelText: 'Model',
-                  hintText: kind == 'machine' ? 'e.g. NEMIO 35' : null,
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                ),
+              child: Consumer(
+                builder: (_, ref, __) {
+                  final models = ref.watch(galleryProductModelsProvider);
+                  return models.when(
+                    data: (list) => PickyField(
+                      controller: _modelControllers[kind]!,
+                      label: 'Model',
+                      hint: kind == 'machine' ? 'e.g. NEMIO 35' : '',
+                      options: list,
+                      pickTitle: 'products',
+                    ),
+                    loading: () => TextField(
+                      controller: _modelControllers[kind],
+                      decoration: const InputDecoration(
+                        labelText: 'Model',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                    error: (e, _) => TextField(
+                      controller: _modelControllers[kind],
+                      decoration: const InputDecoration(
+                        labelText: 'Model',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],

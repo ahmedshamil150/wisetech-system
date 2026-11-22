@@ -106,6 +106,20 @@ final galleryBatchesProvider = FutureProvider<List<String>>((ref) async {
   return names.toList()..sort((a, b) => b.compareTo(a));
 });
 
+/// Product model names from catalog_products (Records page), for suggestions.
+final galleryProductModelsProvider = FutureProvider<List<String>>((ref) async {
+  final rows = await _db
+      .from('catalog_products')
+      .select('name_model')
+      .order('name_model');
+  final names = <String>{};
+  for (final row in rows) {
+    final n = row['name_model'] as String?;
+    if (n != null && n.isNotEmpty) names.add(n);
+  }
+  return names.toList()..sort((a, b) => a.compareTo(b));
+});
+
 /// Which batch the gallery is currently viewing/editing.
 class _BatchHolder {
   String value = '';
