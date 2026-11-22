@@ -2,16 +2,15 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Uploads images directly to Cloudflare R2 using AWS Signature v4 signing.
 /// No backend required — the Flutter app signs and sends each PUT request.
 class R2Service {
-  static String get _accountId => dotenv.env['R2_ACCOUNT_ID'] ?? '';
-  static String get _bucketName => dotenv.env['R2_BUCKET_NAME'] ?? '';
-  static String get _accessKeyId => dotenv.env['R2_ACCESS_KEY_ID'] ?? '';
-  static String get _secretAccessKey => dotenv.env['R2_SECRET_ACCESS_KEY'] ?? '';
-  static String get _endpoint => dotenv.env['R2_ENDPOINT'] ?? '';
+  static String get _accountId => const String.fromEnvironment('R2_ACCOUNT_ID', defaultValue: '');
+  static String get _bucketName => const String.fromEnvironment('R2_BUCKET_NAME', defaultValue: '');
+  static String get _accessKeyId => const String.fromEnvironment('R2_ACCESS_KEY_ID', defaultValue: '');
+  static String get _secretAccessKey => const String.fromEnvironment('R2_SECRET_ACCESS_KEY', defaultValue: '');
+  static String get _endpoint => const String.fromEnvironment('R2_ENDPOINT', defaultValue: '');
 
   static bool get isConfigured =>
       _accountId.isNotEmpty &&
