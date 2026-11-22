@@ -625,18 +625,24 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
 
     setState(() => _uploading = true);
     try {
-      await _db.from('image_groups').insert({
-        'group_code': _groupCode,
-        'batch_name': _batchName,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-
-      final groupRow = await _db
+      // Ensure the group exists (idempotent: reuse if already created)
+      final existing = await _db
           .from('image_groups')
           .select('id')
           .eq('group_code', _groupCode)
+          .eq('batch_name', _batchName)
           .limit(1);
-      final groupId = groupRow.first['id'] as int;
+      int groupId;
+      if (existing.isNotEmpty) {
+        groupId = existing.first['id'] as int;
+      } else {
+        final inserted = await _db.from('image_groups').insert({
+          'group_code': _groupCode,
+          'batch_name': _batchName,
+          'created_at': DateTime.now().toIso8601String(),
+        }).select('id');
+        groupId = inserted.first['id'] as int;
+      }
 
       for (final key in toUpload) {
         final isProbe = key.startsWith('probe');
