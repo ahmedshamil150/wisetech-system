@@ -6,7 +6,6 @@ import 'gallery_data.dart';
 import 'gallery_upload_screen.dart';
 
 /// Gallery page: select a batch, view its image groups 2 per row.
-/// Tap a group card to open the full-screen image viewer (pinch-to-zoom).
 class GalleryScreen extends ConsumerStatefulWidget {
   const GalleryScreen({super.key});
 
@@ -19,35 +18,50 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header bar: title + upload
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        // ── Header ──────────────────────────────────────────────────────
+        Container(
+          color: colorScheme.surface,
+          padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
           child: Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Image Gallery',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              Icon(
+                Icons.photo_library_outlined,
+                size: 22,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Image Gallery',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
                 ),
               ),
-              const SizedBox(width: 12),
+              const Spacer(),
               FilledButton.icon(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const GalleryUploadScreen(),
                   ),
                 ),
-                icon: const Icon(Icons.cloud_upload, size: 18),
+                icon: const Icon(Icons.cloud_upload_outlined, size: 18),
                 label: const Text('Upload photos'),
               ),
             ],
           ),
         ),
-        // Batch selector (from Records only)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        const Divider(height: 1),
+
+        // ── Batch selector ───────────────────────────────────────────────
+        Container(
+          color: colorScheme.surface,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Consumer(
             builder: (_, ref, __) {
               final batches = ref.watch(galleryBatchesProvider);
@@ -56,10 +70,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                   value: _batchName.isEmpty ? null : _batchName,
                   items: [
                     for (final b in list)
-                      DropdownMenuItem(
-                        value: b,
-                        child: Text(b),
-                      ),
+                      DropdownMenuItem(value: b, child: Text(b)),
                   ],
                   onChanged: (v) {
                     if (v == null) return;
@@ -69,13 +80,14 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                     });
                   },
                   decoration: const InputDecoration(
-                    labelText: 'Batch',
+                    labelText: 'Select batch',
                     border: OutlineInputBorder(),
                     isDense: true,
+                    prefixIcon: Icon(Icons.inventory_2_outlined, size: 18),
                   ),
                 ),
                 loading: () => const SizedBox(
-                  height: 56,
+                  height: 48,
                   child: Center(child: CircularProgressIndicator()),
                 ),
                 error: (e, _) => TextField(
@@ -90,25 +102,43 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             },
           ),
         ),
-        if (_batchName.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-            child: Text(
-              'Group code format: 1U, 2U, 3U…  Write the code on the '
-              'physical machine with a marker, then enter it in '
-              'Inventory → item → Image group code.',
-              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline),
+
+        if (_batchName.isNotEmpty) ...[
+          Container(
+            color: colorScheme.surfaceContainerLowest,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline,
+                    size: 14, color: colorScheme.outline),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Group codes: 1U, 2U, 3U… — write on the machine with '
+                    'a marker, then enter in Inventory.',
+                    style: TextStyle(
+                        fontSize: 12, color: colorScheme.outline),
+                  ),
+                ),
+              ],
             ),
           ),
+          const Divider(height: 1),
+        ],
 
+        // ── Content area ─────────────────────────────────────────────────
         if (_batchName.isEmpty)
           Expanded(child: _EmptyBatchHint())
         else
-          Expanded(child: _BatchGroupsPane(batchName: _batchName)),
+          Expanded(
+            child: _BatchGroupsPane(batchName: _batchName),
+          ),
 
+        // ── Link button (only when batch selected) ───────────────────────
         if (_batchName.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          Container(
+            color: colorScheme.surface,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
             child: Row(
               children: [
                 const Spacer(),
@@ -163,7 +193,10 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     if (kind == null) return;
 
     final items = await ref.read(
-      itemsByGroupCodeProvider((kind: kind, groupCode: group.groupCode)).future,
+      itemsByGroupCodeProvider((
+        kind: kind,
+        groupCode: group.groupCode,
+      )).future,
     );
     if (!mounted) return;
     if (items.isEmpty) {
@@ -183,12 +216,12 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     if (!mounted) return;
     if (item == null) return;
 
-    ref.read(
+    await ref.read(
       linkImageGroupProvider((
         kind: kind,
         itemId: item['id'] as int,
         groupCode: group.groupCode,
-      )),
+      )).future,
     );
     if (!mounted) return;
 
@@ -199,7 +232,64 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   }
 }
 
-// ── Grid of groups ─────────────────────────────────────────────────────────────
+// ── Empty state shown before a batch is selected ─────────────────────────────
+
+class _EmptyBatchHint extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.photo_library_outlined,
+                size: 40,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Select a batch to view photos',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Choose a batch from the dropdown above to browse\nits image groups.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: colorScheme.outline,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+              label: const Text('Use "Upload photos" to add new groups'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Grid of groups for the selected batch ────────────────────────────────────
 
 class _BatchGroupsPane extends ConsumerWidget {
   final String batchName;
@@ -212,7 +302,10 @@ class _BatchGroupsPane extends ConsumerWidget {
     return data.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
-        child: Text('Error: $e', style: TextStyle(color: colorScheme.error)),
+        child: Text(
+          'Error: $e',
+          style: TextStyle(color: colorScheme.error),
+        ),
       ),
       data: (groups) {
         if (groups.isEmpty) {
@@ -232,14 +325,17 @@ class _BatchGroupsPane extends ConsumerWidget {
                     'No image groups yet',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Tap "Upload photos" to add the first group.',
-                    style: TextStyle(fontSize: 13, color: colorScheme.outline),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.outline,
+                    ),
                   ),
                 ],
               ),
@@ -250,7 +346,7 @@ class _BatchGroupsPane extends ConsumerWidget {
           padding: const EdgeInsets.all(14),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
-            childAspectRatio: 0.85,
+            childAspectRatio: 0.82,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -262,87 +358,67 @@ class _BatchGroupsPane extends ConsumerWidget {
   }
 }
 
-// ── Empty state ──────────────────────────────────────────────────────────────
+// ── Individual group card ─────────────────────────────────────────────────────
 
-class _EmptyBatchHint extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.photo_library_outlined,
-              size: 56,
-              color: colorScheme.outline.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No image groups yet',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Tap "Upload photos" to add the first group.',
-              style: TextStyle(fontSize: 13, color: colorScheme.outline),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Group card ─────────────────────────────────────────────────────────────────
-
-class _GroupCard extends StatelessWidget {
+class _GroupCard extends ConsumerWidget {
   final GalleryGroup group;
   const _GroupCard({required this.group});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final machine = group.images.where((i) => i.itemType == 'machine').toList();
-    final printer = group.images.where((i) => i.itemType == 'printer').toList();
-    final probes = group.images.where((i) => i.itemType == 'probe').toList();
+    final machine =
+        group.images.where((i) => i.itemType == 'machine').toList();
+    final printer =
+        group.images.where((i) => i.itemType == 'printer').toList();
+    final probes =
+        group.images.where((i) => i.itemType == 'probe').toList();
 
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => _ImageGalleryViewer(group: group),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Cover photo + group code badge
-            Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Cover photo with group code badge
+          Expanded(
+            child: Stack(
               children: [
                 Positioned.fill(
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Image.network(
-                      group.images.isNotEmpty
-                          ? group.images.first.r2Url
-                          : '',
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: 150,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: const Icon(Icons.image_outlined, size: 36),
-                      ),
-                    ),
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(14)),
+                    child: group.images.isNotEmpty
+                        ? Image.network(
+                            group.images.first.r2Url,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                size: 36,
+                                color: colorScheme.outline,
+                              ),
+                            ),
+                          )
+                        : Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.image_outlined,
+                              size: 36,
+                              color: colorScheme.outline,
+                            ),
+                          ),
                   ),
                 ),
                 Positioned(
@@ -354,6 +430,12 @@ class _GroupCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: colorScheme.primary,
                       borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                        ),
+                      ],
                     ),
                     child: Text(
                       group.groupCode,
@@ -383,75 +465,79 @@ class _GroupCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: _GroupMenu(group: group),
+              ],
+            ),
+          ),
+
+          // Details section
+          Padding(
+            padding:
+                const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  group.batchName,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.outline,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 4,
+                  children: [
+                    if (machine.isNotEmpty)
+                      _ImageChip(
+                        label: 'Machine',
+                        serial: machine.first.itemSerial,
+                        color: colorScheme.primary,
+                      ),
+                    if (printer.isNotEmpty)
+                      _ImageChip(
+                        label: 'Printer',
+                        serial: printer.first.itemSerial,
+                        color: colorScheme.secondary,
+                      ),
+                    for (final p in probes)
+                      _ImageChip(
+                        label: 'Probe',
+                        serial: p.itemSerial,
+                        color: colorScheme.tertiary,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${group.createdAt.day}/${group.createdAt.month}/${group.createdAt.year}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.outline,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            // Details
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    group.batchName,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.outline),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 5,
-                    runSpacing: 4,
-                    children: [
-                      if (machine.isNotEmpty)
-                        _ImageChip(
-                          label: 'Machine',
-                          serial: machine.first.itemSerial,
-                          color: colorScheme.primary,
-                        ),
-                      if (printer.isNotEmpty)
-                        _ImageChip(
-                          label: 'Printer',
-                          serial: printer.first.itemSerial,
-                          color: colorScheme.secondary,
-                        ),
-                      for (final p in probes)
-                        _ImageChip(
-                          label: 'Probe',
-                          serial: p.itemSerial,
-                          color: colorScheme.tertiary,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${group.createdAt.day}/${group.createdAt.month}/${group.createdAt.year}',
-                    style: TextStyle(fontSize: 11, color: colorScheme.outline),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ── Chip ───────────────────────────────────────────────────────────────────────
+// ── Small chip showing item type + serial ─────────────────────────────────────
 
 class _ImageChip extends StatelessWidget {
   final String label;
   final String? serial;
   final Color color;
-  _ImageChip({required this.label, this.serial, required this.color});
+  const _ImageChip({
+    required this.label,
+    this.serial,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -468,7 +554,10 @@ class _ImageChip extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-                color: color, fontWeight: FontWeight.w700, fontSize: 11),
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
           ),
           if (serial != null && serial!.isNotEmpty) ...[
             const SizedBox(width: 5),
@@ -487,7 +576,7 @@ class _ImageChip extends StatelessWidget {
   }
 }
 
-// ── Group picker dialog ──────────────────────────────────────────────────────
+// ── Dialogs ───────────────────────────────────────────────────────────────────
 
 class _GroupPickerDialog extends StatelessWidget {
   final List<GalleryGroup> groups;
@@ -520,8 +609,6 @@ class _GroupPickerDialog extends StatelessWidget {
     );
   }
 }
-
-// ── Item picker dialog ───────────────────────────────────────────────────────
 
 class _ItemPickerDialog extends StatelessWidget {
   final String kind;
@@ -557,165 +644,6 @@ class _ItemPickerDialog extends StatelessWidget {
           child: const Text('Cancel'),
         ),
       ],
-    );
-  }
-}
-
-// ── Group menu (edit code / delete) ──────────────────────────────────────────
-
-class _GroupMenu extends ConsumerWidget {
-  final GalleryGroup group;
-  const _GroupMenu({required this.group});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert, size: 20),
-      onSelected: (value) async {
-        if (value == 'delete') {
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Delete group?'),
-              content: Text(
-                  'Delete "${group.groupCode}" and all its photos? This cannot be undone.'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: Colors.red),
-                  child: const Text('Delete'),
-                ),
-              ],
-            ),
-          );
-          if (ok == true && context.mounted) {
-            ref.read(deleteImageGroupProvider(group.id));
-            if (context.mounted) {
-              showSnack(context, 'Group deleted');
-            }
-          }
-        } else if (value == 'edit') {
-          await _editGroupCode(context, ref);
-        }
-      },
-      itemBuilder: (ctx) => [
-        const PopupMenuItem(
-          value: 'edit',
-          child: ListTile(
-            leading: Icon(Icons.edit, size: 20),
-            title: Text('Edit code'),
-            dense: true,
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'delete',
-          child: ListTile(
-            leading: Icon(Icons.delete, size: 20, color: Colors.red),
-            title: Text('Delete group', style: TextStyle(color: Colors.red)),
-            dense: true,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _editGroupCode(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(text: group.groupCode);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit group code'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Group code',
-            hintText: 'e.g. 1U',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (result == null || result.isEmpty || result == group.groupCode) return;
-    if (!context.mounted) return;
-    try {
-      ref.read(updateImageGroupProvider((
-        id: group.id,
-        groupCode: result,
-      ))).value;
-      if (context.mounted) {
-        showSnack(context, 'Group code updated to $result');
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showSnack(context, 'Failed to update: $e', error: true);
-      }
-    }
-  }
-}
-
-// ── Full-screen image viewer (pinch-to-zoom) ─────────────────────────────────
-
-class _ImageGalleryViewer extends StatelessWidget {
-  final GalleryGroup group;
-  const _ImageGalleryViewer({required this.group});
-
-  @override
-  Widget build(BuildContext context) {
-    final images = group.images;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '${group.groupCode} — ${images.length} photo${images.length == 1 ? '' : 's'}',
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: PageView.builder(
-        itemCount: images.length,
-        itemBuilder: (ctx, i) {
-          final img = images[i];
-          return Center(
-            child: InteractiveViewer(
-              panEnabled: true,
-              scaleEnabled: true,
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Image.network(
-                img.r2Url,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.broken_image, size: 64, color: Colors.grey),
-                    const SizedBox(height: 8),
-                    Text(img.r2Url,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 10)),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }
