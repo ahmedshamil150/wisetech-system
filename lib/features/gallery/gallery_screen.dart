@@ -414,6 +414,12 @@ class _GroupCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Menu
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _GroupMenu(group: group),
+                ),
               ],
             ),
           ),
@@ -577,5 +583,113 @@ class _ItemPickerDialog extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+// ── Group menu (edit code / delete) ──────────────────────────────────────────
+
+class _GroupMenu extends ConsumerWidget {
+  final GalleryGroup group;
+  const _GroupMenu({required this.group});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert, size: 20),
+      onSelected: (value) async {
+        if (value == 'delete') {
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Delete group?'),
+              content: Text(
+                  'Delete "${group.groupCode}" and all its photos? This cannot be undone.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          );
+          if (ok == true && context.mounted) {
+            ref.read(deleteImageGroupProvider(group.id)).value;
+            if (context.mounted) {
+              showSnack(context, 'Group deleted');
+            }
+          }
+        } else if (value == 'edit') {
+          await _editGroupCode(context, ref);
+        }
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'edit',
+          child: ListTile(
+            leading: Icon(Icons.edit, size: 20),
+            title: Text('Edit code'),
+            dense: true,
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: ListTile(
+            leading: Icon(Icons.delete, size: 20, color: Colors.red),
+            title: Text('Delete group', style: TextStyle(color: Colors.red)),
+            dense: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _editGroupCode(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(text: group.groupCode);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit group code'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Group code',
+            hintText: 'e.g. 1U',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result.isEmpty || result == group.groupCode) return;
+    if (!context.mounted) return;
+    try {
+      ref.read(updateImageGroupProvider((
+        id: group.id,
+        groupCode: result,
+      ))).value;
+      if (context.mounted) {
+        showSnack(context, 'Group code updated to $result');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showSnack(context, 'Failed to update: $e', error: true);
+      }
+    }
   }
 }

@@ -261,3 +261,16 @@ final itemsByGroupCodeProvider =
       .inFilter('status', const ['Sold', 'With Branch']);
   return rows.cast<Map<String, dynamic>>();
 });
+
+/// Delete an image group and all its item_images.
+final deleteImageGroupProvider =
+    FutureProvider.family<void, int>((ref, groupId) async {
+  await _db.from('item_images').delete().eq('group_id', groupId);
+  await _db.from('image_groups').delete().eq('id', groupId);
+});
+
+/// Update a group's code.
+final updateImageGroupProvider =
+    FutureProvider.family<void, ({int id, String groupCode})>((ref, args) async {
+  await _db.from('image_groups').update({'group_code': args.groupCode}).eq('id', args.id);
+});
