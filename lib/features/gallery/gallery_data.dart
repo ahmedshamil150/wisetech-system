@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'r2_service.dart';
+
 /// One image row returned from item_images.
 class GalleryImage {
   final int id;
@@ -30,7 +32,9 @@ class GalleryImage {
         itemSerial: m['item_serial'] as String?,
         itemModel: m['item_model'] as String?,
         r2Key: m['r2_key'] as String,
-        r2Url: m['r2_url'] as String,
+        // Always derive the URL from the key so a bucket moved to public
+        // access (or a new public base) shows old images too.
+        r2Url: R2Service.publicUrl(m['r2_key'] as String),
         uploadedAt: DateTime.parse(m['uploaded_at'] as String),
       );
 }
@@ -251,8 +255,21 @@ final deleteImageGroupProvider = FutureProvider.family<void, int>((ref, groupId)
   await _db.from('image_groups').delete().eq('id', groupId);
 });
 
-/// Update a group's code.
-final updateImageGroupProvider =
-    FutureProvider.family<void, ({int id, String groupCode})>((ref, args) async {
-  await _db.from('image_groups').update({'group_code': args.groupCode}).eq('id', args.id);
+/// Update a group's code. Items already linked to the old code follow it,
+/// so the inventory keeps pointing at the renamed group.
+final updateImageGroupProvider = FutureProvider.family<void,
+    ({int id, String groupCode, String? oldGroupCode})>((ref, args) async {
+  await _db
+      .from('image_groups')
+      .update({'group_code': args.groupCode})
+      .eq('id', args.id);
+  final old = args.oldGroupCode;
+  if (old != null && old.isNotEmpty && old != args.groupCode) {
+    for (final table in ['machines', 'probes', 'printers']) {
+      await _db
+          .from(table)
+          .update({'image_group_code': args.groupCode})
+          .eq('image_group_code', old);
+    }
+  }
 });

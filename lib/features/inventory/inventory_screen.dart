@@ -9,6 +9,7 @@ import '../data/data.dart';
 import '../old/missing_screen.dart' show showFoundItemSheet;
 import '../old/move_item_sheet.dart' show showMoveItemSheet;
 import '../records/records_screen.dart';
+import 'batch_group_form.dart';
 import 'inventory_item_tile.dart';
 import 'local_purchase_form.dart';
 import 'probe_placement_sheet.dart';
@@ -805,8 +806,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   onPressed: () => _showGroupMenu(context),
                 ),
               ),
-              // two new records live here: stock added to inventory, and
-              // stock bought locally from a seller
+              // three entry points live here: a whole batch group (machine
+              // + probes + printer), stock bought locally, and one item
               if (isAdmin && _type != 'Boxes')
                 Positioned(
                   right: 16,
@@ -816,6 +817,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       AppFab(
+                        tooltip: 'Add a batch group (machine + probe + printer)',
+                        icon: Icons.playlist_add,
+                        onPressed: () => showBatchGroupSheet(context),
+                      ),
+                      const SizedBox(height: 12),
+                      AppFab(
                         tooltip: 'Buy local',
                         icon: Icons.shopping_cart_outlined,
                         secondary: true,
@@ -823,7 +830,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ),
                       const SizedBox(height: 12),
                       AppFab(
-                        tooltip: 'Add to inventory',
+                        tooltip: 'Add one product',
+                        icon: Icons.add,
+                        secondary: true,
                         onPressed: () => showAppSheet<void>(
                           context: context,
                           title: 'Add product',

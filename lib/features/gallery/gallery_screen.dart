@@ -19,6 +19,24 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   String _batchName = '';
 
   @override
+  void initState() {
+    super.initState();
+    // Open on the newest batch so the photos show without a first tap.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        final batches = await ref.read(galleryBatchesProvider.future);
+        if (!mounted || batches.isEmpty || _batchName.isNotEmpty) return;
+        setState(() => _batchName = batches.first);
+        ref.read(currentGalleryBatchProvider).value = batches.first;
+        ref.invalidate(galleryGroupsProvider);
+      } catch (_) {
+        // Leave the picker empty; the user can type a batch name.
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       children: [
@@ -68,6 +86,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                       _batchName = v;
                       ref.read(currentGalleryBatchProvider).value = v;
                     });
+                    ref.invalidate(galleryGroupsProvider);
                   },
                   decoration: const InputDecoration(
                     labelText: 'Batch',
@@ -95,9 +114,9 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
             child: Text(
-              'Group code format: 1U, 2U, 3U…  Write the code on the '
-              'physical machine with a marker, then enter it in '
-              'Inventory → item → Image group code.',
+              'Each machine ID (1U, 2U, 3U…) is also its group code. '
+              'Groups entered from Inventory → Add batch group show up '
+              'here automatically.',
               style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline),
             ),
           ),
@@ -188,12 +207,21 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
 
     final itemId = item['id'] as int;
     final itemCode = item['code'] ?? '';
-    ref.read(
-      linkImageGroupProvider((
-        kind: kind,
-        itemId: itemId,
-        groupCode: group.groupCode,
-      )),
+    try {
+      await ref.read(
+        linkImageGroupProvider((
+          kind: kind,
+          itemId: itemId,
+          groupCode: group.groupCode,
+        )).future,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showSnack(context, 'Could not link group: $error', error: true);
+      return;
+    }
+    ref.invalidate(
+      itemsByGroupCodeProvider((kind: kind, groupCode: group.groupCode)),
     );
     if (!mounted) return;
 
@@ -564,7 +592,8 @@ class _GroupMenu extends ConsumerWidget {
             ),
           );
           if (ok == true && context.mounted) {
-            ref.read(deleteImageGroupProvider(group.id));
+            await ref.read(deleteImageGroupProvider(group.id).future);
+            ref.invalidate(galleryGroupsProvider);
             if (context.mounted) {
               showSnack(context, 'Group deleted');
             }
@@ -624,10 +653,12 @@ class _GroupMenu extends ConsumerWidget {
     if (result == null || result.isEmpty || result == group.groupCode) return;
     if (!context.mounted) return;
     try {
-      ref.read(updateImageGroupProvider((
+      await ref.read(updateImageGroupProvider((
         id: group.id,
         groupCode: result,
-      ))).value;
+        oldGroupCode: group.groupCode,
+      )).future);
+      ref.invalidate(galleryGroupsProvider);
       if (context.mounted) {
         showSnack(context, 'Group code updated to $result');
       }

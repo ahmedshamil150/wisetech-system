@@ -76,8 +76,9 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Photos go to Cloudflare R2. Group code is written on the '
-                'physical machine with a marker, then entered in Inventory.',
+                'Photos go to Cloudflare R2. The group code is the machine ID '
+                '(1U, 2U…), so a group added with Inventory → Add batch group '
+                'is already linked.',
                 style: TextStyle(
                   fontSize: 13,
                   color: Theme.of(context).colorScheme.outline,
@@ -198,6 +199,8 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
     setState(() => _generating = true);
     try {
       final code = await ref.read(createImageGroupProvider(null).future);
+      ref.invalidate(nextGroupCodeProvider);
+      ref.invalidate(galleryGroupsProvider);
       if (!mounted) return;
       setState(() => _groupCode = code);
     } catch (e) {
@@ -551,6 +554,8 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       }
 
       if (!mounted) return;
+      ref.invalidate(galleryGroupsProvider);
+      ref.invalidate(nextGroupCodeProvider);
       showSnack(context, '${toUpload.length} photo(s) uploaded to R2 and saved.');
       // Clear selections
       setState(() {

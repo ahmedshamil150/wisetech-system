@@ -26,6 +26,16 @@ class R2Service {
       const String.fromEnvironment('R2_SECRET_ACCESS_KEY', defaultValue: '');
   static String get _endpoint =>
       const String.fromEnvironment('R2_ENDPOINT', defaultValue: '');
+  /// Public read base for the bucket (e.g. https://pub-xxxx.r2.dev). When
+  /// empty the S3 endpoint is used, which only works for a private bucket
+  /// seen by an authenticated client.
+  static String get _publicBase =>
+      const String.fromEnvironment('R2_PUBLIC_BASE', defaultValue: '');
+
+  /// URL an <img> can load for [key].
+  static String publicUrl(String key) => _publicBase.isEmpty
+      ? '$_endpoint/$_bucketName/$key'
+      : '$_publicBase/$key';
 
   static bool get isConfigured =>
       _accountId.isNotEmpty &&
@@ -100,7 +110,7 @@ class R2Service {
       throw Exception('R2 upload failed: ${response.statusCode} ${response.body}');
     }
 
-    return '$_endpoint/$_bucketName/$key';
+    return publicUrl(key);
   }
 
   // ---------- AWS Signature v4 helpers (all static) ----------

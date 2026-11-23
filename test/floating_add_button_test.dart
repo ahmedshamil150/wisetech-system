@@ -82,16 +82,20 @@ void main() {
     expect(fab.bottom, closeTo(844 - 16, 0.5));
   });
 
-  testWidgets('inventory has two round buttons: new stock and buy local',
+  testWidgets('inventory has three round buttons: group, local and one product',
       (tester) async {
     await pump(tester, const InventoryScreen());
 
-    final add = rectOf(tester, 'Add to inventory');
+    final group =
+        rectOf(tester, 'Add a batch group (machine + probe + printer)');
     final local = rectOf(tester, 'Buy local');
+    final add = rectOf(tester, 'Add one product');
     expect(add.width, 52);
     expect(local.width, 52);
-    // stacked in the corner, the new-stock plus nearest the thumb
+    expect(group.width, 52);
+    // stacked in the corner, the single-item plus nearest the thumb
     expect(local.bottom, closeTo(add.top - 12, 0.5));
+    expect(group.bottom, closeTo(local.top - 12, 0.5));
     expect(add.right, closeTo(390 - 16, 0.5));
     expect(add.bottom, closeTo(844 - 16, 0.5));
   });
