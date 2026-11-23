@@ -17,22 +17,17 @@ SupabaseClient get _db => db;
 // ---------------------------------------------------------------------------
 
 /// The batch codes the new side shows.
-const _kCurrentBatchCodes = <String>{
-  'BATCH-3',
-  'BATCH-PARTS',
-  'BATCH-LOCAL',
-  'BATCH-PHYSICAL-2026-11-12',
-};
-
 /// The ids of those batches. Derived from [batchesProvider] so the small
 /// batches table is read once per session instead of once more for every
 /// provider that needs the filter.
+///
+/// [batchesProvider] already leaves BATCH-OLD out, so every batch it
+/// returns is live stock — including a newly created batch like BATCH-U.
+/// Deriving the ids instead of listing the codes means the next batch
+/// letter needs no code change to appear on Inventory.
 final currentBatchIdsProvider = FutureProvider<Set<int>>((ref) async {
   final rows = await ref.watch(batchesProvider.future);
-  return {
-    for (final row in rows)
-      if (_kCurrentBatchCodes.contains(row['code'])) row['id'] as int,
-  };
+  return {for (final row in rows) row['id'] as int};
 });
 
 /// Builds the `.or()` filter that keeps only rows in the current batches,
