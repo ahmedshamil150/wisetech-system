@@ -272,7 +272,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   bool _isHiddenFromInventory(InventoryItem item) =>
       item.status == 'With Workshop' ||
-      item.status == 'Missing' ||
+      // Missing items are hidden from the main list but still appear in
+      // serial/code/model searches so staff can find them quickly.
+      (item.status == 'Missing' && _query.isEmpty) ||
       (item.isSold && item.kind != 'part' && !_isPhysicalStockMachine(item));
 
   /// Counts for the review chips — everything the list would show if the
@@ -418,8 +420,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   bool _matchesStatus(InventoryItem item) => switch (_status) {
     'All' => true,
+    // Missing items never count as In Stock
     'In Stock' =>
-      item.displayStatus == 'In Stock' || _isPhysicalStockMachine(item),
+      item.displayStatus == 'In Stock' && !item.isMissing ||
+      _isPhysicalStockMachine(item),
     _ => item.displayStatus == _status,
   };
 

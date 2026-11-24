@@ -120473,7 +120473,7 @@ r=J.bJ(s)
 if(r.cB(s,new A.aPa()))return!1
 return r.cB(s,new A.aPb())},
 auD(a){var s=a.f,r=!0
-if(s!=="With Workshop")if(s!=="Missing")s=s==="Sold"&&a.a!=="part"&&!this.v2(a)
+if(s!=="With Workshop")if(!(s==="Missing"&&this.w.length===0))s=s==="Sold"&&a.a!=="part"&&!this.v2(a)
 else s=r
 else s=r
 return s},
@@ -120481,7 +120481,7 @@ azA(a){var s,r,q,p,o=this,n=A.a3(["Green",0,"Red",0],t.N,t.S)
 for(s=J.ab(a);s.p();){r=s.gE()
 q=r.f
 p=!0
-if(q!=="With Workshop")if(q!=="Missing")q=q==="Sold"&&r.a!=="part"&&!o.v2(r)
+if(q!=="With Workshop")if(!(q==="Missing"&&o.w.length===0))q=q==="Sold"&&r.a!=="part"&&!o.v2(r)
 else q=p
 else q=p
 if(q&&o.w.length===0||!o.Ev(r)||!o.Ew(r)||!o.a_Q(r,!0)||!o.rl(r))continue
@@ -120507,7 +120507,7 @@ aoC(a){var s,r,q,p,o,n,m,l,k,j,i,h,g=this,f=t.N,e=A.x(f,t.z7),d=g.Dz()
 for(s=J.ab(a),r=0;s.p();){q=s.gE()
 p=q.f
 o=!0
-if(p!=="With Workshop")if(p!=="Missing")p=p==="Sold"&&q.a!=="part"&&!g.v2(q)
+if(p!=="With Workshop")if(!(p==="Missing"&&g.w.length===0))p=p==="Sold"&&q.a!=="part"&&!g.v2(q)
 else p=o
 else p=o
 if(p&&g.w.length===0||!g.Ev(q)||!g.Eu(q)||!g.rl(q))continue
@@ -120563,14 +120563,14 @@ if(B.m.n(s.toLowerCase(),q)||B.m.n(r.toLowerCase(),q))return!0
 return J.aeg(b,new A.aOY(this,a))},
 Ew(a){var s,r=this.y
 A:{if("All"===r){s=!0
-break A}if("In Stock"===r){s=a.gw1()==="In Stock"||this.v2(a)
+break A}if("In Stock"===r){s=a.gw1()==="In Stock"&&!a.cy||this.v2(a)
 break A}s=a.gw1()===this.y
 break A}return s},
 aCg(a,b){var s,r,q,p,o,n=this,m="Equipment",l=A.a3(["Machine",0,"Probe",0,"Printer",0,"Part",0,"Equipment",0],t.N,t.S)
 for(s=J.ab(a);s.p();){r=s.gE()
 q=r.f
 p=!0
-if(q!=="With Workshop")if(q!=="Missing")q=q==="Sold"&&r.a!=="part"&&!n.v2(r)
+if(q!=="With Workshop")if(!(q==="Missing"&&n.w.length===0))q=q==="Sold"&&r.a!=="part"&&!n.v2(r)
 else q=p
 else q=p
 if(q&&n.w.length===0||!n.Ew(r)||!n.Eu(r)||!n.rl(r))continue
@@ -120587,7 +120587,7 @@ for(s=0;s<8;++s)l.m(0,B.EX[s],0)
 for(r=J.ab(a);r.p();){q=r.gE()
 p=q.f
 o=!0
-if(p!=="With Workshop")if(p!=="Missing")o=p==="Sold"&&q.a!=="part"&&!n.v2(q)
+if(p!=="With Workshop")if(!(p==="Missing"&&n.w.length===0))o=p==="Sold"&&q.a!=="part"&&!n.v2(q)
 if(o&&n.w.length===0||!n.Ev(q)||!n.Ew(q)||!n.Eu(q)||!n.rl(q))continue
 q=l.h(0,"All")
 q.toString
