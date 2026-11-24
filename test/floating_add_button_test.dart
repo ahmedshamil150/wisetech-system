@@ -82,21 +82,17 @@ void main() {
     expect(fab.bottom, closeTo(844 - 16, 0.5));
   });
 
-  testWidgets('inventory has three round buttons: group, local and one product',
+  testWidgets('inventory has two round buttons: add to inventory and buy local',
       (tester) async {
     await pump(tester, const InventoryScreen());
 
-    final group =
-        rectOf(tester, 'Add a batch group (machine + probe + printer)');
+    final add = rectOf(tester, 'Add to inventory');
     final local = rectOf(tester, 'Buy local');
-    final add = rectOf(tester, 'Add one product');
     expect(add.width, 52);
     expect(local.width, 52);
-    expect(group.width, 52);
-    // stacked in the corner, the single-item plus nearest the thumb
-    expect(local.bottom, closeTo(add.top - 12, 0.5));
-    expect(group.bottom, closeTo(local.top - 12, 0.5));
-    expect(add.right, closeTo(390 - 16, 0.5));
-    expect(add.bottom, closeTo(844 - 16, 0.5));
+    // the add button sits above the local-purchase button in the corner
+    expect(add.bottom, closeTo(local.top - 12, 0.5));
+    expect(local.right, closeTo(390 - 16, 0.5));
+    expect(local.bottom, closeTo(844 - 16, 0.5));
   });
 }

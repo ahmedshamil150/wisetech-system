@@ -41,7 +41,6 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     'Movements',
     'Sales',
     'Repairs',
-    'Gallery',
   ];
 
   static const _destinations = [
@@ -50,7 +49,6 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     (Icons.swap_horiz_outlined, Icons.swap_horiz, 'Movements'),
     (Icons.receipt_long_outlined, Icons.receipt_long, 'Sales'),
     (Icons.build_outlined, Icons.build, 'Repairs'),
-    (Icons.photo_library_outlined, Icons.photo_library, 'Gallery'),
   ];
 
   late final List<Widget> _pages = [
@@ -59,7 +57,6 @@ class _CurrentShellState extends ConsumerState<_CurrentShell> {
     const MovementsScreen(),
     const SalesScreen(),
     const RepairsScreen(),
-    const GalleryScreen(),
   ];
 
   /// Pages build the first time their tab is opened and stay alive
@@ -144,6 +141,15 @@ class _ProfileMenuButton extends ConsumerWidget {
           Navigator.of(
             context,
           ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+        } else if (value == 'gallery') {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => Scaffold(
+                appBar: AppBar(title: const Text('Gallery')),
+                body: const GalleryScreen(),
+              ),
+            ),
+          );
         } else if (value == 'theme') {
           ref.read(themeModeProvider.notifier).toggle();
         } else if (value == 'old') {
@@ -161,6 +167,7 @@ class _ProfileMenuButton extends ConsumerWidget {
           ),
         ),
         const PopupMenuItem(value: 'profile', child: Text('My profile')),
+        const PopupMenuItem(value: 'gallery', child: Text('Image gallery')),
         PopupMenuItem(
           value: 'theme',
           child: Row(
