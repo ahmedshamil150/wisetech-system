@@ -69,17 +69,17 @@ int _kitRank(InventoryItem item) => switch (item.kind) {
 /// Arranges the visible rows as kits - a machine followed by its printer and
 /// its probes, then the next machine, and so on. The bool says whether the
 /// row belongs under the machine above it (drawn indented).
+///
+/// Newly added stock comes first: each block (a machine with its kit, or one
+/// separate item such as a part) is ordered by the newest thing in it, so a
+/// machine you just created - or an old one you just attached a probe to -
+/// sits at the top above everything older. The audit area order only breaks
+/// ties between rows added at the same moment.
 List<(InventoryItem, bool)> arrangeAsKits(
   List<InventoryItem> items, {
   Map<int, int> machineAreaRanks = const {},
 }) {
-  final machines = items.where((item) => item.kind == 'machine').toList()
-    ..sort((a, b) {
-      final byArea = (machineAreaRanks[a.id] ?? 4).compareTo(
-        machineAreaRanks[b.id] ?? 4,
-      );
-      return byArea != 0 ? byArea : _newestFirst(a, b);
-    });
+  final machines = items.where((item) => item.kind == 'machine').toList();
   final machineIds = machines.map((machine) => machine.id).toSet();
 
   final kits = <int, List<InventoryItem>>{};
@@ -93,30 +93,43 @@ List<(InventoryItem, bool)> arrangeAsKits(
       loose.add(item);
     }
   }
+
+  // One block per machine (with its kit) and per separate item, each stamped
+  // with the newest added date inside it.
+  final blocks = <(InventoryItem, List<InventoryItem>, DateTime)>[];
+  for (final machine in machines) {
+    final members = kits[machine.id] ?? const <InventoryItem>[];
+    var added = machine.createdAt ?? DateTime(0);
+    for (final member in members) {
+      final memberAdded = member.createdAt ?? DateTime(0);
+      if (memberAdded.isAfter(added)) added = memberAdded;
+    }
+    blocks.add((machine, members, added));
+  }
+  for (final item in loose) {
+    blocks.add((item, const <InventoryItem>[], item.createdAt ?? DateTime(0)));
+  }
+  blocks.sort((a, b) {
+    final byAdded = b.$3.compareTo(a.$3);
+    if (byAdded != 0) return byAdded;
+    final rankA = a.$1.kind == 'machine' ? (machineAreaRanks[a.$1.id] ?? 4) : 4;
+    final rankB = b.$1.kind == 'machine' ? (machineAreaRanks[b.$1.id] ?? 4) : 4;
+    final byArea = rankA.compareTo(rankB);
+    return byArea != 0 ? byArea : b.$1.id.compareTo(a.$1.id);
+  });
+
   for (final members in kits.values) {
     members.sort((a, b) {
       final byKind = _kitRank(a).compareTo(_kitRank(b));
       return byKind != 0 ? byKind : _newestFirst(a, b);
     });
   }
-  // Items with no machine shown here stay together, grouped by the machine
-  // they are assigned to; completely loose ones come last.
-  loose.sort((a, b) {
-    final byMachine = (b.assignedMachineId ?? -1).compareTo(
-      a.assignedMachineId ?? -1,
-    );
-    if (byMachine != 0) return byMachine;
-    final byKind = _kitRank(a).compareTo(_kitRank(b));
-    return byKind != 0 ? byKind : _newestFirst(a, b);
-  });
 
   return [
-    for (final machine in machines) ...[
-      (machine, false),
-      for (final member in kits[machine.id] ?? const <InventoryItem>[])
-        (member, true),
+    for (final (leader, members, _) in blocks) ...[
+      (leader, false),
+      for (final member in members) (member, true),
     ],
-    for (final item in loose) (item, false),
   ];
 }
 
@@ -582,7 +595,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           data: (rows) => rows,
           orElse: () => const <Map<String, dynamic>>[],
         );
-    // The audit flags also determine the requested reverse stock order.
+    // Area order is only a tie-break now (rows added at the same moment);
+    // newest stock still sorts on top in arrangeAsKits.
     final flags = ref
         .watch(flagsProvider)
         .maybeWhen(
@@ -1907,10 +1921,7 @@ class _BoxSheetState extends ConsumerState<_BoxSheet> {
         items,
         ref
             .watch(missingItemKeysProvider)
-            .maybeWhen(
-              data: (keys) => keys,
-              orElse: () => const <String>{},
-            ),
+            .maybeWhen(data: (keys) => keys, orElse: () => const <String>{}),
       ),
       box,
     );
