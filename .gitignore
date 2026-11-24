@@ -74,3 +74,6 @@ app.*.map.json
 
 # Local tooling artifacts
 /.github/modernize/
+
+OpenCode_*.md
+OpenCode_*.json

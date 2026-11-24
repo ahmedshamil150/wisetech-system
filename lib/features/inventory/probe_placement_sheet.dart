@@ -210,13 +210,19 @@ Future<void> showProbeAttachSheet(
 ) async {
   List<InventoryItem> machines;
   try {
-    final rows = await db
-        .from('machines')
-        .select('id, machine_id, model, serial_number, status, '
-            'current_location, acquisition_date')
-        .order('machine_id');
+    // fetchAllPages is required: the machines table has more than 1,000 rows
+    // and PostgREST silently truncates a plain .select() at that limit,
+    // causing machines added after the first 1,000 (alphabetically by
+    // machine_id) to never appear in the picker.
+    final rows = await fetchAllPages(
+      () => db
+          .from('machines')
+          .select('id, machine_id, model, serial_number, status, '
+              'current_location, acquisition_date')
+          .order('machine_id'),
+    );
     machines = [
-      for (final row in rows.cast<Map<String, dynamic>>())
+      for (final row in rows)
         if (!{
           'Sold',
           'Archived',
