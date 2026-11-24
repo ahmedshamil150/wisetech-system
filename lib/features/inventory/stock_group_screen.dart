@@ -65,7 +65,7 @@ class _StockGroupScreenState extends ConsumerState<StockGroupScreen> {
       data: (rows) => rows,
       orElse: () => const <Map<String, dynamic>>[],
     );
-    final items = [for (final row in rows) itemFromRow(row)];
+    final items = [for (final row in rows) itemFromRow(row, isMissing: widget.group == StockGroup.missing)];
     final term = _query.toLowerCase();
 
     bool matches(InventoryItem item) {

@@ -39,7 +39,7 @@ String nameColumnFor(String kind) =>
 /// One row from any of the item tables as an [InventoryItem], so the
 /// Workshop and Branch pages open the same read-only details sheet the
 /// Inventory page uses — same header, key/value card, actions and history.
-InventoryItem itemFromRow(Map<String, dynamic> row) {
+InventoryItem itemFromRow(Map<String, dynamic> row, {bool isMissing = false}) {
   final kind = '${row['kind'] ?? 'machine'}';
   final date = '${row['acquisition_date'] ?? ''}';
   final price = row['purchase_price'];
@@ -61,6 +61,7 @@ InventoryItem itemFromRow(Map<String, dynamic> row) {
     purchasePrice: price is num
         ? price.toDouble()
         : (price is String ? double.tryParse(price) : null),
+    isMissing: isMissing,
   );
 }
 
