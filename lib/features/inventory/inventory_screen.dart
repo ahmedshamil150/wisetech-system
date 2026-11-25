@@ -196,7 +196,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     ref.listenManual(inventoryStatusFilterProvider, (previous, next) {
       if (next != _status) setState(() => _status = next);
     });
-    ensureProbe999A1633434WithMachine29U();
   }
 
   int get _activeFilterCount {

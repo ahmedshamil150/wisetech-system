@@ -1254,27 +1254,24 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     try {
       for (final item in additions) {
         final origin = sendOriginFor(ref, item);
-        await db.rpc(
-          'create_movement',
-          params: {
-            'p_item_type': item.kind,
-            'p_item_id': item.id,
-            'p_kind': kind,
-            if (first['dealer_id'] != null) 'p_dealer_id': first['dealer_id'],
-            if (first['customer_id'] != null)
-              'p_customer_id': first['customer_id'],
-            if (first['workshop_id'] != null)
-              'p_workshop_id': first['workshop_id'],
-            if ('${first['movement_date'] ?? ''}'.isNotEmpty)
-              'p_date': '${first['movement_date']}',
-            if ('${first['notes'] ?? ''}'.isNotEmpty)
-              'p_notes': '${first['notes']}',
-            'p_demo': first['is_demo'] == true,
-            'p_group_ref': group,
-            'p_paid': movementPaid(first),
-            if (origin != null) 'p_from_location': origin,
-          },
-        );
+        await createMovement({
+          'p_item_type': item.kind,
+          'p_item_id': item.id,
+          'p_kind': kind,
+          if (first['dealer_id'] != null) 'p_dealer_id': first['dealer_id'],
+          if (first['customer_id'] != null)
+            'p_customer_id': first['customer_id'],
+          if (first['workshop_id'] != null)
+            'p_workshop_id': first['workshop_id'],
+          if ('${first['movement_date'] ?? ''}'.isNotEmpty)
+            'p_date': '${first['movement_date']}',
+          if ('${first['notes'] ?? ''}'.isNotEmpty)
+            'p_notes': '${first['notes']}',
+          'p_demo': first['is_demo'] == true,
+          'p_group_ref': group,
+          'p_paid': movementPaid(first),
+          if (origin != null) 'p_from_location': origin,
+        });
         // an item that moved is no longer Missing
         await syncMissingFlag(item.kind, item.id, kind);
       }
@@ -3148,21 +3145,18 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
           // Workshop / Missing / Basement stock records the page it
           // leaves from, not a stale location string.
           final origin = sendOriginFor(ref, item);
-          await db.rpc(
-            'create_movement',
-            params: {
-              'p_item_type': item.kind,
-              'p_item_id': item.id,
-              'p_kind': _kind,
-              ...destination,
-              if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
-              if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
-              'p_demo': _demo,
-              'p_paid': group.paid,
-              'p_group_ref': groupRef,
-              if (origin != null) 'p_from_location': origin,
-            },
-          );
+          await createMovement({
+            'p_item_type': item.kind,
+            'p_item_id': item.id,
+            'p_kind': _kind,
+            ...destination,
+            if (_date.text.trim().isNotEmpty) 'p_date': _date.text.trim(),
+            if (_notes.text.trim().isNotEmpty) 'p_notes': _notes.text.trim(),
+            'p_demo': _demo,
+            'p_paid': group.paid,
+            'p_group_ref': groupRef,
+            if (origin != null) 'p_from_location': origin,
+          });
           if (_kind == 'Workshop' && _workshopRoom != null) {
             await setWorkshopRoom(
               kind: item.kind,

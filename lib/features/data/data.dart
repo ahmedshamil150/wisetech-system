@@ -1063,6 +1063,19 @@ final movementsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ];
 });
 
+Future<int> createMovement(Map<String, dynamic> params) async {
+  try {
+    return await _db.rpc('create_movement', params: params) as int;
+  } on PostgrestException catch (error) {
+    if (error.code != 'PGRST202' || !params.containsKey('p_from_location')) {
+      rethrow;
+    }
+    final compatibleParams = Map<String, dynamic>.from(params)
+      ..remove('p_from_location');
+    return await _db.rpc('create_movement', params: compatibleParams) as int;
+  }
+}
+
 /// Puts an item back into stock from wherever it is: status and location
 /// are restored and a 'Return' movement records when it came back.
 /// [date] is dd-MM-yyyy (defaults to today) and [notes] is free text —
@@ -2160,65 +2173,6 @@ Future<InventoryItem?> findItemBySerial(String serial) async {
     );
   }
   return null;
-}
-
-/// Ensures machine 29U exists and probe 999A1633434 is attached to it, so both
-/// are searchable by serial on the main Inventory page. Safe to call more than
-/// once — existing rows are left untouched.
-Future<void> ensureProbe999A1633434WithMachine29U() async {
-  final batch = await _db
-      .from('batches')
-      .select('id')
-      .eq('code', 'BATCH-4')
-      .limit(1)
-      .maybeSingle();
-  if (batch == null) return;
-
-  // Create machine 29U if missing.
-  final machineRows = await _db
-      .from('machines')
-      .select('id')
-      .eq('machine_id', '29U')
-      .limit(1);
-  int machineId;
-  if (machineRows.isEmpty) {
-    final inserted = await _db
-        .from('machines')
-        .insert({
-          'machine_id': '29U',
-          'batch_id': batch['id'],
-          'model': 'Ultrasound System',
-          'status': 'In Stock',
-          'current_location': 'Company',
-          'condition': 'Good',
-          'notes': 'Added with probe 999A1633434.',
-        })
-        .select('id')
-        .single();
-    machineId = inserted['id'] as int;
-  } else {
-    machineId = machineRows.first['id'] as int;
-  }
-
-  // Attach probe 999A1633434 to machine 29U if missing.
-  final probeRows = await _db
-      .from('probes')
-      .select('id')
-      .ilike('serial_number', '999A1633434')
-      .limit(1);
-  if (probeRows.isEmpty) {
-    await _db.from('probes').insert({
-      'internal_id': await suggestedId('probe'),
-      'model': 'Probe',
-      'serial_number': '999A1633434',
-      'batch_id': batch['id'],
-      'status': 'With Machine',
-      'current_location': 'Company',
-      'assigned_machine_id': machineId,
-      'condition': 'Good',
-      'notes': 'Serial 999A1633434, attached to machine 29U.',
-    });
-  }
 }
 
 /// Finds an existing record or (admin only) creates it, then returns its id.
