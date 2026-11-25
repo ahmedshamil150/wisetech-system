@@ -113,6 +113,67 @@ class R2Service {
     return publicUrl(key);
   }
 
+  /// Delete the object at [key] from R2.
+  static Future<void> deleteObject({required String key}) async {
+    if (!isConfigured) {
+      throw Exception('Cloudflare R2 is not configured. Pass R2 credentials via --dart-define');
+    }
+
+    final uri = Uri.parse('$_endpoint/$_bucketName/$key');
+    final date = _nowIso8601();
+    final dateShort = date.substring(0, 8);
+    final region = 'auto';
+    final service = 's3';
+
+    final headers = <String, String>{
+      'host': uri.host,
+      'x-amz-content-sha256': _sha256Hex(Uint8List(0)),
+      'x-amz-date': date,
+      'content-length': '0',
+    };
+
+    final canonicalRequest = _canonicalRequest(
+      method: 'DELETE',
+      path: '/$_bucketName/$key',
+      headers: headers,
+      payloadHash: headers['x-amz-content-sha256']!,
+    );
+
+    final stringToSign = _stringToSign(
+      date: date,
+      dateShort: dateShort,
+      region: region,
+      service: service,
+      canonicalRequest: canonicalRequest,
+    );
+
+    final signingKey = _signingKey(
+      secretKey: _secretAccessKey,
+      dateShort: dateShort,
+      region: region,
+      service: service,
+    );
+
+    final signature = _hex(_sign(signingKey, utf8.encode(stringToSign)));
+
+    final signedHeaders = headers.keys.map((k) => k.toLowerCase()).join(';');
+    final authorization =
+        'AWS4-HMAC-SHA256 Credential=$_accessKeyId/$dateShort/$region/$service/aws4_request, '
+        'SignedHeaders=$signedHeaders, '
+        'Signature=$signature';
+
+    headers['authorization'] = authorization;
+
+    final response = await http.delete(
+      uri,
+      headers: headers,
+    ).timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('R2 delete failed: ${response.statusCode} ${response.body}');
+    }
+  }
+
   // ---------- AWS Signature v4 helpers (all static) ----------
 
   static String _nowIso8601() {

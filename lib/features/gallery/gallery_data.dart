@@ -249,8 +249,22 @@ final linkImageGroupProvider =
       .eq('id', args.itemId);
 });
 
-/// Delete an image group and all its item_images.
+/// Delete an image group and all its item_images (including R2 files).
 final deleteImageGroupProvider = FutureProvider.family<void, int>((ref, groupId) async {
+  final rows = await _db
+      .from('item_images')
+      .select('r2_key')
+      .eq('group_id', groupId);
+  for (final row in rows) {
+    final key = row['r2_key'] as String?;
+    if (key != null && key.isNotEmpty) {
+      try {
+        await R2Service.deleteObject(key: key);
+      } catch (_) {
+        // Continue deleting other files and DB rows even if one R2 delete fails.
+      }
+    }
+  }
   await _db.from('item_images').delete().eq('group_id', groupId);
   await _db.from('image_groups').delete().eq('id', groupId);
 });
