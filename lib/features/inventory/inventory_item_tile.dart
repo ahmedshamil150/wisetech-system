@@ -18,6 +18,7 @@ class InventoryItemTile extends StatelessWidget {
     this.indented = false,
     this.onTap,
     this.trailing,
+    this.groupTag,
   });
 
   final InventoryItem item;
@@ -29,6 +30,10 @@ class InventoryItemTile extends StatelessWidget {
 
   /// Replaces the chevron when a page needs its own quick action.
   final Widget? trailing;
+
+  /// Marks a row found by an Inventory search that really lives on the
+  /// Workshop, Missing or Basement page.
+  final String? groupTag;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +64,10 @@ class InventoryItemTile extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
+                  if (groupTag != null) ...[
+                    _GroupTag(label: groupTag!),
+                    const SizedBox(width: 6),
+                  ],
                   StatusChip(status: item.displayStatus),
                   if (item.kind == 'probe') ...[
                     const SizedBox(width: 6),
@@ -128,6 +137,41 @@ Widget _probeBadge(BuildContext context, InventoryItem item) {
       ),
     ),
   );
+}
+
+/// Where a search hit really lives: the Workshop, the Missing list or the
+/// Basement. The groups keep their own pages; the tag only explains why a
+/// row that is not on Inventory's normal list showed up in a search.
+class _GroupTag extends StatelessWidget {
+  const _GroupTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (label) {
+      'Workshop' => const Color(0xFF9A5A00),
+      'Missing' || 'Missing items' => Theme.of(context).colorScheme.error,
+      'Basement' => const Color(0xFF1565C0),
+      _ => Theme.of(context).colorScheme.outline,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
+    );
+  }
 }
 
 /// A part is moved once it left the company — sold or sitting with a

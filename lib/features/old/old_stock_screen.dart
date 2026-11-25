@@ -5,6 +5,7 @@ import '../auth/auth_controller.dart';
 import '../common/flag_sheet.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import 'move_item_sheet.dart' show showReturnToStockSheet;
 import 'old_data.dart';
 import 'old_item_form.dart';
 import 'old_table.dart';
@@ -159,13 +160,15 @@ class _OldStockScreenState extends ConsumerState<OldStockScreen>
 /// A single old-stock row: code, model, serial, status chip, location.
 /// Tapping the row opens the edit form. There is no sell button here —
 /// an item is sold by sending it to the buyer from the Movements side
-/// and marking that send sold.
+/// and marking that send sold. A sold or branch row carries an undo
+/// action when [onReturn] is given, which brings it back into stock.
 Widget _oldItemTile(
   BuildContext context,
   Map<String, dynamic> row, {
   required String code,
   required String name,
   VoidCallback? onTap,
+  VoidCallback? onReturn,
 }) {
   final serial = (row['serial_number'] ?? '').toString();
   final status = (row['status'] ?? '').toString();
@@ -215,7 +218,13 @@ Widget _oldItemTile(
             ),
           ],
         ),
-        trailing: const Icon(Icons.chevron_right, size: 20),
+        trailing: onReturn == null
+            ? const Icon(Icons.chevron_right, size: 20)
+            : IconButton(
+                tooltip: 'Return to stock',
+                icon: const Icon(Icons.undo, size: 20),
+                onPressed: onReturn,
+              ),
       ),
     ),
   );
@@ -328,6 +337,11 @@ class _MachinesPane extends ConsumerWidget {
           code: (row['machine_id'] ?? '').toString(),
           name: (row['model'] ?? '').toString(),
           onTap: () => showOldItemForm(context, kind: 'machine', row: row),
+          onReturn: () => showReturnToStockSheet(
+            context,
+            ref,
+            itemFromRow({...row, 'kind': 'machine'}),
+          ),
         ),
       ),
     );
@@ -370,6 +384,11 @@ class _ProbesPane extends ConsumerWidget {
           code: (row['internal_id'] ?? '').toString(),
           name: (row['model'] ?? '').toString(),
           onTap: () => showOldItemForm(context, kind: 'probe', row: row),
+          onReturn: () => showReturnToStockSheet(
+            context,
+            ref,
+            itemFromRow({...row, 'kind': 'probe'}),
+          ),
         ),
       ),
     );
@@ -412,6 +431,11 @@ class _PrintersPane extends ConsumerWidget {
           code: (row['internal_id'] ?? '').toString(),
           name: (row['name_model'] ?? '').toString(),
           onTap: () => showOldItemForm(context, kind: 'printer', row: row),
+          onReturn: () => showReturnToStockSheet(
+            context,
+            ref,
+            itemFromRow({...row, 'kind': 'printer'}),
+          ),
         ),
       ),
     );
@@ -459,6 +483,7 @@ class _PartsPane extends ConsumerWidget {
     final slice = start >= filtered.length
         ? const <InventoryItem>[]
         : filtered.skip(start).take(50).toList();
+    final byId = {for (final item in slice) item.id: item};
     if (filtered.isEmpty) {
       return const EmptyState(
         icon: Icons.inbox_outlined,
@@ -488,6 +513,12 @@ class _PartsPane extends ConsumerWidget {
         code: (row['code'] ?? '').toString(),
         name: (row['name'] ?? '').toString(),
         onTap: () => _openPart(context, row['id'] as int),
+        onReturn: () {
+          final item = byId[row['id'] as int];
+          if (item != null) {
+            showReturnToStockSheet(context, ref, item);
+          }
+        },
       ),
     );
   }

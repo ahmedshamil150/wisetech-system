@@ -10,6 +10,9 @@ import 'old_data.dart'
         branchItemsProvider,
         missingAllProvider,
         missingItemsProvider,
+        oldMachinesProvider,
+        oldPrintersProvider,
+        oldProbesProvider,
         workshopItemsProvider;
 import 'old_item_form.dart' show itemFromRow;
 
@@ -139,6 +142,96 @@ Future<bool> moveItemTo(
     }
     return false;
   }
+}
+
+/// Returns a Branch or Sold item to the chosen stock list through the
+/// `return_item_to_stock` RPC: the server moves the item and, for a
+/// machine, its kit; clears Missing flags and writes a Return row for
+/// everything that moved. One call keeps a kit from splitting if the
+/// connection drops halfway.
+Future<bool> returnItemToStockAt(
+  BuildContext context,
+  WidgetRef ref,
+  InventoryItem item,
+  String destination,
+) async {
+  try {
+    await returnItemToStock(item, destination);
+
+    ref.invalidate(inventoryProvider);
+    ref.invalidate(oldStockItemsProvider);
+    ref.invalidate(allItemsProvider);
+    ref.invalidate(allMovementsProvider);
+    ref.invalidate(flagsProvider);
+    ref.invalidate(missingItemKeysProvider);
+    ref.invalidate(missingItemsProvider);
+    ref.invalidate(missingAllProvider);
+    ref.invalidate(basementItemsProvider);
+    ref.invalidate(workshopItemsProvider);
+    ref.invalidate(branchItemsProvider);
+    ref.invalidate(itemLabelsProvider);
+    ref.invalidate(oldMachinesProvider);
+    ref.invalidate(oldProbesProvider);
+    ref.invalidate(oldPrintersProvider);
+    if (context.mounted) {
+      showSnack(context, 'Returned to ${_labelFor(destination)}.');
+    }
+    return true;
+  } catch (error) {
+    if (context.mounted) {
+      showSnack(context, errorMessage(error), error: true);
+    }
+    return false;
+  }
+}
+
+/// The small menu shown from a Branch or Sold row: return the item to
+/// Main Inventory, the Workshop or the Basement. Unlike [moveItemTo],
+/// this writes a Return movement and carries a machine's kit.
+Future<void> showReturnToStockSheet(
+  BuildContext context,
+  WidgetRef ref,
+  InventoryItem item,
+) async {
+  final target = await showModalBottomSheet<String>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(
+              'Return ${item.code.isEmpty ? item.title : item.code}',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: Text('${item.kindLabel} · ${item.status}'),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.inventory_2_outlined),
+            title: const Text('Return to Main Inventory'),
+            subtitle: const Text('Back on the Inventory list'),
+            onTap: () => Navigator.pop(sheetContext, 'inventory'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.handyman_outlined),
+            title: const Text('Return to Workshop'),
+            subtitle: const Text('List it on the Workshop page'),
+            onTap: () => Navigator.pop(sheetContext, 'workshop'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.stairs_outlined),
+            title: const Text('Return to Basement'),
+            subtitle: const Text('Keep it off Inventory, on the Basement page'),
+            onTap: () => Navigator.pop(sheetContext, 'basement'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+  if (target == null || !context.mounted) return;
+  await returnItemToStockAt(context, ref, item, target);
 }
 
 /// The small menu shown from a Basement row: one tap to send the item back

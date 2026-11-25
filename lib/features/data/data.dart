@@ -401,8 +401,20 @@ bool isPlacementMovement(Map<String, dynamic> row) {
   return type == 'Attach' || type == 'Detach' || type == 'Placement';
 }
 
+/// The stock group a send started in, when it was one of the lists that
+/// normally keeps its own page. Sends from ordinary inventory return null,
+/// so the history stays short.
+String? movementOriginLabel(Object? raw) {
+  final text = '${raw ?? ''}'.trim().toUpperCase();
+  if (text == 'WORKSHOP' || text == 'WITH WORKSHOP') return 'Workshop';
+  if (text == 'MISSING ITEMS' || text == 'MISSING') return 'Missing items';
+  if (text.contains('BASEMENT')) return 'Basement';
+  return null;
+}
+
 /// "Placed in box X" / "Took out of box X" / "Sent to X" — the title a
-/// movement row gets in an item's history list.
+/// movement row gets in an item's history list. A send that started in
+/// the Workshop, the Missing list or the Basement says so.
 String movementTitle(Map<String, dynamic> row) {
   final to = (row['to_location'] ?? '').toString();
   final from = (row['from_location'] ?? '').toString();
@@ -413,8 +425,12 @@ String movementTitle(Map<String, dynamic> row) {
   if (type == 'Attach') return 'Attached to machine at $to';
   if (type == 'Detach') return 'Detached from its machine';
   if (type == 'Placement') return 'Placed in stock';
-  if ('${row['reason'] ?? ''}'.contains('Sold')) return 'Sold to $to';
-  return 'Sent to $to';
+  if ('${row['reason'] ?? ''}'.contains('Sold')) {
+    final origin = movementOriginLabel(from);
+    return 'Sold to $to${origin == null ? '' : ' (from $origin)'}';
+  }
+  final origin = movementOriginLabel(from);
+  return 'Sent to $to${origin == null ? '' : ' (from $origin)'}';
 }
 
 /// Whether a send carries the sold mark — its reason reads 'Sold',
@@ -1066,6 +1082,32 @@ Future<int> returnToInventory(
         params: {
           'p_item_type': item.kind,
           'p_item_id': item.id,
+          if (date != null && date.isNotEmpty) 'p_date': date,
+          if (notes != null && notes.isNotEmpty) 'p_notes': notes,
+        },
+      )
+      as int;
+}
+
+/// Brings a Branch or Sold item back into stock at a chosen place:
+/// [destination] is `inventory` (Main Inventory), `workshop` or `basement`.
+///
+/// The server call moves the item and, for a machine, its probes, printer
+/// and parts; every moved item gets a `Return` row in its history and its
+/// Missing flag cleared. [date] is dd-MM-yyyy (defaults to today) and
+/// [notes] is free text.
+Future<int> returnItemToStock(
+  InventoryItem item,
+  String destination, {
+  String? date,
+  String? notes,
+}) async {
+  return await _db.rpc(
+        'return_item_to_stock',
+        params: {
+          'p_item_type': item.kind,
+          'p_item_id': item.id,
+          'p_destination': destination,
           if (date != null && date.isNotEmpty) 'p_date': date,
           if (notes != null && notes.isNotEmpty) 'p_notes': notes,
         },

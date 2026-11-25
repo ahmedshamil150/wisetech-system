@@ -10,6 +10,9 @@ import '../common/widgets.dart';
 import '../data/data.dart';
 import '../inventory/inventory_screen.dart';
 import '../inventory/probe_placement_sheet.dart';
+import '../old/basement_data.dart' show basementItemsProvider;
+import '../old/old_data.dart' show workshopItemsProvider;
+import '../old/old_item_form.dart' show itemFromRow;
 import '../../core/layout.dart';
 
 /// Every recorded move, newest first.
@@ -29,6 +32,56 @@ const _filters = [
   'Customer',
   'Returned',
 ];
+
+/// The items a send can carry: current stock plus basement stock (which
+/// Inventory keeps off its own list). Missing rows stay in — a lost item
+/// that has been found in the workshop or the basement must be sendable
+/// without a separate "mark found" step.
+List<InventoryItem> sendableItems(
+  List<InventoryItem> items,
+  List<Map<String, dynamic>> basementRows,
+  Set<String> missingKeys,
+) {
+  final seen = {for (final item in items) item.key};
+  return [
+    ...items,
+    for (final row in basementRows)
+      if (seen.add('${row['kind']}:${row['id']}'))
+        itemFromRow(
+          row,
+          isMissing: missingKeys.contains('${row['kind']}:${row['id']}'),
+        ),
+  ];
+}
+
+/// Which stock group an item is leaving from, when it is one of the lists
+/// that normally keeps its own page. A send records this instead of a
+/// stale current_location, so the history can say "from Workshop".
+String? sendOriginFor(WidgetRef ref, InventoryItem item) {
+  final missing = ref
+      .read(missingItemKeysProvider)
+      .maybeWhen(data: (keys) => keys, orElse: () => const <String>{});
+  if (item.isMissing ||
+      item.status == 'Missing' ||
+      missing.contains(item.key)) {
+    return 'Missing items';
+  }
+  bool inRows(FutureProvider<List<Map<String, dynamic>>> provider) =>
+      ref.read(provider).maybeWhen(
+            data: (rows) =>
+                rows.any((row) => '${row['kind']}:${row['id']}' == item.key),
+            orElse: () => false,
+          );
+  if (item.status == 'With Workshop' ||
+      item.machineStatus == 'With Workshop' ||
+      inRows(workshopItemsProvider)) {
+    return 'Workshop';
+  }
+  if (isBasementLocation(item.location) || inRows(basementItemsProvider)) {
+    return 'Basement';
+  }
+  return null;
+}
 
 class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   String _filter = 'All';
@@ -1162,13 +1215,22 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     try {
       final items = await ref.read(allItemsProvider.future);
       final missing = await ref.read(missingItemKeysProvider.future);
-      available = withoutMissing([
+      // Basement rows are not part of allItemsProvider, so the picker
+      // reads them separately — an item on the Basement page can be sent
+      // to a dealer or customer like any other.
+      List<Map<String, dynamic>> basement = const [];
+      try {
+        basement = await ref.read(basementItemsProvider.future);
+      } catch (_) {
+        // a failed basement read never blocks sending normal stock
+      }
+      available = sendableItems([
         for (final item in items)
           if (item.status != 'Sold' &&
               item.status != 'Archived' &&
               !inSend.contains(item.key))
             item,
-      ], missing);
+      ], basement, missing);
     } catch (error) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text(errorMessage(error))));
@@ -1189,20 +1251,9 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     final additions = picked.kind == 'machine'
         ? kitFor(available, picked)
         : [picked];
-    for (final item in additions) {
-      if (await isItemMissing(item.kind, item.id)) {
-        if (!mounted) return;
-        showSnack(
-          context,
-          '${item.code} is marked Missing — it cannot be moved until it '
-          'is found.',
-          error: true,
-        );
-        return;
-      }
-    }
     try {
       for (final item in additions) {
+        final origin = sendOriginFor(ref, item);
         await db.rpc(
           'create_movement',
           params: {
@@ -1221,6 +1272,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             'p_demo': first['is_demo'] == true,
             'p_group_ref': group,
             'p_paid': movementPaid(first),
+            if (origin != null) 'p_from_location': origin,
           },
         );
         // an item that moved is no longer Missing
@@ -1627,8 +1679,10 @@ class _MovementDetails extends ConsumerWidget {
         returnedOn = (closingReturn(row, history)?['movement_date'] ?? '')
             .toString();
       }
+      final origin = movementOriginLabel(row['from_location']);
       final meta = [
         row['movement_date'] ?? '',
+        if (origin != null) 'from $origin',
         if (rowState == SendRowState.back)
           returnedOn.isEmpty
               ? 'Back in inventory'
@@ -3086,25 +3140,14 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
 
       // every group is one send: its own group_ref, so its items travel
       // together and keep their own sold, amount and paid marks
-      final blocked = <String>[];
-      for (final group in groups) {
-        for (final item in group.items) {
-          if (await isItemMissing(item.kind, item.id)) {
-            blocked.add(item.code);
-          }
-        }
-      }
-      if (blocked.isNotEmpty) {
-        throw StateError(
-          '${blocked.toSet().join(', ')} marked Missing — mark found before '
-          'sending.',
-        );
-      }
       var soldGroups = 0;
       var paidGroups = 0;
       for (final group in groups) {
         final groupRef = _freshGroupRef();
         for (final item in group.items) {
+          // Workshop / Missing / Basement stock records the page it
+          // leaves from, not a stale location string.
+          final origin = sendOriginFor(ref, item);
           await db.rpc(
             'create_movement',
             params: {
@@ -3117,6 +3160,7 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
               'p_demo': _demo,
               'p_paid': group.paid,
               'p_group_ref': groupRef,
+              if (origin != null) 'p_from_location': origin,
             },
           );
           if (_kind == 'Workshop' && _workshopRoom != null) {
@@ -3200,27 +3244,34 @@ class _NewMovementFormState extends ConsumerState<_NewMovementForm> {
     final scheme = Theme.of(context).colorScheme;
     final isAdmin = ref.watch(isAdminProvider);
     final soldKind = isSoldKind(_kind);
-    final items = ref
-        .watch(allItemsProvider)
+    // Every item that can leave the shop — current stock, Workshop,
+    // Missing and Basement included. Sold and archived rows stay out.
+    final missingKeys = ref
+        .watch(missingItemKeysProvider)
         .maybeWhen(
-          data: (rows) => withoutMissing(
-            rows
+          data: (keys) => keys,
+          orElse: () => const <String>{},
+        );
+    final basementRows = ref
+        .watch(basementItemsProvider)
+        .maybeWhen(
+          data: (rows) => rows,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+    final items = sendableItems(
+      ref
+          .watch(allItemsProvider)
+          .maybeWhen(
+            data: (rows) => rows
                 .where(
-                  (i) =>
-                      i.status != 'Sold' &&
-                      i.status != 'Archived' &&
-                      i.status != 'With Workshop',
+                  (i) => i.status != 'Sold' && i.status != 'Archived',
                 )
                 .toList(),
-            ref
-                .watch(missingItemKeysProvider)
-                .maybeWhen(
-                  data: (keys) => keys,
-                  orElse: () => const <String>{},
-                ),
+            orElse: () => const <InventoryItem>[],
           ),
-          orElse: () => const <InventoryItem>[],
-        );
+      basementRows,
+      missingKeys,
+    );
     final dealerNames = ref
         .watch(dealersProvider)
         .maybeWhen(

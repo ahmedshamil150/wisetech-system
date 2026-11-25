@@ -6,8 +6,12 @@ import '../common/flag_sheet.dart';
 import '../common/pickers.dart';
 import '../common/widgets.dart';
 import '../data/data.dart';
+import '../old/basement_data.dart' show basementItemsProvider;
 import '../old/missing_screen.dart' show showFoundItemSheet;
 import '../old/move_item_sheet.dart' show showMoveItemSheet;
+import '../old/old_data.dart'
+    show missingItemsProvider, workshopItemsProvider;
+import '../old/old_item_form.dart' show itemFromRow;
 import 'batch_group_form.dart';
 import 'inventory_item_tile.dart';
 import 'local_purchase_form.dart';
@@ -271,9 +275,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   bool _isHiddenFromInventory(InventoryItem item) =>
-      item.status == 'With Workshop' ||
-      // Missing items are hidden from the main list but still appear in
-      // serial/code/model searches so staff can find them quickly.
+      // Workshop and Missing stock keep their own pages. A search still
+      // reaches them, tagged with the page the row belongs to.
+      (item.status == 'With Workshop' && _query.isEmpty) ||
       (item.status == 'Missing' && _query.isEmpty) ||
       (item.isSold && item.kind != 'part' && !_isPhysicalStockMachine(item));
 
@@ -593,6 +597,40 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       data: (rows) => rows,
       orElse: () => const <InventoryItem>[],
     );
+    // A search reaches every stock group, even the ones that keep their
+    // own page: Workshop, Missing and Basement. The rows are tagged with
+    // the page they belong to, and the pages themselves stay separate.
+    final groupTagByKey = <String, String>{};
+    final groupItemByKey = <String, InventoryItem>{};
+    if (_query.isNotEmpty) {
+      void collect(
+        String tag,
+        AsyncValue<List<Map<String, dynamic>>> async, {
+        bool isMissing = false,
+      }) {
+        final rows = async.maybeWhen(
+          data: (value) => value,
+          orElse: () => const <Map<String, dynamic>>[],
+        );
+        for (final row in rows) {
+          final item = itemFromRow(row, isMissing: isMissing);
+          groupItemByKey[item.key] = item;
+          groupTagByKey[item.key] = tag;
+        }
+      }
+
+      // Basement first: an item that is also flagged Missing takes the
+      // Missing tag, which is the more urgent one.
+      collect('Basement', ref.watch(basementItemsProvider));
+      collect('Workshop', ref.watch(workshopItemsProvider));
+      collect('Missing', ref.watch(missingItemsProvider), isMissing: true);
+    }
+    final inventoryKeys = {for (final item in allRows) item.key};
+    final searchRows = <InventoryItem>[
+      ...allRows,
+      for (final entry in groupItemByKey.entries)
+        if (!inventoryKeys.contains(entry.key)) entry.value,
+    ];
     final boxes = ref
         .watch(probeBoxesProvider)
         .maybeWhen(
@@ -631,10 +669,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         _ => 4,
       };
     }
-    final typeCounts = _typeCounts(allRows, boxes);
+    final typeCounts = _typeCounts(searchRows, boxes);
     // Everything that survives the filters — the same predicates the list
     // uses, so the count always matches what is shown.
-    final filtered = allRows.where((item) {
+    final filtered = searchRows.where((item) {
       // A sold machine already belongs to the dealer or customer,
       // so it must not show up in the inventory any more. Moved
       // parts stay visible so their stock history is reachable.
@@ -805,6 +843,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 context,
                                 entries[index].$1,
                                 indented: entries[index].$2,
+                                groupTag:
+                                    groupTagByKey[entries[index].$1.key],
                               ),
                             ),
                           );
@@ -996,10 +1036,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     BuildContext context,
     InventoryItem item, {
     bool indented = false,
+    String? groupTag,
   }) {
     return InventoryItemTile(
       item: item,
       indented: indented,
+      groupTag: groupTag,
       onTap: () => showItemDetails(context, ref, item),
     );
   }

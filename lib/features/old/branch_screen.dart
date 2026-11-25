@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../common/widgets.dart';
 import '../data/data.dart';
+import 'move_item_sheet.dart' show showReturnToStockSheet;
 import 'old_data.dart';
 import 'old_item_form.dart';
 import 'old_item_tile.dart';
@@ -98,13 +99,19 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
           const _SectionHeader('At Lahore — recorded location'),
         );
       }
-      listChildren.add(OldItemTile(row: machine));
+      listChildren.add(
+        OldItemTile(
+          row: machine,
+          trailing: _returnButton(context, ref, machine),
+        ),
+      );
       for (final member in _sortedKit(kit[machine['id']] ?? const [])) {
         listChildren.add(
           OldItemTile(
             row: member,
             indented: true,
             withCode: '${machine['machine_id'] ?? ''}',
+            trailing: _returnButton(context, ref, member),
           ),
         );
       }
@@ -114,7 +121,9 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
         const _SectionHeader('Other branch items'),
       );
       for (final row in _latestFirst(loose)) {
-        listChildren.add(OldItemTile(row: row));
+        listChildren.add(
+          OldItemTile(row: row, trailing: _returnButton(context, ref, row)),
+        );
       }
     }
 
@@ -178,6 +187,21 @@ class _BranchScreenState extends ConsumerState<BranchScreen> {
                 ),
         ),
       ],
+    );
+  }
+
+  /// One-tap return from the branch: the item can come back to Main
+  /// Inventory, the Workshop or the Basement. A machine brings its kit
+  /// along and the history records a Return row for each item that moved.
+  Widget _returnButton(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> row,
+  ) {
+    return IconButton(
+      tooltip: 'Return to stock',
+      icon: const Icon(Icons.undo, size: 20),
+      onPressed: () => showReturnToStockSheet(context, ref, itemFromRow(row)),
     );
   }
 }
