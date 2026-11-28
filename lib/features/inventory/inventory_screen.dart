@@ -8,7 +8,8 @@ import '../common/widgets.dart';
 import '../data/data.dart';
 import '../old/basement_data.dart' show basementItemsProvider;
 import '../old/missing_screen.dart' show showFoundItemSheet;
-import '../old/move_item_sheet.dart' show showMoveItemSheet;
+import '../old/move_item_sheet.dart'
+    show refreshAfterReturn, showMoveItemSheet, showReturnDestinationSheet;
 import '../old/old_data.dart'
     show missingItemsProvider, workshopItemsProvider;
 import '../old/old_item_form.dart' show itemFromRow;
@@ -2515,13 +2516,38 @@ class _ItemDetails extends ConsumerWidget {
                 label: const Text('Take out of the box'),
               ),
           ],
+          // A part (or printer) fitted to one of our own machines. It
+          // travels with that machine and reads as With Machine on the
+          // list, tucked under the machine card.
+          if (item.kind == 'part' || item.kind == 'printer') ...[
+            const SizedBox(height: 8),
+            if (item.displayStatus != 'With Machine')
+              OutlinedButton.icon(
+                onPressed: () => showMachineAttachSheet(context, ref, item),
+                icon: const Icon(Icons.link, size: 18),
+                label: const Text('Put in a machine'),
+              )
+            else ...[
+              OutlinedButton.icon(
+                onPressed: () => showMachineAttachSheet(context, ref, item),
+                icon: const Icon(Icons.swap_horiz, size: 18),
+                label: const Text('Change machine'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => detachItemFromMachineSheet(context, ref, item),
+                icon: const Icon(Icons.link_off, size: 18),
+                label: const Text('Take out of machine'),
+              ),
+            ],
+          ],
         ],
         if (canReturn) ...[
           const SizedBox(height: 12),
           FilledButton.tonalIcon(
             onPressed: () => _returnToInventory(context, ref),
             icon: const Icon(Icons.undo_outlined, size: 20),
-            label: const Text('Return to inventory'),
+            label: const Text('Return to stock'),
           ),
         ],
         if (linked.isNotEmpty) ...[
@@ -2666,39 +2692,25 @@ class _ItemDetails extends ConsumerWidget {
     }
   }
 
-  /// Confirm dialog, then the RPC does status, location and history in one
-  /// call. The sheet stays open and refreshes by itself.
+  /// Asks where the item should land, then the RPC does status, location
+  /// and history in one call. Main Inventory means the Inventory page;
+  /// Workshop means the Workshop page. The sheet stays open and refreshes
+  /// by itself.
   Future<void> _returnToInventory(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Return to inventory?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Return'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
+    final destination = await showReturnDestinationSheet(context);
+    if (destination == null || !context.mounted) return;
     try {
-      await returnToInventory(item);
-      ref
-        ..invalidate(allMovementsProvider)
-        ..invalidate(inventoryProvider)
-        ..invalidate(oldStockItemsProvider)
-        ..invalidate(allItemsProvider)
-        ..invalidate(flagsProvider);
+      await returnToInventory(item, destination: destination);
+      refreshAfterReturn(ref);
       if (!context.mounted) return;
-      showSnack(context, '${item.code} is back in inventory.');
-      // A probe's status must match where it physically is now: ask for
-      // the box, machine or free shelf it landed on.
-      if (item.kind == 'probe') {
+      showSnack(
+        context,
+        '${item.code} is back in '
+        '${destination == 'workshop' ? 'the workshop' : 'inventory'}.',
+      );
+      // A probe returned to Main Inventory still has to say where it
+      // physically sits: box, machine or free shelf.
+      if (item.kind == 'probe' && destination == 'inventory') {
         await showProbePlacementSheet(context, ref, item);
       }
     } catch (error) {

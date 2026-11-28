@@ -144,6 +144,64 @@ Future<bool> moveItemTo(
   }
 }
 
+/// Refreshes every list a return can change: the inventory, old stock,
+/// workshop, missing, basement and branch pages, the movement history and
+/// the labels built from them.
+void refreshAfterReturn(WidgetRef ref) {
+  ref
+    ..invalidate(inventoryProvider)
+    ..invalidate(oldStockItemsProvider)
+    ..invalidate(allItemsProvider)
+    ..invalidate(allMovementsProvider)
+    ..invalidate(flagsProvider)
+    ..invalidate(missingItemKeysProvider)
+    ..invalidate(missingItemsProvider)
+    ..invalidate(missingAllProvider)
+    ..invalidate(basementItemsProvider)
+    ..invalidate(workshopItemsProvider)
+    ..invalidate(branchItemsProvider)
+    ..invalidate(itemLabelsProvider)
+    ..invalidate(oldMachinesProvider)
+    ..invalidate(oldProbesProvider)
+    ..invalidate(oldPrintersProvider);
+}
+
+/// Asks where a returned item should land: Main Inventory or Workshop.
+/// Returns 'inventory' / 'workshop', or null when dismissed.
+Future<String?> showReturnDestinationSheet(BuildContext context) {
+  return showModalBottomSheet<String>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ListTile(
+            title: Text(
+              'Where should it go?',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: Text('The item will be listed on the page you choose.'),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.inventory_2_outlined),
+            title: const Text('Main Inventory'),
+            subtitle: const Text('Back on the Inventory page'),
+            onTap: () => Navigator.pop(sheetContext, 'inventory'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.handyman_outlined),
+            title: const Text('Workshop'),
+            subtitle: const Text('List it on the Workshop page'),
+            onTap: () => Navigator.pop(sheetContext, 'workshop'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Returns a Branch or Sold item to the chosen stock list through the
 /// `return_item_to_stock` RPC: the server moves the item and, for a
 /// machine, its kit; clears Missing flags and writes a Return row for
@@ -157,22 +215,7 @@ Future<bool> returnItemToStockAt(
 ) async {
   try {
     await returnItemToStock(item, destination);
-
-    ref.invalidate(inventoryProvider);
-    ref.invalidate(oldStockItemsProvider);
-    ref.invalidate(allItemsProvider);
-    ref.invalidate(allMovementsProvider);
-    ref.invalidate(flagsProvider);
-    ref.invalidate(missingItemKeysProvider);
-    ref.invalidate(missingItemsProvider);
-    ref.invalidate(missingAllProvider);
-    ref.invalidate(basementItemsProvider);
-    ref.invalidate(workshopItemsProvider);
-    ref.invalidate(branchItemsProvider);
-    ref.invalidate(itemLabelsProvider);
-    ref.invalidate(oldMachinesProvider);
-    ref.invalidate(oldProbesProvider);
-    ref.invalidate(oldPrintersProvider);
+    refreshAfterReturn(ref);
     if (context.mounted) {
       showSnack(context, 'Returned to ${_labelFor(destination)}.');
     }

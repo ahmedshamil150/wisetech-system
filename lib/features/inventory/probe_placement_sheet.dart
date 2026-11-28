@@ -200,13 +200,13 @@ Future<void> showProbeBoxPicker(
   }
 }
 
-/// Offers the machines a probe can travel with and writes the attach.
-/// Works for a free probe, a boxed probe and a probe moving from another
-/// machine — attaching always clears the old box/machine link.
-Future<void> showProbeAttachSheet(
+/// Offers the machines a probe, printer or part can travel with and writes
+/// the attach. Works for a free item, a boxed probe and an item moving
+/// from another machine — attaching always clears the old box/machine link.
+Future<void> showMachineAttachSheet(
   BuildContext context,
   WidgetRef ref,
-  InventoryItem probe,
+  InventoryItem item,
 ) async {
   List<InventoryItem> machines;
   try {
@@ -250,31 +250,49 @@ Future<void> showProbeAttachSheet(
   machines.removeWhere((machine) => missing.contains(machine.key));
   if (!context.mounted) return;
   if (machines.isEmpty) {
-    showSnack(context, 'No machine to attach this probe to.', error: true);
+    showSnack(
+      context,
+      'No machine to attach this ${item.kindLabel.toLowerCase()} to.',
+      error: true,
+    );
     return;
   }
   final machine = await showPickItem(context, items: machines);
   if (machine == null || !context.mounted) return;
   try {
-    await attachProbeToMachine(probe, machine);
+    await attachItemToMachine(item, machine);
     refreshProbePlacement(ref);
     if (context.mounted) {
-      showSnack(context, '${probe.code} attached to ${machine.code}.');
+      showSnack(context, '${item.code} attached to ${machine.code}.');
     }
   } catch (error) {
     if (context.mounted) showSnack(context, errorMessage(error), error: true);
   }
 }
 
-/// Takes a probe off its machine and leaves it free in stock.
-Future<void> detachProbe(BuildContext context, WidgetRef ref, InventoryItem probe) async {
+/// Probe-specific entry point kept for the existing callers.
+Future<void> showProbeAttachSheet(
+  BuildContext context,
+  WidgetRef ref,
+  InventoryItem probe,
+) =>
+    showMachineAttachSheet(context, ref, probe);
+
+/// Takes a probe, printer or part off its machine and leaves it free in
+/// stock.
+Future<void> detachItemFromMachineSheet(
+  BuildContext context,
+  WidgetRef ref,
+  InventoryItem item,
+) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: Text('Detach ${probe.code.isEmpty ? 'this probe' : probe.code}?'),
-      content: const Text(
-        'The probe comes off its machine and goes back to free stock. '
-        'You can attach it to another machine afterwards.',
+      title: Text('Detach ${item.code.isEmpty ? 'this item' : item.code}?'),
+      content: Text(
+        'The ${item.kindLabel.toLowerCase()} comes off its machine and goes '
+        'back to free stock. You can attach it to another machine '
+        'afterwards.',
       ),
       actions: [
         TextButton(
@@ -290,12 +308,20 @@ Future<void> detachProbe(BuildContext context, WidgetRef ref, InventoryItem prob
   );
   if (confirmed != true || !context.mounted) return;
   try {
-    await detachProbeFromMachine(probe);
+    await detachItemFromMachine(item);
     refreshProbePlacement(ref);
     if (context.mounted) {
-      showSnack(context, '${probe.code} is off its machine, free in stock.');
+      showSnack(context, '${item.code} is off its machine, free in stock.');
     }
   } catch (error) {
     if (context.mounted) showSnack(context, errorMessage(error), error: true);
   }
 }
+
+/// Takes a probe off its machine and leaves it free in stock.
+Future<void> detachProbe(
+  BuildContext context,
+  WidgetRef ref,
+  InventoryItem probe,
+) =>
+    detachItemFromMachineSheet(context, ref, probe);

@@ -682,7 +682,7 @@ InventoryItem _item(
   );
 }
 
-/// Probes and printers that travel with the given machine.
+/// Probes, printers and parts that travel with the given machine.
 List<InventoryItem> attachedItems(
   List<InventoryItem> items,
   InventoryItem machine,
@@ -691,13 +691,15 @@ List<InventoryItem> attachedItems(
       .where(
         (item) =>
             item.assignedMachineId == machine.id &&
-            (item.kind == 'probe' || item.kind == 'printer'),
+            (item.kind == 'probe' ||
+                item.kind == 'printer' ||
+                item.kind == 'part'),
       )
       .toList();
 }
 
 /// The kit that leaves when a machine is sent: the machine itself plus its
-/// probes and printer.
+/// probes, printer and any part fitted to it.
 List<InventoryItem> kitFor(List<InventoryItem> items, InventoryItem machine) {
   return [machine, ...attachedItems(items, machine)];
 }
@@ -1078,23 +1080,23 @@ Future<int> createMovement(Map<String, dynamic> params) async {
 
 /// Puts an item back into stock from wherever it is: status and location
 /// are restored and a 'Return' movement records when it came back.
-/// [date] is dd-MM-yyyy (defaults to today) and [notes] is free text —
-/// both let a partial return say when and why items came back.
+/// [destination] is `inventory` (default, Main Inventory), `workshop` or
+/// `basement`; the server makes sure the item really shows on the chosen
+/// page (current batch, Company/Workshop/Basement location, no Missing
+/// flag). [date] is dd-MM-yyyy (defaults to today) and [notes] is free
+/// text — both let a partial return say when and why items came back.
 Future<int> returnToInventory(
   InventoryItem item, {
   String? date,
   String? notes,
+  String destination = 'inventory',
 }) async {
-  if (await isItemMissing(item.kind, item.id)) {
-    throw ItemMissingException(
-      '${item.code} is marked Missing — mark it found before returning it.',
-    );
-  }
   return await _db.rpc(
         'return_to_inventory',
         params: {
           'p_item_type': item.kind,
           'p_item_id': item.id,
+          'p_destination': destination,
           if (date != null && date.isNotEmpty) 'p_date': date,
           if (notes != null && notes.isNotEmpty) 'p_notes': notes,
         },
@@ -1918,33 +1920,43 @@ Future<void> takeProbeOutOfBox(InventoryItem probe) async {
   });
 }
 
-/// Puts a probe onto a machine — from the box, a shelf, or another
-/// machine. The box link is cleared, the probe becomes With Machine at
-/// the machine's location, and an 'Attach' movement records the change.
-Future<void> attachProbeToMachine(
-  InventoryItem probe,
+String _itemTableFor(String kind) => switch (kind) {
+  'machine' => 'machines',
+  'probe' => 'probes',
+  'printer' => 'printers',
+  _ => 'parts',
+};
+
+/// Puts a probe, printer or part onto one of our own machines. It becomes
+/// With Machine at the machine's location; a probe leaves its box, and an
+/// 'Attach' row records the change.
+Future<void> attachItemToMachine(
+  InventoryItem item,
   InventoryItem machine,
 ) async {
-  if (await isItemMissing('probe', probe.id)) {
+  if (item.kind == 'machine') {
+    throw ArgumentError('A machine cannot be attached to another machine.');
+  }
+  if (await isItemMissing(item.kind, item.id)) {
     throw ItemMissingException(
-      '${probe.code} is marked Missing — mark it found before attaching it.',
+      '${item.code} is marked Missing — mark it found before attaching it.',
     );
   }
-  final from = probe.location;
+  final from = item.location;
   final to = machine.location;
   await _db
-      .from('probes')
+      .from(_itemTableFor(item.kind))
       .update({
-        'box_id': null,
+        if (item.kind == 'probe') 'box_id': null,
         'assigned_machine_id': machine.id,
         'status': 'With Machine',
         'current_location': to,
       })
-      .eq('id', probe.id);
+      .eq('id', item.id);
   await _db.from('movements').insert({
     'movement_type': 'Attach',
     'movement_date': movementToday(),
-    'probe_id': probe.id,
+    '${item.kind}_id': item.id,
     'from_location': from,
     'to_location': to,
     'notes': 'Attached to ${machine.code}',
@@ -1952,35 +1964,54 @@ Future<void> attachProbeToMachine(
   });
 }
 
-/// Takes a probe off its machine and leaves it free in company stock.
-/// The machine link is cleared, the status becomes Available and a
-/// 'Detach' movement keeps the change in the probe's history.
-Future<void> detachProbeFromMachine(InventoryItem probe) async {
-  if (await isItemMissing('probe', probe.id)) {
+/// Takes a probe, printer or part off its machine and leaves it free in
+/// company stock. The link is cleared, the status becomes Available and a
+/// 'Detach' row keeps the change in the item's history.
+Future<void> detachItemFromMachine(InventoryItem item) async {
+  if (item.kind == 'machine') {
+    throw ArgumentError('A machine is not attached to a machine.');
+  }
+  if (await isItemMissing(item.kind, item.id)) {
     throw ItemMissingException(
-      '${probe.code} is marked Missing — mark it found before moving it.',
+      '${item.code} is marked Missing — mark it found before moving it.',
     );
   }
-  final from = probe.location;
+  final from = item.location;
+  final to = defaultLocationFor('Available');
   await _db
-      .from('probes')
+      .from(_itemTableFor(item.kind))
       .update({
+        if (item.kind == 'probe') 'box_id': null,
         'assigned_machine_id': null,
-        'box_id': null,
         'status': 'Available',
-        'current_location': defaultLocationFor('Available'),
+        'current_location': to,
       })
-      .eq('id', probe.id);
+      .eq('id', item.id);
   await _db.from('movements').insert({
     'movement_type': 'Detach',
     'movement_date': movementToday(),
-    'probe_id': probe.id,
+    '${item.kind}_id': item.id,
     'from_location': from,
-    'to_location': defaultLocationFor('Available'),
+    'to_location': to,
     'notes': 'Taken off its machine',
     'actor_id': _db.auth.currentUser?.id,
   });
 }
+
+/// Puts a probe onto a machine — from the box, a shelf, or another
+/// machine. The box link is cleared, the probe becomes With Machine at
+/// the machine's location, and an 'Attach' movement records the change.
+Future<void> attachProbeToMachine(
+  InventoryItem probe,
+  InventoryItem machine,
+) =>
+    attachItemToMachine(probe, machine);
+
+/// Takes a probe off its machine and leaves it free in company stock.
+/// The machine link is cleared, the status becomes Available and a
+/// 'Detach' movement keeps the change in the probe's history.
+Future<void> detachProbeFromMachine(InventoryItem probe) =>
+    detachItemFromMachine(probe);
 
 /// Leaves a probe free in company stock — not on a machine and not in a
 /// box. Used after a return when the probe is back on the shelf.

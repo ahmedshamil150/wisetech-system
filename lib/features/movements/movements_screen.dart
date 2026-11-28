@@ -11,6 +11,8 @@ import '../data/data.dart';
 import '../inventory/inventory_screen.dart';
 import '../inventory/probe_placement_sheet.dart';
 import '../old/basement_data.dart' show basementItemsProvider;
+import '../old/move_item_sheet.dart'
+    show refreshAfterReturn, showReturnDestinationSheet;
 import '../old/old_data.dart' show workshopItemsProvider;
 import '../old/old_item_form.dart' show itemFromRow;
 import '../../core/layout.dart';
@@ -1120,7 +1122,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
   /// Puts every item of this send back into stock. An item that moved on
   /// to a later send is left alone — only its own last movement decides.
+  /// Asks whether the items come back to Main Inventory or the Workshop.
   Future<void> _returnGroup(List<Map<String, dynamic>> rows) async {
+    final destination = await showReturnDestinationSheet(context);
+    if (destination == null || !mounted) return;
     final allMovements = ref
         .read(allMovementsProvider)
         .maybeWhen(
@@ -1162,29 +1167,30 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
           }
         }
         if (item == null) continue;
-        await returnToInventory(item);
+        await returnToInventory(item, destination: destination);
         returned.add(item);
         count++;
       }
     } catch (error) {
       failure = errorMessage(error);
     } finally {
-      ref.invalidate(allMovementsProvider);
-      ref.invalidate(inventoryProvider);
-      ref.invalidate(oldStockItemsProvider);
-      ref.invalidate(allItemsProvider);
+      refreshAfterReturn(ref);
     }
     if (!mounted) return;
+    final where = destination == 'workshop' ? 'the workshop' : 'inventory';
     showSnack(
       context,
       failure ??
           (count == 0
               ? 'Nothing to return — these items moved on.'
-              : '$count item${count == 1 ? '' : 's'} back in inventory.'),
+              : '$count item${count == 1 ? '' : 's'} back in $where.'),
       error: failure != null,
     );
     // a returned probe still has to say where it is: box, machine or shelf
-    if (failure == null && returned.length == 1 && returned.single.kind == 'probe') {
+    if (failure == null &&
+        destination == 'inventory' &&
+        returned.length == 1 &&
+        returned.single.kind == 'probe') {
       await showProbePlacementSheet(context, ref, returned.single);
     }
   }
@@ -2550,6 +2556,8 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
       );
 
   Future<void> _returnSelected(Map<String, InventoryItem> itemsByKey) async {
+    final destination = await showReturnDestinationSheet(context);
+    if (destination == null || !mounted) return;
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     var count = 0;
@@ -2566,6 +2574,7 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
           item,
           date: _date.text.trim(),
           notes: _notes.text.trim(),
+          destination: destination,
         );
         returned.add(item);
         count++;
@@ -2573,22 +2582,24 @@ class _ReturnFromSendSheetState extends ConsumerState<_ReturnFromSendSheet> {
     } catch (error) {
       failure = errorMessage(error);
     } finally {
-      ref.invalidate(allMovementsProvider);
-      ref.invalidate(inventoryProvider);
-      ref.invalidate(oldStockItemsProvider);
-      ref.invalidate(allItemsProvider);
+      refreshAfterReturn(ref);
     }
     if (!mounted) return;
-    // one probe came back: ask where it sits before closing the sheet
-    if (failure == null && returned.length == 1 && returned.single.kind == 'probe') {
+    // one probe came back to Main Inventory: ask where it sits before
+    // closing the sheet
+    if (failure == null &&
+        destination == 'inventory' &&
+        returned.length == 1 &&
+        returned.single.kind == 'probe') {
       await showProbePlacementSheet(context, ref, returned.single);
       if (!mounted) return;
     }
     Navigator.pop(context);
+    final where = destination == 'workshop' ? 'the workshop' : 'inventory';
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          failure ?? '$count item${count == 1 ? '' : 's'} back in inventory.',
+          failure ?? '$count item${count == 1 ? '' : 's'} back in $where.',
         ),
       ),
     );
