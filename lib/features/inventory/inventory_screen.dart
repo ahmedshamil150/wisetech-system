@@ -2541,6 +2541,17 @@ class _ItemDetails extends ConsumerWidget {
               ),
             ],
           ],
+          // The other direction: open the machine, tick the spare parts,
+          // and they join its kit.
+          if (item.kind == 'machine' &&
+              !{'Sold', 'Archived'}.contains(item.status)) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => showMachinePartsSheet(context, ref, item),
+              icon: const Icon(Icons.add_circle_outline, size: 18),
+              label: const Text('Fit a part'),
+            ),
+          ],
         ],
         if (canReturn) ...[
           const SizedBox(height: 12),
@@ -2577,7 +2588,18 @@ class _ItemDetails extends ConsumerWidget {
                       ),
                     ),
                     subtitle: Text('${other.kindLabel} · ${other.status}'),
-                    trailing: const Icon(Icons.chevron_right, size: 20),
+                    trailing: isAdmin && item.kind == 'machine'
+                        ? IconButton(
+                            tooltip:
+                                'Take ${other.code} out of this machine',
+                            icon: const Icon(Icons.link_off, size: 18),
+                            onPressed: () => detachItemFromMachineSheet(
+                              context,
+                              ref,
+                              other,
+                            ),
+                          )
+                        : const Icon(Icons.chevron_right, size: 20),
                     onTap: () => showItemDetails(context, ref, other),
                   ),
               ],

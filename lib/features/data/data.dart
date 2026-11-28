@@ -1929,7 +1929,9 @@ String _itemTableFor(String kind) => switch (kind) {
 
 /// Puts a probe, printer or part onto one of our own machines. It becomes
 /// With Machine at the machine's location; a probe leaves its box, and an
-/// 'Attach' row records the change.
+/// 'Attach' row records the change. An imported old-side item joins the
+/// machine's batch, so it really shows under the machine on the Inventory
+/// page instead of staying hidden on the old side.
 Future<void> attachItemToMachine(
   InventoryItem item,
   InventoryItem machine,
@@ -1944,13 +1946,26 @@ Future<void> attachItemToMachine(
   }
   final from = item.location;
   final to = machine.location;
+
+  final table = _itemTableFor(item.kind);
+  final rows = await Future.wait([
+    _db.from('machines').select('batch_id').eq('id', machine.id).maybeSingle(),
+    _db.from(table).select('batch_id').eq('id', item.id).maybeSingle(),
+  ]);
+  final machineBatch = rows[0]?['batch_id'];
+  final itemBatch = rows[1]?['batch_id'];
+  final adoptBatch = itemBatch == kOldBatchId &&
+      machineBatch is int &&
+      machineBatch != kOldBatchId;
+
   await _db
-      .from(_itemTableFor(item.kind))
+      .from(table)
       .update({
         if (item.kind == 'probe') 'box_id': null,
         'assigned_machine_id': machine.id,
         'status': 'With Machine',
         'current_location': to,
+        if (adoptBatch) 'batch_id': machineBatch,
       })
       .eq('id', item.id);
   await _db.from('movements').insert({

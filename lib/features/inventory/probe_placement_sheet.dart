@@ -278,6 +278,217 @@ Future<void> showProbeAttachSheet(
 ) =>
     showMachineAttachSheet(context, ref, probe);
 
+/// The machine-side half of [showMachineAttachSheet]: pick the machine
+/// first, then tick the spare parts that go into it. Only free parts are
+/// offered - not sold, archived, missing, or already on a machine - and
+/// several can be fitted in one go. Each one becomes With Machine at the
+/// machine's location and rides along with its kit.
+Future<void> showMachinePartsSheet(
+  BuildContext context,
+  WidgetRef ref,
+  InventoryItem machine,
+) async {
+  List<InventoryItem> parts;
+  try {
+    final rows = await fetchAllPages(
+      () => db
+          .from('parts')
+          .select('id, internal_id, name_model, serial_number, status, '
+              'current_location, acquisition_date, batch_id, '
+              'assigned_machine_id')
+          .order('internal_id'),
+    );
+    parts = [
+      for (final row in rows)
+        if (row['assigned_machine_id'] == null &&
+            !{
+              'Sold',
+              'Archived',
+            }.contains('${row['status'] ?? ''}'))
+          InventoryItem(
+            kind: 'part',
+            id: row['id'] as int,
+            code: (row['internal_id'] ?? '').toString(),
+            name: (row['name_model'] ?? '').toString(),
+            serial: row['serial_number'] as String?,
+            status: (row['status'] ?? '').toString(),
+            location: (row['current_location'] ?? '').toString(),
+          ),
+    ];
+  } catch (error) {
+    if (context.mounted) showSnack(context, errorMessage(error), error: true);
+    return;
+  }
+  Set<String> missing;
+  try {
+    missing = await ref.read(missingItemKeysProvider.future);
+  } catch (_) {
+    missing = const {};
+  }
+  parts.removeWhere((part) => missing.contains(part.key));
+  if (!context.mounted) return;
+  if (parts.isEmpty) {
+    showSnack(
+      context,
+      'No free part to fit to ${machine.code}.',
+      error: true,
+    );
+    return;
+  }
+
+  final chosen = await showAppSheet<List<InventoryItem>>(
+    context: context,
+    title: 'Fit parts to ${machine.code}',
+    heightFraction: 0.85,
+    builder: (sheetContext) => _MachinePartsPicker(parts: parts),
+  );
+  if (chosen == null || chosen.isEmpty || !context.mounted) return;
+
+  var fitted = 0;
+  String? failure;
+  for (final part in chosen) {
+    try {
+      await attachItemToMachine(part, machine);
+      fitted++;
+    } catch (error) {
+      failure = errorMessage(error);
+      break;
+    }
+  }
+  refreshProbePlacement(ref);
+  if (!context.mounted) return;
+  showSnack(
+    context,
+    failure ??
+        '$fitted part${fitted == 1 ? '' : 's'} fitted to ${machine.code}.',
+    error: failure != null,
+  );
+}
+
+/// Searchable tick-list of the free parts that can be fitted to a machine.
+class _MachinePartsPicker extends StatefulWidget {
+  const _MachinePartsPicker({required this.parts});
+
+  final List<InventoryItem> parts;
+
+  @override
+  State<_MachinePartsPicker> createState() => _MachinePartsPickerState();
+}
+
+class _MachinePartsPickerState extends State<_MachinePartsPicker> {
+  final _selected = <String>{};
+  var _query = '';
+
+  List<InventoryItem> get _matches {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return widget.parts;
+    return [
+      for (final part in widget.parts)
+        if (part.code.toLowerCase().contains(q) ||
+            part.name.toLowerCase().contains(q) ||
+            (part.serial ?? '').toLowerCase().contains(q))
+          part,
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = _matches;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 8, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Tick the parts that go into this machine',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: SearchField(
+            hint: 'Search ${widget.parts.length} free parts',
+            onChanged: (value) => setState(() => _query = value),
+          ),
+        ),
+        Expanded(
+          child: matches.isEmpty
+              ? const EmptyState(
+                  icon: Icons.search_off,
+                  message: 'No free part matches that search.',
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  itemCount: matches.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final part = matches[index];
+                    final checked = _selected.contains(part.key);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: checked,
+                      onChanged: (value) => setState(() {
+                        if (value == true) {
+                          _selected.add(part.key);
+                        } else {
+                          _selected.remove(part.key);
+                        }
+                      }),
+                      title: Text(
+                        '${part.code}  ${part.title}',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Text('${part.status} · ${part.location}'),
+                    );
+                  },
+                ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: FilledButton.icon(
+              onPressed: _selected.isEmpty
+                  ? null
+                  : () {
+                      final chosen = [
+                        for (final part in widget.parts)
+                          if (_selected.contains(part.key)) part,
+                      ];
+                      Navigator.pop(context, chosen);
+                    },
+              icon: const Icon(Icons.link, size: 18),
+              label: Text(
+                _selected.isEmpty
+                    ? 'Select parts to fit'
+                    : 'Fit ${_selected.length} part'
+                          '${_selected.length == 1 ? '' : 's'}',
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Takes a probe, printer or part off its machine and leaves it free in
 /// stock.
 Future<void> detachItemFromMachineSheet(
